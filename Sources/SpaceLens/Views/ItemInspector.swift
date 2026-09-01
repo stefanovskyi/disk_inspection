@@ -1,0 +1,193 @@
+import SwiftUI
+
+struct ItemInspector: View {
+    @EnvironmentObject private var model: AppViewModel
+    @Environment(\.colorScheme) private var colorScheme
+    let node: FileNode
+
+    var body: some View {
+        let theme = SpaceTheme(colorScheme: colorScheme)
+        let children = node.sortedChildren
+
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(node.name)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(theme.primaryText)
+                            .lineLimit(1)
+                        Text("\((node.directItemCount > 0 ? node.directItemCount : children.count).formatted()) direct items")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(theme.tertiaryText)
+                    }
+                    Spacer()
+                    Text(StorageFormatters.bytes(node.size))
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundStyle(theme.primaryText)
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        model.showInFinder(node)
+                    } label: {
+                        Label("Finder", systemImage: "folder")
+                    }
+                    Button {
+                        model.openInTerminal(node)
+                    } label: {
+                        Label("Terminal", systemImage: "terminal")
+                    }
+                }
+                .font(.system(size: 10, weight: .semibold))
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            .padding(16)
+
+            Rectangle()
+                .fill(theme.border)
+                .frame(height: 1)
+
+            if children.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: node.isReadable ? "tray" : "lock.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(node.isReadable ? theme.tertiaryText : theme.warning)
+                    Text(node.isReadable ? "This folder is empty" : "This folder is protected")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(theme.secondaryText)
+                    if !node.isReadable {
+                        Button("Open Full Disk Access Settings") {
+                            model.openFullDiskAccessSettings()
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .buttonStyle(.link)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 3) {
+                        ForEach(Array(children.enumerated()), id: \.element.id) { index, child in
+                            InspectorRow(
+                                node: child,
+                                parentSize: node.size,
+                                hue: SpacePalette.hues[index % SpacePalette.hues.count]
+                            )
+                        }
+                    }
+                    .padding(8)
+                }
+            }
+        }
+        .spacePanel()
+    }
+}
+
+private struct InspectorRow: View {
+    @EnvironmentObject private var model: AppViewModel
+    @Environment(\.colorScheme) private var colorScheme
+    let node: FileNode
+    let parentSize: Int64
+    let hue: Double
+
+    private var isHovered: Bool { model.hoveredNode?.id == node.id }
+
+    var body: some View {
+        let theme = SpaceTheme(colorScheme: colorScheme)
+        let fraction = node.percentage(of: parentSize)
+        let color = SpacePalette.color(hue: hue, depth: 0, isDark: colorScheme == .dark)
+
+        Button {
+            if node.isAggregate {
+                model.showInFinder(node)
+            } else if node.isDirectory, !node.children.isEmpty {
+                model.navigate(into: node)
+            } else {
+                model.showInFinder(node)
+            }
+        } label: {
+            VStack(spacing: 8) {
+                HStack(spacing: 9) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(color.opacity(0.13))
+                        Image(systemName: iconName)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(node.isReadable ? color : theme.warning)
+                    }
+                    .frame(width: 28, height: 28)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(node.name)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(theme.primaryText)
+                            .lineLimit(1)
+                        Text(StorageFormatters.percent(fraction))
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(theme.tertiaryText)
+                    }
+
+                    Spacer(minLength: 6)
+
+                    Text(StorageFormatters.bytes(node.size))
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(theme.secondaryText)
+
+                    if node.isDirectory, !node.children.isEmpty {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(theme.tertiaryText)
+                    }
+                }
+
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(theme.elevatedSurface)
+                        Capsule()
+                            .fill(color.opacity(0.82))
+                            .frame(width: max(fraction > 0 ? 2 : 0, proxy.size.width * fraction))
+                    }
+                }
+                .frame(height: 3)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 8)
+            .background(isHovered ? theme.elevatedSurface : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            if hovering {
+                model.hoveredNode = node
+            } else if model.hoveredNode?.id == node.id {
+                model.hoveredNode = nil
+            }
+        }
+        .contextMenu {
+            if node.isAggregate {
+                Button("Show Containing Folder in Finder") { model.showInFinder(node) }
+                Button("Open Containing Folder in Terminal") { model.openInTerminal(node) }
+            } else if node.isDirectory, !node.children.isEmpty {
+                Button("Inspect “\(node.name)”") { model.navigate(into: node) }
+                Divider()
+                Button("Show in Finder") { model.showInFinder(node) }
+                Button("Open in Terminal") { model.openInTerminal(node) }
+            } else {
+                Button("Show in Finder") { model.showInFinder(node) }
+                Button("Open in Terminal") { model.openInTerminal(node) }
+            }
+        }
+        .accessibilityLabel("\(node.name), \(StorageFormatters.bytes(node.size)), \(StorageFormatters.percent(fraction))")
+        .accessibilityHint(node.isDirectory && !node.children.isEmpty ? "Opens this folder's storage map" : "Shows this item in Finder")
+    }
+
+    private var iconName: String {
+        if node.isAggregate { return "ellipsis.circle.fill" }
+        if !node.isReadable { return "lock.fill" }
+        if node.isDirectory { return "folder.fill" }
+        return "doc.fill"
+    }
+}

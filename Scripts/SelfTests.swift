@@ -1,0 +1,339 @@
+import Foundation
+
+enum SelfTestFailure: LocalizedError {
+    case failed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .failed(let message): return message
+        }
+    }
+}
+
+@main
+struct SpaceLensSelfTests {
+    static func main() async throws {
+        try await scannerBuildsTreeWithoutFollowingSymlinks()
+        try await largeDirectoriesKeepABoundedResultTree()
+        try await cancellationStopsTheScannerWorker()
+        try await stalledProviderSubtreeIsSkipped()
+        try await scannerReadsSiblingDirectoriesInParallel()
+        try fullDiskAccessIsCheckedOnlyForWholeDiskScans()
+        try elapsedTimeFormattingIsReadable()
+        try scanScopeStaysInsideTheSelectedVolume()
+        try layoutPreservesHierarchyAndProportion()
+        try layoutRespectsDepthLimit()
+        print("SpaceLens self-tests passed (10/10)")
+    }
+
+    private static func scannerBuildsTreeWithoutFollowingSymlinks() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensSelfTests-\(UUID().uuidString)", isDirectory: true)
+        let nested = root.appendingPathComponent("Nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try Data(repeating: 0x41, count: 128 * 1024)
+            .write(to: nested.appendingPathComponent("large.bin"))
+        try Data(repeating: 0x42, count: 4 * 1024)
+            .write(to: root.appendingPathComponent("small.bin"))
+        try FileManager.default.createSymbolicLink(
+            at: nested.appendingPathComponent("loop"),
+            withDestinationURL: root
+        )
+
+        let result = try await DiskScanner().scan(url: root)
+        try expect(result.root.children.count == 2, "Scanner did not build the expected root children")
+        try expect(result.root.children.first?.name == "Nested", "Scanner did not sort children by size")
+
+        let symlink = result.root.children
+            .first(where: { $0.name == "Nested" })?
+            .children
+            .first(where: { $0.name == "loop" })
+        try expect(symlink != nil, "Scanner omitted the symbolic link entry")
+        try expect(symlink?.isDirectory == false, "Scanner followed a symbolic link as a directory")
+        try expect(symlink?.children.isEmpty == true, "Symbolic link unexpectedly has descendants")
+    }
+
+    private static func layoutPreservesHierarchyAndProportion() throws {
+        let rootURL = URL(fileURLWithPath: "/test")
+        let deep = node("deep", size: 25, at: rootURL.appendingPathComponent("large/deep"))
+        let large = node("large", size: 75, at: rootURL.appendingPathComponent("large"), children: [deep])
+        let small = node("small", size: 25, at: rootURL.appendingPathComponent("small"))
+        let root = node("test", size: 100, at: rootURL, children: [large, small])
+        let segments = SunburstLayout.segments(for: root, maxDepth: 4, minimumAngularSpan: 0)
+
+        guard let largeSegment = segments.first(where: { $0.node.name == "large" }),
+              let smallSegment = segments.first(where: { $0.node.name == "small" }),
+              let deepSegment = segments.first(where: { $0.node.name == "deep" }) else {
+            throw SelfTestFailure.failed("Layout omitted expected segments")
+        }
+
+        try expect(deepSegment.depth == 1, "Layout lost the child depth")
+        let ratio = largeSegment.angularSpan / smallSegment.angularSpan
+        try expect(abs(ratio - 3) < 0.001, "Layout angles are not proportional to byte size")
+    }
+
+    private static func cancellationStopsTheScannerWorker() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensCancellation-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data([0x41]).write(to: root.appendingPathComponent("file.bin"))
+
+        let gate = CancellationTestGate()
+        let scanTask = Task {
+            try await DiskScanner().scan(url: root) { progress in
+                if progress.itemsScanned == 1 {
+                    gate.markStartedAndWait()
+                }
+            }
+        }
+
+        for _ in 0..<200 where !gate.hasStarted {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard gate.hasStarted else {
+            scanTask.cancel()
+            gate.release()
+            throw SelfTestFailure.failed("Scanner worker did not start")
+        }
+
+        scanTask.cancel()
+        gate.release()
+
+        do {
+            _ = try await scanTask.value
+            throw SelfTestFailure.failed("Cancelled scan completed successfully instead of stopping")
+        } catch ScanFailure.cancelled {
+            // Expected.
+        }
+    }
+
+    private static func largeDirectoriesKeepABoundedResultTree() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensBoundedTree-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        for index in 0..<150 {
+            try Data([UInt8(index % 255)])
+                .write(to: root.appendingPathComponent("file-\(index).bin"))
+        }
+
+        let result = try await DiskScanner().scan(url: root)
+        try expect(result.root.children.count <= 97, "Scanner retained every file in a large directory")
+        try expect(
+            result.root.children.contains(where: { $0.name == "Smaller items" }),
+            "Scanner did not aggregate smaller items"
+        )
+        try expect(result.itemsScanned == 151, "Scanner lost the real measured-item count")
+        try expect(result.root.itemCount == 151, "Compacted tree lost its represented-item count")
+        try expect(result.root.directItemCount == 150, "Compacted tree lost its direct-item count")
+        try expect(
+            result.root.children.reduce(Int64(0), { $0 + $1.size }) == result.root.size,
+            "Aggregating smaller items changed the measured byte total"
+        )
+    }
+
+    private static func stalledProviderSubtreeIsSkipped() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensStallWatchdog-\(UUID().uuidString)", isDirectory: true)
+        let blocked = root.appendingPathComponent("Blocked", isDirectory: true)
+        try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let gate = CancellationTestGate()
+        let scanner = DiskScanner(
+            stalledSubtreeTimeout: 0.1,
+            shouldIsolateSubtree: { $0.lastPathComponent == "Blocked" },
+            directoryReader: { url, keys in
+                if url.lastPathComponent == "Blocked" {
+                    gate.markStartedAndWait()
+                    return []
+                }
+                return try FileManager.default.contentsOfDirectory(
+                    at: url,
+                    includingPropertiesForKeys: keys,
+                    options: []
+                )
+            }
+        )
+
+        let start = Date()
+        let result = try await scanner.scan(url: root)
+        let duration = Date().timeIntervalSince(start)
+        gate.release()
+
+        try expect(gate.hasStarted, "Stall watchdog fixture never entered the blocked subtree")
+        try expect(duration < 1, "Stalled subtree blocked the whole scan for \(duration) seconds")
+        try expect(result.unreadableItems == 1, "Stalled subtree was not counted as unreadable")
+        try expect(
+            result.root.children.first(where: { $0.name == "Blocked" })?.isReadable == false,
+            "Stalled subtree was not represented as unreadable"
+        )
+    }
+
+    private static func scannerReadsSiblingDirectoriesInParallel() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensParallelScan-\(UUID().uuidString)", isDirectory: true)
+        let first = root.appendingPathComponent("First", isDirectory: true)
+        let second = root.appendingPathComponent("Second", isDirectory: true)
+        try FileManager.default.createDirectory(at: first, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let probe = ParallelDirectoryReadProbe()
+        let scanner = DiskScanner(
+            maximumParallelism: 2,
+            shouldIsolateSubtree: { _ in false },
+            directoryReader: { url, keys in
+                if url.standardizedFileURL.path == first.path
+                    || url.standardizedFileURL.path == second.path {
+                    probe.enterAndWaitForOverlap()
+                }
+                return try FileManager.default.contentsOfDirectory(
+                    at: url,
+                    includingPropertiesForKeys: keys,
+                    options: []
+                )
+            }
+        )
+
+        _ = try await scanner.scan(url: root)
+        try expect(
+            probe.maximumConcurrentReads >= 2,
+            "Scanner reached only \(probe.maximumConcurrentReads) concurrent sibling directory read(s)"
+        )
+    }
+
+    private static func scanScopeStaysInsideTheSelectedVolume() throws {
+        let rootScope = ScanScope(rootPath: "/", rootDevice: 10)
+        try expect(
+            rootScope.allows(URL(fileURLWithPath: "/Users/me"), identity: FileIdentity(device: 10, inode: 2)),
+            "Root scope rejected a logical main-disk folder"
+        )
+        try expect(
+            !rootScope.allows(URL(fileURLWithPath: "/System/Volumes/Data"), identity: FileIdentity(device: 10, inode: 3)),
+            "Root scope allowed the duplicate APFS Data mount"
+        )
+        try expect(
+            !rootScope.allows(URL(fileURLWithPath: "/Volumes/External"), identity: FileIdentity(device: 11, inode: 4)),
+            "Root scope crossed into an external disk"
+        )
+
+        let folderScope = ScanScope(rootPath: "/tmp/example", rootDevice: 10)
+        try expect(
+            !folderScope.allows(URL(fileURLWithPath: "/tmp/example/mount"), identity: FileIdentity(device: 11, inode: 5)),
+            "Folder scope crossed a nested volume boundary"
+        )
+    }
+
+    private static func fullDiskAccessIsCheckedOnlyForWholeDiskScans() throws {
+        let denied = FullDiskAccessChecker(accessProbe: { false })
+        let granted = FullDiskAccessChecker(accessProbe: { true })
+
+        try expect(
+            denied.status(for: URL(fileURLWithPath: "/")) == .needsUserApproval,
+            "Whole-disk scan did not request Full Disk Access"
+        )
+        try expect(
+            granted.status(for: URL(fileURLWithPath: "/")) == .granted,
+            "Whole-disk scan ignored available Full Disk Access"
+        )
+        try expect(
+            denied.status(for: URL(fileURLWithPath: "/Users/example/Documents")) == .notRequired,
+            "Folder scan unnecessarily requested Full Disk Access"
+        )
+    }
+
+    private static func elapsedTimeFormattingIsReadable() throws {
+        try expect(
+            StorageFormatters.duration(65) == "1 min 5 sec",
+            "Elapsed scan time was not formatted as minutes and seconds"
+        )
+    }
+
+    private static func layoutRespectsDepthLimit() throws {
+        let rootURL = URL(fileURLWithPath: "/test")
+        let third = node("three", size: 1, at: rootURL.appendingPathComponent("one/two/three"))
+        let second = node("two", size: 1, at: rootURL.appendingPathComponent("one/two"), children: [third])
+        let first = node("one", size: 1, at: rootURL.appendingPathComponent("one"), children: [second])
+        let root = node("test", size: 1, at: rootURL, children: [first])
+        let segments = SunburstLayout.segments(for: root, maxDepth: 2, minimumAngularSpan: 0)
+        try expect(segments.map(\.depth).max() == 1, "Layout exceeded its configured depth")
+    }
+
+    private static func node(
+        _ name: String,
+        size: Int64,
+        at url: URL,
+        children: [FileNode] = []
+    ) -> FileNode {
+        FileNode(
+            url: url,
+            name: name,
+            size: size,
+            isDirectory: !children.isEmpty,
+            isReadable: true,
+            children: children
+        )
+    }
+
+    private static func expect(_ condition: @autoclosure () -> Bool, _ message: String) throws {
+        guard condition() else { throw SelfTestFailure.failed(message) }
+    }
+}
+
+private final class CancellationTestGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private let continuation = DispatchSemaphore(value: 0)
+    private var started = false
+
+    var hasStarted: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return started
+    }
+
+    func markStartedAndWait() {
+        lock.lock()
+        started = true
+        lock.unlock()
+        continuation.wait()
+    }
+
+    func release() {
+        continuation.signal()
+    }
+}
+
+private final class ParallelDirectoryReadProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private let overlapReached = DispatchSemaphore(value: 0)
+    private var activeReads = 0
+    private var maximumReads = 0
+
+    var maximumConcurrentReads: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return maximumReads
+    }
+
+    func enterAndWaitForOverlap() {
+        lock.lock()
+        activeReads += 1
+        maximumReads = max(maximumReads, activeReads)
+        if activeReads >= 2 {
+            overlapReached.signal()
+            overlapReached.signal()
+        }
+        lock.unlock()
+
+        _ = overlapReached.wait(timeout: .now() + .milliseconds(500))
+
+        lock.lock()
+        activeReads -= 1
+        lock.unlock()
+    }
+}
