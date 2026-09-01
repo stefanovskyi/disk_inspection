@@ -3,11 +3,19 @@ import SwiftUI
 struct ItemInspector: View {
     @EnvironmentObject private var model: AppViewModel
     @Environment(\.colorScheme) private var colorScheme
+    @State private var showsSmallItems = false
     let node: FileNode
+
+    private static let minimumVisibleFraction = 0.01
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
         let children = node.sortedChildren
+        let prominentChildren = children.filter {
+            $0.percentage(of: node.size) >= Self.minimumVisibleFraction
+        }
+        let smallItemCount = children.count - prominentChildren.count
+        let visibleChildren = showsSmallItems ? children : prominentChildren
 
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 9) {
@@ -69,17 +77,42 @@ struct ItemInspector: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 3) {
-                        ForEach(Array(children.enumerated()), id: \.element.id) { index, child in
+                        ForEach(Array(visibleChildren.enumerated()), id: \.element.id) { index, child in
                             InspectorRow(
                                 node: child,
                                 parentSize: node.size,
                                 hue: SpacePalette.hues[index % SpacePalette.hues.count]
                             )
                         }
+
+                        if smallItemCount > 0 {
+                            Button {
+                                showsSmallItems.toggle()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: showsSmallItems ? "chevron.up" : "chevron.down")
+                                    Text(showsSmallItems ? "Show less" : "Show more")
+                                    if !showsSmallItems {
+                                        Text("(\(smallItemCount.formatted()))")
+                                            .foregroundStyle(theme.tertiaryText)
+                                    }
+                                }
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(theme.secondaryText)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .help(showsSmallItems ? "Hide items smaller than 1%" : "Show items smaller than 1%")
+                        }
                     }
                     .padding(8)
                 }
             }
+        }
+        .onChange(of: node.id) {
+            showsSmallItems = false
         }
         .spacePanel()
     }
