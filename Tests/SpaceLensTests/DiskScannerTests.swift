@@ -3,6 +3,31 @@ import XCTest
 @testable import SpaceLens
 
 final class DiskScannerTests: XCTestCase {
+    func testBulkDirectoryReaderReturnsMetadataWithoutFollowingSymlinks() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensBulkReader-\(UUID().uuidString)", isDirectory: true)
+        let folder = root.appendingPathComponent("Folder", isDirectory: true)
+        let file = root.appendingPathComponent("file.bin")
+        let link = root.appendingPathComponent("folder-link")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(repeating: 0x41, count: 4_096).write(to: file)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: folder)
+
+        let entries = try BulkDirectoryReader.contents(of: root)
+        let metadataByName = Dictionary(
+            uniqueKeysWithValues: entries.compactMap { entry in
+                entry.metadata.map { ($0.name, $0) }
+            }
+        )
+
+        XCTAssertEqual(metadataByName["Folder"]?.kind, .directory)
+        XCTAssertEqual(metadataByName["file.bin"]?.kind, .regular)
+        XCTAssertGreaterThan(metadataByName["file.bin"]?.size ?? 0, 0)
+        XCTAssertEqual(metadataByName["folder-link"]?.kind, .symbolicLink)
+        XCTAssertTrue(metadataByName.values.allSatisfy { $0.identity != nil })
+    }
+
     func testScannerBuildsSortedTreeAndDoesNotFollowSymbolicLinks() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("SpaceLensTests-\(UUID().uuidString)", isDirectory: true)

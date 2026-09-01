@@ -1,5 +1,4 @@
 import Foundation
-import Darwin
 
 struct FileIdentity: Hashable, Sendable {
     let device: UInt64
@@ -46,16 +45,6 @@ struct DiskScanner {
 
     private let configuration: ScannerConfiguration
 
-    private static let resourceKeys: Set<URLResourceKey> = [
-        .nameKey,
-        .isDirectoryKey,
-        .isRegularFileKey,
-        .isSymbolicLinkKey,
-        .fileSizeKey,
-        .fileAllocatedSizeKey,
-        .totalFileAllocatedSizeKey
-    ]
-
     init(
         maximumParallelism: Int? = nil,
         stalledSubtreeTimeout: TimeInterval = 5,
@@ -69,13 +58,7 @@ struct DiskScanner {
             shouldIsolateSubtree: shouldIsolateSubtree ?? { url in
                 Self.shouldIsolateProtectedSubtree(url)
             },
-            directoryReader: directoryReader ?? { url, keys in
-                try FileManager.default.contentsOfDirectory(
-                    at: url,
-                    includingPropertiesForKeys: keys,
-                    options: []
-                )
-            }
+            directoryReader: directoryReader
         )
     }
 
@@ -86,12 +69,12 @@ struct DiskScanner {
         let configuration = configuration
         let worker = Task.detached(priority: .userInitiated) {
             let start = Date()
-            let rootIdentity = Self.fileIdentity(for: url)
+            let rootMetadata = try? LowLevelMetadataReader.metadata(at: url)
             let session = ScanSession(
                 progress: ScanProgress(currentPath: url.path),
                 scope: ScanScope(
                     rootPath: url.standardizedFileURL.path,
-                    rootDevice: rootIdentity?.device
+                    rootDevice: rootMetadata?.identity?.device
                 ),
                 configuration: configuration
             )
@@ -99,6 +82,7 @@ struct DiskScanner {
             do {
                 guard let root = try await Self.inspect(
                     url,
+                    knownMetadata: rootMetadata,
                     session: session,
                     activityMonitor: nil,
                     isInsideIsolatedSubtree: false,
@@ -134,6 +118,7 @@ struct DiskScanner {
 
     private static func inspect(
         _ url: URL,
+        knownMetadata: LowLevelFileMetadata?,
         session: ScanSession,
         activityMonitor: ScanActivityMonitor?,
         isInsideIsolatedSubtree: Bool,
@@ -154,9 +139,9 @@ struct DiskScanner {
             )
         }
 
-        let values: URLResourceValues
+        let metadata: LowLevelFileMetadata
         do {
-            values = try url.resourceValues(forKeys: resourceKeys)
+            metadata = try knownMetadata ?? LowLevelMetadataReader.metadata(at: url)
             try Task.checkCancellation()
             guard activityMonitor?.isActive != false else { throw CancellationError() }
         } catch is CancellationError {
@@ -178,8 +163,25 @@ struct DiskScanner {
             )
         }
 
-        let name = values.name ?? displayName(for: url)
-        let isDirectory = values.isDirectory == true && values.isSymbolicLink != true
+        let name = metadata.name
+        let isDirectory = metadata.kind == .directory
+
+        if !metadata.isReadable {
+            guard session.recordItem(
+                at: url,
+                activityMonitor: activityMonitor,
+                onProgress: onProgress
+            ) else { throw CancellationError() }
+            session.recordUnreadable(at: url, unresponsive: false, onProgress: onProgress)
+            return FileNode(
+                url: url,
+                name: name,
+                size: 0,
+                isDirectory: isDirectory,
+                isReadable: false,
+                children: []
+            )
+        }
 
         guard isDirectory else {
             guard session.recordItem(
@@ -187,21 +189,17 @@ struct DiskScanner {
                 activityMonitor: activityMonitor,
                 onProgress: onProgress
             ) else { throw CancellationError() }
-            let size = values.totalFileAllocatedSize
-                ?? values.fileAllocatedSize
-                ?? values.fileSize
-                ?? 0
             return FileNode(
                 url: url,
                 name: name,
-                size: Int64(size),
+                size: metadata.size,
                 isDirectory: false,
                 isReadable: true,
                 children: []
             )
         }
 
-        let identity = fileIdentity(for: url)
+        let identity = metadata.identity
         try Task.checkCancellation()
         guard activityMonitor?.isActive != false else { throw CancellationError() }
         guard session.scope.allows(url, identity: identity) else { return nil }
@@ -214,9 +212,19 @@ struct DiskScanner {
             onProgress: onProgress
         ) else { throw CancellationError() }
 
-        let urls: [URL]
+        let entries: [LowLevelDirectoryEntry]
         do {
-            urls = try session.configuration.directoryReader(url, Array(resourceKeys))
+            if let directoryReader = session.configuration.directoryReader {
+                let urls = try directoryReader(url, [])
+                entries = urls.map {
+                    LowLevelDirectoryEntry(
+                        url: $0,
+                        metadata: try? LowLevelMetadataReader.metadata(at: $0)
+                    )
+                }
+            } else {
+                entries = try BulkDirectoryReader.contents(of: url)
+            }
             try Task.checkCancellation()
             guard activityMonitor?.isActive != false else { throw CancellationError() }
         } catch is CancellationError {
@@ -241,7 +249,7 @@ struct DiskScanner {
         try await withThrowingTaskGroup(of: FileNode?.self) { group in
             var pendingTaskCount = 0
 
-            for childURL in urls {
+            for entry in entries {
                 try Task.checkCancellation()
                 guard activityMonitor?.isActive != false else { throw CancellationError() }
 
@@ -264,7 +272,8 @@ struct DiskScanner {
                     group.addTask {
                         defer { session.parallelism.release() }
                         return try await inspect(
-                            childURL,
+                            entry.url,
+                            knownMetadata: entry.metadata,
                             session: session,
                             activityMonitor: activityMonitor,
                             isInsideIsolatedSubtree: isInsideIsolatedSubtree,
@@ -273,7 +282,8 @@ struct DiskScanner {
                         )
                     }
                 } else if let child = try await inspect(
-                    childURL,
+                    entry.url,
+                    knownMetadata: entry.metadata,
                     session: session,
                     activityMonitor: activityMonitor,
                     isInsideIsolatedSubtree: isInsideIsolatedSubtree,
@@ -330,19 +340,6 @@ struct DiskScanner {
         )
     }
 
-    private static func fileIdentity(for url: URL) -> FileIdentity? {
-        var metadata = stat()
-        let result = url.withUnsafeFileSystemRepresentation { path -> Int32 in
-            guard let path else { return -1 }
-            return Darwin.lstat(path, &metadata)
-        }
-        guard result == 0 else { return nil }
-        return FileIdentity(
-            device: UInt64(bitPattern: Int64(metadata.st_dev)),
-            inode: UInt64(metadata.st_ino)
-        )
-    }
-
     private static func inspectIsolatedSubtree(
         _ url: URL,
         session: ScanSession,
@@ -356,6 +353,7 @@ struct DiskScanner {
             do {
                 let node = try await inspect(
                     url,
+                    knownMetadata: nil,
                     session: session,
                     activityMonitor: monitor,
                     isInsideIsolatedSubtree: true,
@@ -560,7 +558,7 @@ private struct ScannerConfiguration: @unchecked Sendable {
     let maximumParallelism: Int
     let stalledSubtreeTimeout: TimeInterval
     let shouldIsolateSubtree: DiskScanner.SubtreeIsolationPredicate
-    let directoryReader: DiskScanner.DirectoryReader
+    let directoryReader: DiskScanner.DirectoryReader?
 }
 
 private final class ScanActivityMonitor: @unchecked Sendable {

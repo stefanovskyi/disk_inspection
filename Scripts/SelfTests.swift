@@ -14,6 +14,7 @@ enum SelfTestFailure: LocalizedError {
 struct SpaceLensSelfTests {
     static func main() async throws {
         try await scannerBuildsTreeWithoutFollowingSymlinks()
+        try bulkDirectoryReaderReturnsMetadataWithoutFollowingSymlinks()
         try await largeDirectoriesKeepABoundedResultTree()
         try await cancellationStopsTheScannerWorker()
         try await stalledProviderSubtreeIsSkipped()
@@ -25,7 +26,7 @@ struct SpaceLensSelfTests {
         try layoutLeavesRequestedFreeSpaceOpen()
         try layoutRespectsDepthLimit()
         try sessionStoreRetainsAndReplacesVolumeResults()
-        print("SpaceLens self-tests passed (12/12)")
+        print("SpaceLens self-tests passed (13/13)")
     }
 
     private static func scannerBuildsTreeWithoutFollowingSymlinks() async throws {
@@ -55,6 +56,31 @@ struct SpaceLensSelfTests {
         try expect(symlink != nil, "Scanner omitted the symbolic link entry")
         try expect(symlink?.isDirectory == false, "Scanner followed a symbolic link as a directory")
         try expect(symlink?.children.isEmpty == true, "Symbolic link unexpectedly has descendants")
+    }
+
+    private static func bulkDirectoryReaderReturnsMetadataWithoutFollowingSymlinks() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensBulkReader-\(UUID().uuidString)", isDirectory: true)
+        let folder = root.appendingPathComponent("Folder", isDirectory: true)
+        let file = root.appendingPathComponent("file.bin")
+        let link = root.appendingPathComponent("folder-link")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(repeating: 0x41, count: 4_096).write(to: file)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: folder)
+
+        let entries = try BulkDirectoryReader.contents(of: root)
+        let metadataByName = Dictionary(
+            uniqueKeysWithValues: entries.compactMap { entry in
+                entry.metadata.map { ($0.name, $0) }
+            }
+        )
+
+        try expect(metadataByName["Folder"]?.kind == .directory, "Bulk reader lost directory metadata")
+        try expect(metadataByName["file.bin"]?.kind == .regular, "Bulk reader lost regular-file metadata")
+        try expect((metadataByName["file.bin"]?.size ?? 0) > 0, "Bulk reader lost allocated file size")
+        try expect(metadataByName["folder-link"]?.kind == .symbolicLink, "Bulk reader followed a symbolic link")
+        try expect(metadataByName.values.allSatisfy { $0.identity != nil }, "Bulk reader lost device/inode identities")
     }
 
     private static func layoutPreservesHierarchyAndProportion() throws {

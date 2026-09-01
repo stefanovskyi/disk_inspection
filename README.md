@@ -7,7 +7,7 @@ SpaceLens is a native macOS disk inspector with an interactive sunburst chart. I
 - Automatic mounted-volume and external-disk discovery
 - Up-front Full Disk Access guidance before scanning the startup disk
 - Asynchronous, cancellable folder and volume scanning
-- Bounded parallel subtree scanning with live elapsed time
+- Bounded parallel subtree scanning with batched `getattrlistbulk(2)` metadata reads and live elapsed time
 - In-memory scan results for inspected disks and selected folders, with explicit view-or-rescan choices
 - Mount-aware main-disk scans that avoid APFS aliases and external disks
 - Bounded scan results that group smaller items instead of retaining millions of leaf nodes
