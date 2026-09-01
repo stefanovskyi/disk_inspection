@@ -39,6 +39,22 @@ final class SunburstLayoutTests: XCTestCase {
         XCTAssertEqual(segments.map(\.depth).max(), 1)
     }
 
+    func testRequestedAngularExtentLeavesFreeSpaceOpen() {
+        let rootURL = URL(fileURLWithPath: "/test")
+        let first = node("first", size: 60, at: rootURL.appendingPathComponent("first"))
+        let second = node("second", size: 40, at: rootURL.appendingPathComponent("second"))
+        let root = node("test", size: 100, at: rootURL, children: [first, second])
+
+        let segments = SunburstLayout.segments(
+            for: root,
+            maxDepth: 2,
+            minimumAngularSpan: 0,
+            angularExtent: .pi * 1.5
+        )
+
+        XCTAssertEqual(segments.map(\.endAngle).max() ?? 0, .pi * 1.5, accuracy: 0.001)
+    }
+
     private func node(_ name: String, size: Int64, at url: URL, children: [FileNode] = []) -> FileNode {
         FileNode(
             url: url,

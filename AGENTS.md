@@ -11,6 +11,7 @@ Keep the product name **SpaceLens**. The DaisyDisk screenshots supplied during i
 - `Package.swift` — Swift Package Manager manifest.
 - `Sources/SpaceLens/SpaceLensApp.swift` — application entry point and menu commands.
 - `Sources/SpaceLens/Models/` — filesystem, volume, scan, and chart-layout data models.
+- `Sources/SpaceLens/Models/ScanSessionStore.swift` — in-memory scan cache and selected-folder session models keyed by standardized path.
 - `Sources/SpaceLens/Services/DiskScanner.swift` — asynchronous recursive filesystem scanner.
 - `Sources/SpaceLens/Services/VolumeDiscovery.swift` — mounted-volume discovery.
 - `Sources/SpaceLens/ViewModels/AppViewModel.swift` — application state, navigation, scanning, and macOS actions.
@@ -18,7 +19,8 @@ Keep the product name **SpaceLens**. The DaisyDisk screenshots supplied during i
 - `Sources/SpaceLens/Support/` — formatting and design tokens.
 - `Tests/SpaceLensTests/` — XCTest coverage for scanner and chart layout.
 - `Scripts/run_self_tests.sh` — framework-free tests for Command Line Tools installations.
-- `Scripts/package_app.sh` — release build, `.app` assembly, and local ad-hoc signing.
+- `Scripts/package_app.sh` — release build, `.app` assembly, and stable-identity signing with an ad-hoc fallback.
+- `Scripts/resolve_signing_identity.sh` — selects the configured or local development signing identity.
 - `Support/Info.plist.in` — app-bundle metadata template.
 - `dist/SpaceLens.app` — generated app bundle; do not edit by hand.
 
@@ -67,8 +69,12 @@ Do not hard-code this compatibility override into application source code.
 - Perform filesystem work in a detached background task and publish UI changes on the main actor.
 - `FileNode.id` is its standardized path. Avoid random identifiers that would destabilize hover, list, or navigation state.
 - Keep sunburst geometry in `SunburstLayout` separate from Canvas rendering so it remains independently testable.
+- At a volume root, scale the sunburst sweep to used capacity and leave the remaining angle transparent as labeled free space. Folder-only scans use the full circle.
+- Sunburst angular width represents byte size; radial level and branch reach represent hierarchy depth. Never fill missing descendants with opaque background rings.
 - A navigation path must always start with the current scan root. Breadcrumb navigation truncates this path; drilling into a directory appends to it.
 - Starting a new scan must cancel or invalidate the previous scan so stale results cannot replace newer results.
+- Retain completed disk and selected-folder scans in `ScanSessionStore` for the app session. Returning home clears the current presentation, not the cache; selecting a cached location must offer view or rescan instead of scanning immediately.
+- Keep picker-selected folders in the sidebar until removed or the app quits. Removing a folder from the sidebar clears only its session entry and cached scan; it must never modify the folder on disk.
 - Retain at most `DiskScanner.retainedChildLimit` direct children per directory. Preserve byte and item totals through the synthetic `Smaller items` aggregate.
 - Throttle progress delivery by elapsed time. The visual spinner must animate independently of filesystem progress events.
 - Show elapsed time during a scan and preserve the completed scan duration in the results header.
@@ -111,7 +117,8 @@ codesign --verify --deep --strict --verbose=2 dist/SpaceLens.app
 plutil -lint dist/SpaceLens.app/Contents/Info.plist
 ```
 
-- Local builds use ad-hoc signing. Distribution outside the local machine requires a Developer ID certificate, hardened runtime, and notarization; do not claim a local build is notarized.
+- Prefer a stable code-signing identity for builds that use privacy-protected resources. The packaging script automatically selects `SpaceLens Local Development`, accepts `SPACELENS_CODESIGN_IDENTITY`, and otherwise warns before falling back to ad-hoc signing.
+- Distribution outside the local machine requires a Developer ID certificate, hardened runtime, and notarization; do not claim a local or self-signed build is notarized.
 
 ## Change Discipline
 

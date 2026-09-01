@@ -12,12 +12,15 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var scanningURL: URL?
     @Published private(set) var scanStartedAt: Date?
     @Published private(set) var pendingFullDiskScanURL: URL?
+    @Published private(set) var sessionFolders: [SessionFolder] = []
+    @Published private(set) var pendingScanChoice: PendingScanChoice?
     @Published var hoveredNode: FileNode?
     @Published var errorMessage: String?
 
     private let scanner = DiskScanner()
     private let volumeDiscovery = VolumeDiscovery()
     private let fullDiskAccessChecker = FullDiskAccessChecker()
+    private var scanSessionStore = ScanSessionStore()
     private var scanTask: Task<Void, Never>?
     private var activeScanID = UUID()
     private var volumeObserverTokens: [NSObjectProtocol] = []
@@ -43,8 +46,89 @@ final class AppViewModel: ObservableObject {
     var canNavigateBack: Bool { navigationPath.count > 1 }
     var isRequestingFullDiskAccess: Bool { pendingFullDiskScanURL != nil }
 
+    func volumeForChart(node: FileNode) -> VolumeInfo? {
+        guard result?.root.id == node.id else { return nil }
+        let rootPath = node.url.standardizedFileURL.path
+        return volumes.first { $0.url.standardizedFileURL.path == rootPath }
+    }
+
     func refreshVolumes() {
         volumes = volumeDiscovery.mountedVolumes()
+    }
+
+    func selectVolume(_ volume: VolumeInfo) {
+        if cachedResult(for: volume) != nil {
+            pendingScanChoice = PendingScanChoice(volume: volume)
+        } else {
+            scan(volume.url)
+        }
+    }
+
+    func selectSessionFolder(_ folder: SessionFolder) {
+        if cachedResult(for: folder) != nil {
+            pendingScanChoice = PendingScanChoice(folder: folder)
+        } else {
+            scan(folder.url)
+        }
+    }
+
+    func cachedResult(for volume: VolumeInfo) -> ScanResult? {
+        scanSessionStore.result(for: volume.url)
+    }
+
+    func cachedResult(for folder: SessionFolder) -> ScanResult? {
+        scanSessionStore.result(for: folder.url)
+    }
+
+    func cachedResult(at url: URL) -> ScanResult? {
+        scanSessionStore.result(for: url)
+    }
+
+    func viewCachedResult(at url: URL) {
+        pendingScanChoice = nil
+        guard let cachedResult = cachedResult(at: url) else {
+            scan(url)
+            return
+        }
+
+        cancelScan()
+        result = cachedResult
+        navigationPath = [cachedResult.root]
+        hoveredNode = nil
+        errorMessage = nil
+    }
+
+    func dismissScanChoice() {
+        pendingScanChoice = nil
+    }
+
+    func removeSessionFolder(_ folder: SessionFolder) {
+        let folderPath = folder.url.standardizedFileURL.path
+        sessionFolders.removeAll { $0.id == folder.id }
+        scanSessionStore.removeResult(for: folder.url)
+
+        if pendingScanChoice?.url.standardizedFileURL.path == folderPath {
+            pendingScanChoice = nil
+        }
+        if scanningURL?.standardizedFileURL.path == folderPath {
+            cancelScan()
+        }
+        if result?.root.url.standardizedFileURL.path == folderPath {
+            result = nil
+            navigationPath = []
+            hoveredNode = nil
+        }
+    }
+
+    func showDiskList() {
+        cancelScan()
+        pendingFullDiskScanURL = nil
+        pendingScanChoice = nil
+        result = nil
+        navigationPath = []
+        hoveredNode = nil
+        progress = ScanProgress()
+        refreshVolumes()
     }
 
     func chooseFolder() {
@@ -58,10 +142,15 @@ final class AppViewModel: ObservableObject {
         panel.canCreateDirectories = false
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        scan(url)
+        let folder = SessionFolder(url: url)
+        if !sessionFolders.contains(folder) {
+            sessionFolders.append(folder)
+        }
+        scan(folder.url)
     }
 
     func scan(_ url: URL) {
+        pendingScanChoice = nil
         if fullDiskAccessChecker.status(for: url) == .needsUserApproval {
             pendingFullDiskScanURL = url
             return
@@ -109,6 +198,13 @@ final class AppViewModel: ObservableObject {
 
                 guard !Task.isCancelled, activeScanID == scanID else { return }
                 self.result = result
+                if volumes.contains(where: {
+                    $0.url.standardizedFileURL.path == url.standardizedFileURL.path
+                }) || sessionFolders.contains(where: {
+                    $0.url.standardizedFileURL.path == url.standardizedFileURL.path
+                }) {
+                    scanSessionStore.store(result, for: url)
+                }
                 navigationPath = [result.root]
                 isScanning = false
                 scanningURL = nil

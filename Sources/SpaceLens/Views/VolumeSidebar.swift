@@ -20,6 +20,10 @@ struct VolumeSidebar: View {
                     if !externalVolumes.isEmpty {
                         volumeSection("External", volumes: externalVolumes, theme: theme)
                     }
+
+                    if !model.sessionFolders.isEmpty {
+                        sessionFolderSection(theme: theme)
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 16)
@@ -54,39 +58,78 @@ struct VolumeSidebar: View {
             .background(theme.surface.opacity(0.72))
         }
         .background(theme.sidebar)
+        .alert(
+            "Session scan available",
+            isPresented: Binding(
+                get: { model.pendingScanChoice != nil },
+                set: { isPresented in
+                    if !isPresented { model.dismissScanChoice() }
+                }
+            )
+        ) {
+            if let choice = model.pendingScanChoice {
+                Button("View Existing Result") {
+                    model.viewCachedResult(at: choice.url)
+                }
+                Button(choice.kind.rescanButtonTitle) {
+                    model.scan(choice.url)
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                model.dismissScanChoice()
+            }
+        } message: {
+            if let choice = model.pendingScanChoice,
+               let cachedResult = model.cachedResult(at: choice.url) {
+                Text(
+                    "SpaceLens has a \(StorageFormatters.bytes(cachedResult.root.size)) scan of "
+                        + "\(choice.name) from this app session. View it immediately or scan it again."
+                )
+            }
+        }
     }
 
     private func brand(theme: SpaceTheme) -> some View {
-        HStack(spacing: 11) {
-            ZStack {
-                Circle()
-                    .fill(theme.elevatedSurface)
-                Circle()
-                    .trim(from: 0.04, to: 0.78)
-                    .stroke(theme.accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                    .padding(5)
-                Circle()
-                    .trim(from: 0.16, to: 0.56)
-                    .stroke(Color.cyan, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .padding(10)
-            }
-            .frame(width: 38, height: 38)
-            .accessibilityHidden(true)
+        Button {
+            model.showDiskList()
+        } label: {
+            HStack(spacing: 11) {
+                ZStack {
+                    Circle()
+                        .fill(theme.elevatedSurface)
+                    Circle()
+                        .trim(from: 0.04, to: 0.78)
+                        .stroke(theme.accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .padding(5)
+                    Circle()
+                        .trim(from: 0.16, to: 0.56)
+                        .stroke(Color.cyan, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .padding(10)
+                }
+                .frame(width: 38, height: 38)
+                .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text("SpaceLens")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .foregroundStyle(theme.primaryText)
-                Text("Storage inspector")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(theme.tertiaryText)
-            }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("SpaceLens")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .foregroundStyle(theme.primaryText)
+                    Text("Storage inspector")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(theme.tertiaryText)
+                }
 
-            Spacer()
+                Spacer()
+            }
+            .contentShape(Rectangle())
+            .padding(.top, 38)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 22)
         }
-        .padding(.top, 38)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 22)
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .help("Back to disks")
+        .accessibilityLabel("SpaceLens home")
+        .accessibilityHint("Returns to the list of disks")
     }
 
     @ViewBuilder
@@ -115,6 +158,20 @@ struct VolumeSidebar: View {
             }
         }
     }
+
+    private func sessionFolderSection(theme: SpaceTheme) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("FOLDERS")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(1.1)
+                .foregroundStyle(theme.tertiaryText)
+                .padding(.horizontal, 8)
+
+            ForEach(model.sessionFolders) { folder in
+                SessionFolderRow(folder: folder)
+            }
+        }
+    }
 }
 
 private struct VolumeRow: View {
@@ -125,9 +182,10 @@ private struct VolumeRow: View {
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
+        let hasCachedResult = model.cachedResult(for: volume) != nil
 
         Button {
-            model.scan(volume.url)
+            model.selectVolume(volume)
         } label: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 9) {
@@ -153,6 +211,10 @@ private struct VolumeRow: View {
                     if model.scanningURL?.standardizedFileURL == volume.url.standardizedFileURL {
                         ProgressView()
                             .controlSize(.small)
+                    } else if hasCachedResult {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(theme.accent)
                     } else {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 10, weight: .bold))
@@ -187,7 +249,14 @@ private struct VolumeRow: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button("Scan") { model.scan(volume.url) }
+            if hasCachedResult {
+                Button("View Existing Result") { model.viewCachedResult(at: volume.url) }
+                Button("Rescan Disk") { model.scan(volume.url) }
+                Divider()
+            } else {
+                Button("Scan") { model.scan(volume.url) }
+                Divider()
+            }
             Button("Show in Finder") {
                 let node = FileNode(
                     url: volume.url,
@@ -200,7 +269,118 @@ private struct VolumeRow: View {
                 model.showInFinder(node)
             }
         }
-        .accessibilityLabel("\(volume.name), \(StorageFormatters.percent(volume.usedFraction)) used")
-        .accessibilityHint("Scans this disk")
+        .accessibilityLabel(
+            "\(volume.name), \(StorageFormatters.percent(volume.usedFraction)) used"
+                + (hasCachedResult ? ", session scan available" : "")
+        )
+        .accessibilityHint(hasCachedResult ? "Offers to view or rescan this disk" : "Scans this disk")
+    }
+}
+
+private struct SessionFolderRow: View {
+    @EnvironmentObject private var model: AppViewModel
+    @Environment(\.colorScheme) private var colorScheme
+    let folder: SessionFolder
+
+    var body: some View {
+        let theme = SpaceTheme(colorScheme: colorScheme)
+        let cachedResult = model.cachedResult(for: folder)
+        let isScanning = model.scanningURL?.standardizedFileURL.path == folder.id
+        let isActive = model.result?.root.url.standardizedFileURL.path == folder.id || isScanning
+
+        HStack(spacing: 3) {
+            Button {
+                model.selectSessionFolder(folder)
+            } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: "folder.fill")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(isActive ? theme.accent : theme.secondaryText)
+                        .frame(width: 22)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(folder.name)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(theme.primaryText)
+                            .lineLimit(1)
+
+                        Text(
+                            cachedResult.map {
+                                "\(StorageFormatters.bytes($0.root.size)) scanned"
+                            } ?? folder.url.deletingLastPathComponent().path
+                        )
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(theme.tertiaryText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    }
+
+                    Spacer(minLength: 4)
+
+                    if isScanning {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else if cachedResult != nil {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(theme.accent)
+                    } else {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(theme.tertiaryText)
+                    }
+                }
+                .padding(.leading, 9)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
+            .contextMenu {
+                if cachedResult != nil {
+                    Button("View Existing Result") { model.viewCachedResult(at: folder.url) }
+                    Button("Rescan Folder") { model.scan(folder.url) }
+                } else {
+                    Button("Scan Folder") { model.scan(folder.url) }
+                }
+                Divider()
+                Button("Show in Finder") {
+                    model.showInFinder(
+                        FileNode(
+                            url: folder.url,
+                            name: folder.name,
+                            size: cachedResult?.root.size ?? 0,
+                            isDirectory: true,
+                            isReadable: true,
+                            children: []
+                        )
+                    )
+                }
+                Button("Remove from Sidebar") {
+                    model.removeSessionFolder(folder)
+                }
+            }
+
+            Button {
+                model.removeSessionFolder(folder)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(theme.tertiaryText)
+                    .frame(width: 24, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Remove \(folder.name) from sidebar")
+            .accessibilityLabel("Remove \(folder.name) from sidebar")
+            .padding(.trailing, 4)
+        }
+        .background(isActive ? theme.elevatedSurface : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(isActive ? theme.accent.opacity(0.35) : Color.clear, lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
     }
 }

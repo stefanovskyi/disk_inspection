@@ -17,11 +17,14 @@ enum SunburstLayout {
     static func segments(
         for root: FileNode,
         maxDepth: Int = 5,
-        minimumAngularSpan: Double = 0.004
+        minimumAngularSpan: Double = 0.004,
+        angularExtent: Double = .pi * 2
     ) -> [SunburstSegment] {
         guard maxDepth > 0 else { return [] }
         var output: [SunburstSegment] = []
         let fullCircle = Double.pi * 2
+        let visibleExtent = min(max(angularExtent, 0), fullCircle)
+        guard visibleExtent > 0 else { return [] }
 
         func appendChildren(
             of parent: FileNode,
@@ -66,7 +69,7 @@ enum SunburstLayout {
             }
         }
 
-        appendChildren(of: root, depth: 0, start: 0, end: fullCircle, inheritedHue: nil)
+        appendChildren(of: root, depth: 0, start: 0, end: visibleExtent, inheritedHue: nil)
         return output
     }
 }

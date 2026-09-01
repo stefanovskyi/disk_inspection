@@ -48,7 +48,7 @@ struct AppRootView: View {
                 NavigationHeader(node: current)
 
                 HStack(spacing: 14) {
-                    ChartPanel(node: current)
+                    ChartPanel(node: current, volume: model.volumeForChart(node: current))
                         .frame(minWidth: 500)
 
                     ItemInspector(node: current)

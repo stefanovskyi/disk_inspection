@@ -51,9 +51,9 @@ enum SpacePalette {
     ]
 
     static func color(hue: Double, depth: Int, isDark: Bool) -> Color {
-        let saturation = max(0.48, 0.76 - Double(depth) * 0.045)
-        let baseBrightness = isDark ? 0.94 : 0.72
-        let brightness = max(0.58, baseBrightness - Double(depth) * 0.055)
+        let saturation = max(0.48, 0.78 - Double(depth) * 0.045)
+        let baseBrightness = isDark ? 0.88 : 0.68
+        let brightness = min(isDark ? 0.98 : 0.88, baseBrightness + Double(depth) * 0.025)
         return Color(hue: hue, saturation: saturation, brightness: brightness)
     }
 }

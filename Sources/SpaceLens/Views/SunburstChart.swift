@@ -3,6 +3,7 @@ import SwiftUI
 struct ChartPanel: View {
     @Environment(\.colorScheme) private var colorScheme
     let node: FileNode
+    let volume: VolumeInfo?
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
@@ -25,7 +26,7 @@ struct ChartPanel: View {
             .padding(.horizontal, 18)
             .padding(.top, 16)
 
-            SunburstChart(root: node)
+            SunburstChart(root: node, volume: volume)
                 .padding(12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -46,11 +47,21 @@ struct SunburstChart: View {
     @EnvironmentObject private var model: AppViewModel
     @Environment(\.colorScheme) private var colorScheme
     @State private var hoverLocation: CGPoint?
+    @State private var isHoveringFreeSpace = false
 
     let root: FileNode
+    let volume: VolumeInfo?
+
+    private var capacity: StorageChartCapacity {
+        StorageChartCapacity(root: root, volume: volume)
+    }
 
     private var segments: [SunburstSegment] {
-        SunburstLayout.segments(for: root)
+        SunburstLayout.segments(
+            for: root,
+            maxDepth: 6,
+            angularExtent: capacity.usedAngularExtent
+        )
     }
 
     var body: some View {
@@ -61,11 +72,12 @@ struct SunburstChart: View {
 
             ZStack {
                 Canvas(rendersAsynchronously: true) { context, _ in
-                    drawBackgroundRings(context: &context, metrics: metrics, theme: theme)
+                    drawCapacityOutline(context: &context, metrics: metrics, theme: theme)
                     drawSegments(context: &context, metrics: metrics)
                 }
 
                 centerSummary(metrics: metrics, theme: theme)
+                freeSpaceLabel(metrics: metrics, theme: theme)
 
                 if let hovered = model.hoveredNode, let hoverLocation {
                     ChartHoverCard(node: hovered, rootSize: root.size)
@@ -80,10 +92,14 @@ struct SunburstChart: View {
                 switch phase {
                 case .active(let point):
                     hoverLocation = point
-                    model.hoveredNode = segment(at: point, metrics: metrics)?.node
+                    let hoveredSegment = segment(at: point, metrics: metrics)
+                    model.hoveredNode = hoveredSegment?.node
+                    isHoveringFreeSpace = hoveredSegment == nil
+                        && isFreeSpace(at: point, metrics: metrics)
                 case .ended:
                     hoverLocation = nil
                     model.hoveredNode = nil
+                    isHoveringFreeSpace = false
                 }
             }
             .simultaneousGesture(
@@ -116,36 +132,40 @@ struct SunburstChart: View {
         }
         .aspectRatio(1, contentMode: .fit)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Storage sunburst for \(root.name), totaling \(StorageFormatters.bytes(root.size))")
+        .accessibilityLabel(accessibilitySummary)
         .accessibilityHint("Use the item list to inspect the same hierarchy with VoiceOver")
     }
 
-    private func drawBackgroundRings(
+    private var accessibilitySummary: String {
+        var summary = "Storage sunburst for \(root.name), totaling \(StorageFormatters.bytes(capacity.usedSpace))"
+        if capacity.freeSpace > 0 {
+            summary += ", with \(StorageFormatters.bytes(capacity.freeSpace)) free"
+        }
+        return summary
+    }
+
+    private func drawCapacityOutline(
         context: inout GraphicsContext,
         metrics: ChartMetrics,
         theme: SpaceTheme
     ) {
-        guard metrics.ringCount > 0 else { return }
-        for depth in 0..<metrics.ringCount {
-            let radius = metrics.radius(forDepth: depth)
-            let rect = CGRect(
-                x: metrics.center.x - radius,
-                y: metrics.center.y - radius,
-                width: radius * 2,
-                height: radius * 2
-            )
-            context.stroke(
-                Path(ellipseIn: rect),
-                with: .color(theme.border.opacity(0.65)),
-                lineWidth: max(1, metrics.ringWidth - 3)
-            )
-        }
+        let rect = CGRect(
+            x: metrics.center.x - metrics.outerRadius,
+            y: metrics.center.y - metrics.outerRadius,
+            width: metrics.outerRadius * 2,
+            height: metrics.outerRadius * 2
+        )
+        context.stroke(
+            Path(ellipseIn: rect),
+            with: .color(theme.border.opacity(0.4)),
+            lineWidth: 1
+        )
     }
 
     private func drawSegments(context: inout GraphicsContext, metrics: ChartMetrics) {
         for segment in segments {
             let isHovered = model.hoveredNode?.id == segment.node.id
-            let angularGap = min(0.008, segment.angularSpan * 0.16)
+            let angularGap = min(0.006, segment.angularSpan * 0.14)
             let radius = metrics.radius(forDepth: segment.depth)
             var arc = Path()
             arc.addArc(
@@ -165,7 +185,7 @@ struct SunburstChart: View {
                 arc,
                 with: .color(isHovered ? color.opacity(1) : color.opacity(0.86)),
                 style: StrokeStyle(
-                    lineWidth: max(2, metrics.ringWidth - (isHovered ? 1 : 4)),
+                    lineWidth: max(2, metrics.ringWidth - (isHovered ? 0.5 : 2.5)),
                     lineCap: .butt
                 )
             )
@@ -181,7 +201,13 @@ struct SunburstChart: View {
     }
 
     private func centerSummary(metrics: ChartMetrics, theme: SpaceTheme) -> some View {
-        let displayNode = model.hoveredNode ?? root
+        let displayNode = model.hoveredNode
+        let displaySize = isHoveringFreeSpace
+            ? capacity.freeSpace
+            : (displayNode?.size ?? capacity.usedSpace)
+        let displayName = isHoveringFreeSpace
+            ? "Free space"
+            : (displayNode?.name ?? root.name)
         let size = max(metrics.innerRadius * 1.72, 84)
 
         return ZStack {
@@ -191,12 +217,12 @@ struct SunburstChart: View {
                 .stroke(theme.border, lineWidth: 1)
 
             VStack(spacing: 3) {
-                Text(StorageFormatters.bytes(displayNode.size))
+                Text(StorageFormatters.bytes(displaySize))
                     .font(.system(size: min(24, metrics.innerRadius * 0.26), weight: .bold, design: .rounded))
                     .foregroundStyle(theme.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.65)
-                Text(displayNode.name)
+                Text(displayName)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(theme.secondaryText)
                     .lineLimit(1)
@@ -207,6 +233,37 @@ struct SunburstChart: View {
         .frame(width: size, height: size)
         .position(metrics.center)
         .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func freeSpaceLabel(metrics: ChartMetrics, theme: SpaceTheme) -> some View {
+        if capacity.freeAngularSpan >= 0.22, capacity.freeSpace > 0 {
+            let midpoint = capacity.usedAngularExtent + (capacity.freeAngularSpan / 2)
+            let labelRadius = metrics.innerRadius + ((metrics.outerRadius - metrics.innerRadius) * 0.58)
+            let position = CGPoint(
+                x: metrics.center.x + sin(midpoint) * labelRadius,
+                y: metrics.center.y - cos(midpoint) * labelRadius
+            )
+
+            VStack(spacing: 2) {
+                Text("FREE")
+                    .font(.system(size: 9, weight: .bold))
+                    .tracking(1.1)
+                Text(StorageFormatters.bytes(capacity.freeSpace))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+            }
+            .foregroundStyle(isHoveringFreeSpace ? theme.primaryText : theme.secondaryText)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(theme.surface.opacity(isHoveringFreeSpace ? 0.9 : 0.62))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(theme.border.opacity(0.75), lineWidth: 1)
+            }
+            .position(position)
+            .allowsHitTesting(false)
+        }
     }
 
     private func segment(at point: CGPoint, metrics: ChartMetrics) -> SunburstSegment? {
@@ -226,6 +283,20 @@ struct SunburstChart: View {
         }
     }
 
+    private func isFreeSpace(at point: CGPoint, metrics: ChartMetrics) -> Bool {
+        guard capacity.freeSpace > 0 else { return false }
+        let dx = point.x - metrics.center.x
+        let dy = point.y - metrics.center.y
+        let distance = hypot(dx, dy)
+        guard distance >= metrics.innerRadius, distance <= metrics.outerRadius + 2 else {
+            return false
+        }
+
+        var angle = atan2(dy, dx) + (.pi / 2)
+        if angle < 0 { angle += .pi * 2 }
+        return angle > capacity.usedAngularExtent
+    }
+
     private func tooltipPosition(for point: CGPoint, in size: CGSize) -> CGPoint {
         let cardWidth: CGFloat = 224
         let cardHeight: CGFloat = 91
@@ -236,6 +307,32 @@ struct SunburstChart: View {
             y: min(max(cardHeight / 2 + 8, proposedY), size.height - cardHeight / 2 - 8)
         )
     }
+}
+
+private struct StorageChartCapacity {
+    let usedSpace: Int64
+    let freeSpace: Int64
+    let totalSpace: Int64
+
+    init(root: FileNode, volume: VolumeInfo?) {
+        if let volume, volume.totalCapacity > 0 {
+            totalSpace = volume.totalCapacity
+            freeSpace = min(max(volume.availableCapacity, 0), volume.totalCapacity)
+            usedSpace = max(volume.totalCapacity - freeSpace, 0)
+        } else {
+            usedSpace = max(root.size, 0)
+            freeSpace = 0
+            totalSpace = max(root.size, 0)
+        }
+    }
+
+    var usedFraction: Double {
+        guard totalSpace > 0 else { return 0 }
+        return min(max(Double(usedSpace) / Double(totalSpace), 0), 1)
+    }
+
+    var usedAngularExtent: Double { usedFraction * .pi * 2 }
+    var freeAngularSpan: Double { (.pi * 2) - usedAngularExtent }
 }
 
 private struct ChartMetrics {

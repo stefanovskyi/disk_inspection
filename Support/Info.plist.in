@@ -6,6 +6,8 @@
     <string>en</string>
     <key>CFBundleExecutable</key>
     <string>SpaceLens</string>
+    <key>CFBundleIconFile</key>
+    <string>SpaceLens</string>
     <key>CFBundleIdentifier</key>
     <string>local.spacelens.app</string>
     <key>CFBundleInfoDictionaryVersion</key>

@@ -5,6 +5,7 @@ build:
 
 test:
 	./Scripts/run_self_tests.sh
+	./Scripts/test_signing_identity.sh
 
 app:
 	./Scripts/package_app.sh

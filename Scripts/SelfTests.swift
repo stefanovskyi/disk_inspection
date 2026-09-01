@@ -22,8 +22,10 @@ struct SpaceLensSelfTests {
         try elapsedTimeFormattingIsReadable()
         try scanScopeStaysInsideTheSelectedVolume()
         try layoutPreservesHierarchyAndProportion()
+        try layoutLeavesRequestedFreeSpaceOpen()
         try layoutRespectsDepthLimit()
-        print("SpaceLens self-tests passed (10/10)")
+        try sessionStoreRetainsAndReplacesVolumeResults()
+        print("SpaceLens self-tests passed (12/12)")
     }
 
     private static func scannerBuildsTreeWithoutFollowingSymlinks() async throws {
@@ -72,6 +74,25 @@ struct SpaceLensSelfTests {
         try expect(deepSegment.depth == 1, "Layout lost the child depth")
         let ratio = largeSegment.angularSpan / smallSegment.angularSpan
         try expect(abs(ratio - 3) < 0.001, "Layout angles are not proportional to byte size")
+    }
+
+    private static func layoutLeavesRequestedFreeSpaceOpen() throws {
+        let rootURL = URL(fileURLWithPath: "/test")
+        let first = node("first", size: 60, at: rootURL.appendingPathComponent("first"))
+        let second = node("second", size: 40, at: rootURL.appendingPathComponent("second"))
+        let root = node("test", size: 100, at: rootURL, children: [first, second])
+        let segments = SunburstLayout.segments(
+            for: root,
+            maxDepth: 2,
+            minimumAngularSpan: 0,
+            angularExtent: .pi * 1.5
+        )
+
+        let furthestAngle = segments.map(\.endAngle).max() ?? 0
+        try expect(
+            abs(furthestAngle - (.pi * 1.5)) < 0.001,
+            "Layout filled the free-space sector instead of leaving it open"
+        )
     }
 
     private static func cancellationStopsTheScannerWorker() async throws {
@@ -262,6 +283,42 @@ struct SpaceLensSelfTests {
         let root = node("test", size: 1, at: rootURL, children: [first])
         let segments = SunburstLayout.segments(for: root, maxDepth: 2, minimumAngularSpan: 0)
         try expect(segments.map(\.depth).max() == 1, "Layout exceeded its configured depth")
+    }
+
+    private static func sessionStoreRetainsAndReplacesVolumeResults() throws {
+        let firstURL = URL(fileURLWithPath: "/Volumes/First")
+        let secondURL = URL(fileURLWithPath: "/Volumes/Second")
+        let firstResult = ScanResult(
+            root: node("First", size: 100, at: firstURL),
+            duration: 2,
+            itemsScanned: 5,
+            unreadableItems: 0
+        )
+        let refreshedResult = ScanResult(
+            root: node("First", size: 120, at: firstURL),
+            duration: 1,
+            itemsScanned: 6,
+            unreadableItems: 0
+        )
+        let secondResult = ScanResult(
+            root: node("Second", size: 40, at: secondURL),
+            duration: 1,
+            itemsScanned: 2,
+            unreadableItems: 0
+        )
+        var store = ScanSessionStore()
+
+        try expect(store.result(for: firstURL) == nil, "An unscanned disk unexpectedly had cached data")
+        store.store(firstResult, for: firstURL)
+        store.store(secondResult, for: secondURL)
+        store.store(refreshedResult, for: firstURL)
+
+        try expect(store.result(for: firstURL) == refreshedResult, "A rescan did not replace the cached disk result")
+        try expect(store.result(for: secondURL) == secondResult, "Rescanning one disk discarded another cached result")
+
+        store.removeResult(for: firstURL)
+        try expect(store.result(for: firstURL) == nil, "Removing a session location kept its cached result")
+        try expect(store.result(for: secondURL) == secondResult, "Removing one session location discarded another result")
     }
 
     private static func node(

@@ -13,6 +13,8 @@ swiftc \
     -sdk "$sdk_path" \
     -module-cache-path "$temporary_dir/module-cache" \
     "$project_dir/Sources/SpaceLens/Models/FileNode.swift" \
+    "$project_dir/Sources/SpaceLens/Models/VolumeInfo.swift" \
+    "$project_dir/Sources/SpaceLens/Models/ScanSessionStore.swift" \
     "$project_dir/Sources/SpaceLens/Models/SunburstLayout.swift" \
     "$project_dir/Sources/SpaceLens/Support/Formatters.swift" \
     "$project_dir/Sources/SpaceLens/Services/DiskScanner.swift" \
