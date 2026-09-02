@@ -263,6 +263,23 @@ final class DiskScannerTests: XCTestCase {
         XCTAssertEqual(result.diagnostics.discardedNodes, 150 - DiskScanner.retainedChildLimit)
         XCTAssertLessThan(result.diagnostics.progressMerges, result.itemsScanned / 4)
         XCTAssertEqual(result.root.children.reduce(Int64(0), { $0 + $1.size }), result.root.size)
+
+        let retainedNodeCount = countRetainedNodes(in: result.root)
+        XCTAssertEqual(result.root.storageMetrics.nodeCount, retainedNodeCount)
+        XCTAssertEqual(result.root.storageMetrics.storedAbsolutePathCount, 1)
+        XCTAssertLessThan(
+            result.root.storageMetrics.childIndexArrayCount,
+            result.root.storageMetrics.nodeCount
+        )
+        let retainedFile = try XCTUnwrap(result.root.children.first { !$0.isAggregate })
+        XCTAssertEqual(
+            retainedFile.url,
+            root.appendingPathComponent(retainedFile.name).standardizedFileURL
+        )
+    }
+
+    private func countRetainedNodes(in node: FileNode) -> Int {
+        1 + node.children.reduce(0) { $0 + countRetainedNodes(in: $1) }
     }
 
     func testScanScopeRejectsDuplicateAndNestedVolumes() {

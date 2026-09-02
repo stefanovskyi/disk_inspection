@@ -326,6 +326,17 @@ struct SpaceLensSelfTests {
             result.root.children.reduce(Int64(0), { $0 + $1.size }) == result.root.size,
             "Aggregating smaller items changed the measured byte total"
         )
+        func countRetainedNodes(in node: FileNode) -> Int {
+            1 + node.children.reduce(0) { $0 + countRetainedNodes(in: $1) }
+        }
+        try expect(
+            result.root.storageMetrics.storedAbsolutePathCount == 1,
+            "Retained result stored more than one absolute path"
+        )
+        try expect(
+            result.root.storageMetrics.nodeCount == countRetainedNodes(in: result.root),
+            "Compact result arena did not contain exactly the retained nodes"
+        )
     }
 
     private static func stalledProviderSubtreeIsSkipped() async throws {

@@ -144,7 +144,7 @@ struct DiskScanner {
                     "items=\(progress.itemsScanned) unreadable=\(progress.unreadableItems)"
                 )
                 return ScanResult(
-                    root: root,
+                    root: FileNode(rootURL: standardizedURL, snapshot: root),
                     duration: Date().timeIntervalSince(start),
                     itemsScanned: progress.itemsScanned,
                     unreadableItems: progress.unreadableItems,
@@ -174,7 +174,7 @@ struct DiskScanner {
         isInsideIsolatedSubtree: Bool,
         ownsWorkerPermit: Bool,
         onProgress: @escaping ProgressHandler
-    ) async throws -> FileNode? {
+    ) async throws -> FileNodeSnapshot? {
         try Task.checkCancellation()
         guard activityMonitor?.isActive != false else { throw CancellationError() }
 
@@ -192,8 +192,7 @@ struct DiskScanner {
                 onProgress: onProgress
             ) else { throw CancellationError() }
             session.recordUnreadable(at: url, unresponsive: false, onProgress: onProgress)
-            return FileNode(
-                url: url,
+            return FileNodeSnapshot(
                 name: displayName(for: url),
                 size: 0,
                 isDirectory: false,
@@ -212,8 +211,7 @@ struct DiskScanner {
                 onProgress: onProgress
             ) else { throw CancellationError() }
             session.recordUnreadable(at: url, unresponsive: false, onProgress: onProgress)
-            return FileNode(
-                url: url,
+            return FileNodeSnapshot(
                 name: name,
                 size: 0,
                 isDirectory: isDirectory,
@@ -228,8 +226,7 @@ struct DiskScanner {
                 activityMonitor: activityMonitor,
                 onProgress: onProgress
             ) else { throw CancellationError() }
-            return FileNode(
-                url: url,
+            return FileNodeSnapshot(
                 name: name,
                 size: metadata.size,
                 isDirectory: false,
@@ -300,7 +297,6 @@ struct DiskScanner {
                     totalItems = addingWithoutOverflow(totalItems, 1)
                     retainedChildren.insert(
                         RetainedNodeCandidate(
-                            url: entryURL,
                             name: entry.name,
                             size: 0,
                             isDirectory: false,
@@ -333,7 +329,6 @@ struct DiskScanner {
             totalItems = addingWithoutOverflow(totalItems, 1)
             retainedChildren.insert(
                 RetainedNodeCandidate(
-                    parentURL: url,
                     name: entryMetadata.name,
                     size: size,
                     isDirectory: entryMetadata.kind == .directory,
@@ -371,8 +366,7 @@ struct DiskScanner {
         } catch {
             progressBatch.flush(path: { url.path })
             session.recordUnreadable(at: url, unresponsive: false, onProgress: onProgress)
-            return FileNode(
-                url: url,
+            return FileNodeSnapshot(
                 name: name,
                 size: 0,
                 isDirectory: true,
@@ -381,7 +375,7 @@ struct DiskScanner {
             )
         }
 
-        try await withThrowingTaskGroup(of: FileNode?.self) { group in
+        try await withThrowingTaskGroup(of: FileNodeSnapshot?.self) { group in
             var pendingTaskCount = 0
 
             for pendingDirectory in pendingDirectories {
@@ -454,8 +448,7 @@ struct DiskScanner {
         var children = retainedChildren.retainedNodes.map { $0.makeNode() }
         if retainedChildren.discardedDirectItems > 0 {
             children.append(
-                FileNode(
-                    url: url,
+                FileNodeSnapshot(
                     name: "Smaller items",
                     size: retainedChildren.discardedSize,
                     isDirectory: false,
@@ -474,8 +467,7 @@ struct DiskScanner {
             )
         }
 
-        return FileNode(
-            url: url,
+        return FileNodeSnapshot(
             name: name,
             size: total,
             isDirectory: true,
@@ -492,7 +484,7 @@ struct DiskScanner {
         session: ScanSession,
         ownsWorkerPermit: Bool,
         onProgress: @escaping ProgressHandler
-    ) async throws -> FileNode? {
+    ) async throws -> FileNodeSnapshot? {
         let signposter = SpaceLensSignposts.providerSubtree
         let signpostID = signposter.makeSignpostID()
         let signpostState = signposter.beginInterval(
@@ -506,7 +498,7 @@ struct DiskScanner {
 
         let monitor = ScanActivityMonitor()
 
-        let resultBox = LockedResultBox<FileNode?>()
+        let resultBox = LockedResultBox<FileNodeSnapshot?>()
         session.diagnostics.recordDirectoryTask()
         let isolatedWorker = Task.detached(priority: .userInitiated) {
             do {
@@ -567,8 +559,7 @@ struct DiskScanner {
                     onProgress: onProgress
                 )
 
-                return FileNode(
-                    url: url,
+                return FileNodeSnapshot(
                     name: displayName(for: url),
                     size: 0,
                     isDirectory: true,
@@ -922,29 +913,21 @@ private final class LockedResultBox<Value>: @unchecked Sendable {
 }
 
 private struct RetainedNodeCandidate {
-    private enum Location {
-        case absolute(URL)
-        case child(of: URL)
-    }
-
-    private let location: Location
     let name: String
     let size: Int64
     let isDirectory: Bool
     let isReadable: Bool
-    let children: [FileNode]
+    let children: [FileNodeSnapshot]
     let itemCount: Int
     let directItemCount: Int
     let isAggregate: Bool
 
     init(
-        url: URL,
         name: String,
         size: Int64,
         isDirectory: Bool,
         isReadable: Bool
     ) {
-        location = .absolute(url)
         self.name = name
         self.size = size
         self.isDirectory = isDirectory
@@ -955,26 +938,7 @@ private struct RetainedNodeCandidate {
         isAggregate = false
     }
 
-    init(
-        parentURL: URL,
-        name: String,
-        size: Int64,
-        isDirectory: Bool,
-        isReadable: Bool
-    ) {
-        location = .child(of: parentURL)
-        self.name = name
-        self.size = size
-        self.isDirectory = isDirectory
-        self.isReadable = isReadable
-        children = []
-        itemCount = 1
-        directItemCount = 0
-        isAggregate = false
-    }
-
-    init(node: FileNode) {
-        location = .absolute(node.url)
+    init(node: FileNodeSnapshot) {
         name = node.name
         size = node.size
         isDirectory = node.isDirectory
@@ -985,16 +949,8 @@ private struct RetainedNodeCandidate {
         isAggregate = node.isAggregate
     }
 
-    func makeNode() -> FileNode {
-        let url: URL
-        switch location {
-        case .absolute(let absoluteURL):
-            url = absoluteURL
-        case .child(let parentURL):
-            url = parentURL.appendingPathComponent(name, isDirectory: isDirectory)
-        }
-        return FileNode(
-            url: url,
+    func makeNode() -> FileNodeSnapshot {
+        FileNodeSnapshot(
             name: name,
             size: size,
             isDirectory: isDirectory,
