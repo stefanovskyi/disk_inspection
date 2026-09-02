@@ -19,8 +19,7 @@ struct ScanScope: Sendable {
         "/Volumes"
     ]
 
-    func allows(_ url: URL, identity: FileIdentity?) -> Bool {
-        let path = url.standardizedFileURL.path
+    func allows(path: String, identity: FileIdentity?) -> Bool {
         if path == rootPath { return true }
 
         if rootPath == "/", Self.logicalRootExclusions.contains(where: {
@@ -70,6 +69,7 @@ struct DiskScanner {
         onProgress: @escaping ProgressHandler = { _ in }
     ) async throws -> ScanResult {
         let configuration = configuration
+        let standardizedURL = url.standardizedFileURL
         let worker = Task.detached(priority: .userInitiated) {
             let signposter = SpaceLensSignposts.scan
             let signpostID = signposter.makeSignpostID()
@@ -83,11 +83,11 @@ struct DiskScanner {
             }
 
             let start = Date()
-            let rootMetadata = try? LowLevelMetadataReader.metadata(at: url)
+            let rootMetadata = try? LowLevelMetadataReader.metadata(at: standardizedURL)
             let session = ScanSession(
-                progress: ScanProgress(currentPath: url.path),
+                progress: ScanProgress(currentPath: standardizedURL.path),
                 scope: ScanScope(
-                    rootPath: url.standardizedFileURL.path,
+                    rootPath: standardizedURL.path,
                     rootDevice: rootMetadata?.identity?.device
                 ),
                 configuration: configuration
@@ -95,7 +95,7 @@ struct DiskScanner {
 
             do {
                 guard let root = try await Self.inspect(
-                    url,
+                    standardizedURL,
                     knownMetadata: rootMetadata,
                     session: session,
                     activityMonitor: nil,
@@ -103,10 +103,10 @@ struct DiskScanner {
                     ownsWorkerPermit: false,
                     onProgress: onProgress
                 ) else {
-                    throw ScanFailure.inaccessible(url)
+                    throw ScanFailure.inaccessible(standardizedURL)
                 }
                 try Task.checkCancellation()
-                let progress = session.progressSnapshot
+                let progress = session.progressSnapshot(at: standardizedURL)
                 onProgress(progress)
                 signposter.emitEvent(
                     "ScanCompleted",
@@ -124,7 +124,7 @@ struct DiskScanner {
             } catch let failure as ScanFailure {
                 throw failure
             } catch {
-                throw ScanFailure.inaccessible(url)
+                throw ScanFailure.inaccessible(standardizedURL)
             }
         }
 
@@ -146,17 +146,6 @@ struct DiskScanner {
     ) async throws -> FileNode? {
         try Task.checkCancellation()
         guard activityMonitor?.isActive != false else { throw CancellationError() }
-        guard session.scope.allows(url, identity: nil) else { return nil }
-
-        if !isInsideIsolatedSubtree,
-           session.configuration.shouldIsolateSubtree(url) {
-            return try await inspectIsolatedSubtree(
-                url,
-                session: session,
-                ownsWorkerPermit: ownsWorkerPermit,
-                onProgress: onProgress
-            )
-        }
 
         let metadata: LowLevelFileMetadata
         do {
@@ -221,10 +210,22 @@ struct DiskScanner {
         let identity = metadata.identity
         try Task.checkCancellation()
         guard activityMonitor?.isActive != false else { throw CancellationError() }
-        guard session.scope.allows(url, identity: identity) else { return nil }
+        guard session.scope.allows(path: url.path, identity: identity) else { return nil }
+
+        if !isInsideIsolatedSubtree,
+           session.configuration.shouldIsolateSubtree(url) {
+            return try await inspectIsolatedSubtree(
+                url,
+                session: session,
+                ownsWorkerPermit: ownsWorkerPermit,
+                onProgress: onProgress
+            )
+        }
+
         if let identity {
             guard session.visitedDirectories.insertIfNew(identity) else { return nil }
         }
+
         guard session.recordItem(
             at: url,
             activityMonitor: activityMonitor,
@@ -275,6 +276,67 @@ struct DiskScanner {
                 try Task.checkCancellation()
                 guard activityMonitor?.isActive != false else { throw CancellationError() }
 
+                let entryMetadata: LowLevelFileMetadata
+                if let metadata = entry.metadata {
+                    entryMetadata = metadata
+                } else {
+                    do {
+                        entryMetadata = try LowLevelMetadataReader.metadata(at: entry.url)
+                    } catch {
+                        guard session.recordItem(
+                            at: entry.url,
+                            activityMonitor: activityMonitor,
+                            onProgress: onProgress
+                        ) else { throw CancellationError() }
+                        session.recordUnreadable(
+                            at: entry.url,
+                            unresponsive: false,
+                            onProgress: onProgress
+                        )
+                        measuredDirectItems += 1
+                        totalItems = addingWithoutOverflow(totalItems, 1)
+                        retainedChildren.insert(
+                            RetainedNodeCandidate(
+                                url: entry.url,
+                                name: displayName(for: entry.url),
+                                size: 0,
+                                isDirectory: false,
+                                isReadable: false
+                            )
+                        )
+                        continue
+                    }
+                }
+
+                guard entryMetadata.kind == .directory, entryMetadata.isReadable else {
+                    guard session.recordItem(
+                        at: entry.url,
+                        activityMonitor: activityMonitor,
+                        onProgress: onProgress
+                    ) else { throw CancellationError() }
+                    if !entryMetadata.isReadable {
+                        session.recordUnreadable(
+                            at: entry.url,
+                            unresponsive: false,
+                            onProgress: onProgress
+                        )
+                    }
+                    let size = entryMetadata.isReadable ? entryMetadata.size : 0
+                    measuredDirectItems += 1
+                    total = addingWithoutOverflow(total, size)
+                    totalItems = addingWithoutOverflow(totalItems, 1)
+                    retainedChildren.insert(
+                        RetainedNodeCandidate(
+                            url: entry.url,
+                            name: entryMetadata.name,
+                            size: size,
+                            isDirectory: entryMetadata.kind == .directory,
+                            isReadable: entryMetadata.isReadable
+                        )
+                    )
+                    continue
+                }
+
                 var acquiredPermit = session.parallelism.tryAcquire()
                 while !acquiredPermit, !ownsWorkerPermit, pendingTaskCount > 0 {
                     if let completedChild = try await group.next() {
@@ -283,7 +345,7 @@ struct DiskScanner {
                             measuredDirectItems += 1
                             total = addingWithoutOverflow(total, completedChild.size)
                             totalItems = addingWithoutOverflow(totalItems, completedChild.itemCount)
-                            retainedChildren.insert(completedChild)
+                            retainedChildren.insert(RetainedNodeCandidate(node: completedChild))
                         }
                     }
                     acquiredPermit = session.parallelism.tryAcquire()
@@ -295,7 +357,7 @@ struct DiskScanner {
                         defer { session.parallelism.release() }
                         return try await inspect(
                             entry.url,
-                            knownMetadata: entry.metadata,
+                            knownMetadata: entryMetadata,
                             session: session,
                             activityMonitor: activityMonitor,
                             isInsideIsolatedSubtree: isInsideIsolatedSubtree,
@@ -305,7 +367,7 @@ struct DiskScanner {
                     }
                 } else if let child = try await inspect(
                     entry.url,
-                    knownMetadata: entry.metadata,
+                    knownMetadata: entryMetadata,
                     session: session,
                     activityMonitor: activityMonitor,
                     isInsideIsolatedSubtree: isInsideIsolatedSubtree,
@@ -315,7 +377,7 @@ struct DiskScanner {
                     measuredDirectItems += 1
                     total = addingWithoutOverflow(total, child.size)
                     totalItems = addingWithoutOverflow(totalItems, child.itemCount)
-                    retainedChildren.insert(child)
+                    retainedChildren.insert(RetainedNodeCandidate(node: child))
                 }
             }
 
@@ -325,11 +387,11 @@ struct DiskScanner {
                 measuredDirectItems += 1
                 total = addingWithoutOverflow(total, child.size)
                 totalItems = addingWithoutOverflow(totalItems, child.itemCount)
-                retainedChildren.insert(child)
+                retainedChildren.insert(RetainedNodeCandidate(node: child))
             }
         }
 
-        var children = retainedChildren.retainedNodes
+        var children = retainedChildren.retainedNodes.map { $0.makeNode() }
         if retainedChildren.discardedDirectItems > 0 {
             children.append(
                 FileNode(
@@ -346,7 +408,10 @@ struct DiskScanner {
             )
         }
         children.sort {
-            BoundedNodeAccumulator.isPreferred($0, over: $1)
+            RetainedNodeCandidate.isPreferred(
+                RetainedNodeCandidate(node: $0),
+                over: RetainedNodeCandidate(node: $1)
+            )
         }
 
         return FileNode(
@@ -452,7 +517,7 @@ struct DiskScanner {
     }
 
     private static func shouldIsolateProtectedSubtree(_ url: URL) -> Bool {
-        let path = url.standardizedFileURL.path
+        let path = url.path
         return path.contains("/Library/Containers/")
             || path.contains("/Library/Group Containers/")
             || path.hasSuffix("/Library/Mobile Documents")
@@ -502,9 +567,10 @@ private final class ScanSession: @unchecked Sendable {
         )
     }
 
-    var progressSnapshot: ScanProgress {
+    func progressSnapshot(at url: URL) -> ScanProgress {
         progressLock.lock()
         defer { progressLock.unlock() }
+        progress.currentPath = url.path
         return progress
     }
 
@@ -520,12 +586,12 @@ private final class ScanSession: @unchecked Sendable {
 
         progressLock.lock()
         progress.itemsScanned += 1
-        progress.currentPath = url.path
 
         let now = DispatchTime.now().uptimeNanoseconds
         let emittedProgress: ScanProgress?
         if progress.itemsScanned == 1 || now &- lastProgressEmission >= 100_000_000 {
             lastProgressEmission = now
+            progress.currentPath = url.path
             emittedProgress = progress
         } else {
             emittedProgress = nil
@@ -549,7 +615,9 @@ private final class ScanSession: @unchecked Sendable {
         if unresponsive {
             progress.unresponsiveItems += 1
         }
-        progress.currentPath = url.path
+        if forceProgressEmission {
+            progress.currentPath = url.path
+        }
         let emittedProgress = forceProgressEmission ? progress : nil
         progressLock.unlock()
 
@@ -661,9 +729,71 @@ private final class LockedResultBox<Value>: @unchecked Sendable {
     }
 }
 
+private struct RetainedNodeCandidate {
+    let url: URL
+    let name: String
+    let size: Int64
+    let isDirectory: Bool
+    let isReadable: Bool
+    let children: [FileNode]
+    let itemCount: Int
+    let directItemCount: Int
+    let isAggregate: Bool
+
+    init(
+        url: URL,
+        name: String,
+        size: Int64,
+        isDirectory: Bool,
+        isReadable: Bool
+    ) {
+        self.url = url
+        self.name = name
+        self.size = size
+        self.isDirectory = isDirectory
+        self.isReadable = isReadable
+        children = []
+        itemCount = 1
+        directItemCount = 0
+        isAggregate = false
+    }
+
+    init(node: FileNode) {
+        url = node.url
+        name = node.name
+        size = node.size
+        isDirectory = node.isDirectory
+        isReadable = node.isReadable
+        children = node.children
+        itemCount = node.itemCount
+        directItemCount = node.directItemCount
+        isAggregate = node.isAggregate
+    }
+
+    func makeNode() -> FileNode {
+        FileNode(
+            url: url,
+            name: name,
+            size: size,
+            isDirectory: isDirectory,
+            isReadable: isReadable,
+            children: children,
+            itemCount: itemCount,
+            directItemCount: directItemCount,
+            isAggregate: isAggregate
+        )
+    }
+
+    static func isPreferred(_ left: Self, over right: Self) -> Bool {
+        if left.size != right.size { return left.size > right.size }
+        if left.isDirectory != right.isDirectory { return left.isDirectory }
+        return left.name < right.name
+    }
+}
+
 private struct BoundedNodeAccumulator {
     let capacity: Int
-    private var heap: [FileNode] = []
+    private var heap: [RetainedNodeCandidate] = []
     private(set) var discardedSize: Int64 = 0
     private(set) var discardedItemCount = 0
     private(set) var discardedDirectItems = 0
@@ -672,9 +802,9 @@ private struct BoundedNodeAccumulator {
         self.capacity = capacity
     }
 
-    var retainedNodes: [FileNode] { heap }
+    var retainedNodes: [RetainedNodeCandidate] { heap }
 
-    mutating func insert(_ node: FileNode) {
+    mutating func insert(_ node: RetainedNodeCandidate) {
         guard capacity > 0 else {
             discard(node)
             return
@@ -687,7 +817,7 @@ private struct BoundedNodeAccumulator {
         }
 
         guard let leastPreferred = heap.first,
-              Self.isPreferred(node, over: leastPreferred) else {
+              RetainedNodeCandidate.isPreferred(node, over: leastPreferred) else {
             discard(node)
             return
         }
@@ -697,13 +827,7 @@ private struct BoundedNodeAccumulator {
         siftDown(from: 0)
     }
 
-    static func isPreferred(_ left: FileNode, over right: FileNode) -> Bool {
-        if left.size != right.size { return left.size > right.size }
-        if left.isDirectory != right.isDirectory { return left.isDirectory }
-        return left.name.localizedStandardCompare(right.name) == .orderedAscending
-    }
-
-    private mutating func discard(_ node: FileNode) {
+    private mutating func discard(_ node: RetainedNodeCandidate) {
         let sizeResult = discardedSize.addingReportingOverflow(node.size)
         discardedSize = sizeResult.overflow ? Int64.max : sizeResult.partialValue
 
@@ -716,7 +840,7 @@ private struct BoundedNodeAccumulator {
         var child = start
         while child > 0 {
             let parent = (child - 1) / 2
-            guard Self.isPreferred(heap[parent], over: heap[child]) else { break }
+            guard RetainedNodeCandidate.isPreferred(heap[parent], over: heap[child]) else { break }
             heap.swapAt(parent, child)
             child = parent
         }
@@ -730,11 +854,15 @@ private struct BoundedNodeAccumulator {
             let right = left + 1
             var leastPreferred = left
 
-            if right < heap.count, Self.isPreferred(heap[left], over: heap[right]) {
+            if right < heap.count,
+               RetainedNodeCandidate.isPreferred(heap[left], over: heap[right]) {
                 leastPreferred = right
             }
 
-            guard Self.isPreferred(heap[parent], over: heap[leastPreferred]) else { return }
+            guard RetainedNodeCandidate.isPreferred(
+                heap[parent],
+                over: heap[leastPreferred]
+            ) else { return }
             heap.swapAt(parent, leastPreferred)
             parent = leastPreferred
         }

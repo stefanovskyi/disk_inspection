@@ -108,6 +108,31 @@ final class DiskScannerTests: XCTestCase {
         XCTAssertEqual(recorder.latest?.itemsScanned, 4)
     }
 
+    func testProviderMatchingOnlyExaminesDirectories() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensProviderMatching-\(UUID().uuidString)", isDirectory: true)
+        let nested = root.appendingPathComponent("Nested", isDirectory: true)
+        let file = root.appendingPathComponent("file.bin")
+        let link = root.appendingPathComponent("file-link")
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data([0x41]).write(to: file)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: file)
+
+        let probe = URLProbe()
+        let scanner = DiskScanner(shouldIsolateSubtree: { url in
+            probe.record(url)
+            return false
+        })
+
+        _ = try await scanner.scan(url: root)
+
+        XCTAssertEqual(
+            Set(probe.recordedPaths),
+            Set([root.standardizedFileURL.path, nested.path])
+        )
+    }
+
     func testCancellationStopsDetachedScannerWork() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("SpaceLensCancellation-\(UUID().uuidString)", isDirectory: true)
@@ -163,19 +188,19 @@ final class DiskScannerTests: XCTestCase {
         let rootScope = ScanScope(rootPath: "/", rootDevice: 10)
         XCTAssertTrue(
             rootScope.allows(
-                URL(fileURLWithPath: "/Users/me"),
+                path: "/Users/me",
                 identity: FileIdentity(device: 10, inode: 2)
             )
         )
         XCTAssertFalse(
             rootScope.allows(
-                URL(fileURLWithPath: "/System/Volumes/Data"),
+                path: "/System/Volumes/Data",
                 identity: FileIdentity(device: 10, inode: 3)
             )
         )
         XCTAssertFalse(
             rootScope.allows(
-                URL(fileURLWithPath: "/Volumes/External"),
+                path: "/Volumes/External",
                 identity: FileIdentity(device: 11, inode: 4)
             )
         )
@@ -183,7 +208,7 @@ final class DiskScannerTests: XCTestCase {
         let folderScope = ScanScope(rootPath: "/tmp/example", rootDevice: 10)
         XCTAssertFalse(
             folderScope.allows(
-                URL(fileURLWithPath: "/tmp/example/mount"),
+                path: "/tmp/example/mount",
                 identity: FileIdentity(device: 11, inode: 5)
             )
         )
@@ -324,6 +349,23 @@ private final class ParallelReadProbe: @unchecked Sendable {
 
         lock.lock()
         activeReads -= 1
+        lock.unlock()
+    }
+}
+
+private final class URLProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var paths: [String] = []
+
+    var recordedPaths: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return paths
+    }
+
+    func record(_ url: URL) {
+        lock.lock()
+        paths.append(url.path)
         lock.unlock()
     }
 }

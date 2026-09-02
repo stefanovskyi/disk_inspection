@@ -14,6 +14,7 @@ enum SelfTestFailure: LocalizedError {
 struct SpaceLensSelfTests {
     static func main() async throws {
         try await scannerBuildsTreeWithoutFollowingSymlinks()
+        try await providerMatchingOnlyExaminesDirectories()
         try bulkDirectoryReaderReturnsMetadataWithoutFollowingSymlinks()
         try bulkDirectoryReaderReusesBoundedBuffersAtSupportedSizes()
         try await largeDirectoriesKeepABoundedResultTree()
@@ -27,7 +28,7 @@ struct SpaceLensSelfTests {
         try layoutLeavesRequestedFreeSpaceOpen()
         try layoutRespectsDepthLimit()
         try sessionStoreRetainsAndReplacesVolumeResults()
-        print("SpaceLens self-tests passed (14/14)")
+        print("SpaceLens self-tests passed (15/15)")
     }
 
     private static func scannerBuildsTreeWithoutFollowingSymlinks() async throws {
@@ -82,6 +83,30 @@ struct SpaceLensSelfTests {
         try expect((metadataByName["file.bin"]?.size ?? 0) > 0, "Bulk reader lost allocated file size")
         try expect(metadataByName["folder-link"]?.kind == .symbolicLink, "Bulk reader followed a symbolic link")
         try expect(metadataByName.values.allSatisfy { $0.identity != nil }, "Bulk reader lost device/inode identities")
+    }
+
+    private static func providerMatchingOnlyExaminesDirectories() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensProviderMatching-\(UUID().uuidString)", isDirectory: true)
+        let nested = root.appendingPathComponent("Nested", isDirectory: true)
+        let file = root.appendingPathComponent("file.bin")
+        let link = root.appendingPathComponent("file-link")
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data([0x41]).write(to: file)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: file)
+
+        let probe = ProviderMatchingProbe()
+        let scanner = DiskScanner(shouldIsolateSubtree: { url in
+            probe.record(url)
+            return false
+        })
+        _ = try await scanner.scan(url: root)
+
+        try expect(
+            Set(probe.recordedPaths) == Set([root.standardizedFileURL.path, nested.path]),
+            "Provider matching examined a regular file or symbolic link"
+        )
     }
 
     private static func bulkDirectoryReaderReusesBoundedBuffersAtSupportedSizes() throws {
@@ -292,21 +317,21 @@ struct SpaceLensSelfTests {
     private static func scanScopeStaysInsideTheSelectedVolume() throws {
         let rootScope = ScanScope(rootPath: "/", rootDevice: 10)
         try expect(
-            rootScope.allows(URL(fileURLWithPath: "/Users/me"), identity: FileIdentity(device: 10, inode: 2)),
+            rootScope.allows(path: "/Users/me", identity: FileIdentity(device: 10, inode: 2)),
             "Root scope rejected a logical main-disk folder"
         )
         try expect(
-            !rootScope.allows(URL(fileURLWithPath: "/System/Volumes/Data"), identity: FileIdentity(device: 10, inode: 3)),
+            !rootScope.allows(path: "/System/Volumes/Data", identity: FileIdentity(device: 10, inode: 3)),
             "Root scope allowed the duplicate APFS Data mount"
         )
         try expect(
-            !rootScope.allows(URL(fileURLWithPath: "/Volumes/External"), identity: FileIdentity(device: 11, inode: 4)),
+            !rootScope.allows(path: "/Volumes/External", identity: FileIdentity(device: 11, inode: 4)),
             "Root scope crossed into an external disk"
         )
 
         let folderScope = ScanScope(rootPath: "/tmp/example", rootDevice: 10)
         try expect(
-            !folderScope.allows(URL(fileURLWithPath: "/tmp/example/mount"), identity: FileIdentity(device: 11, inode: 5)),
+            !folderScope.allows(path: "/tmp/example/mount", identity: FileIdentity(device: 11, inode: 5)),
             "Folder scope crossed a nested volume boundary"
         )
     }
@@ -452,6 +477,23 @@ private final class ParallelDirectoryReadProbe: @unchecked Sendable {
 
         lock.lock()
         activeReads -= 1
+        lock.unlock()
+    }
+}
+
+private final class ProviderMatchingProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var paths: [String] = []
+
+    var recordedPaths: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return paths
+    }
+
+    func record(_ url: URL) {
+        lock.lock()
+        paths.append(url.path)
         lock.unlock()
     }
 }
