@@ -1,0 +1,100 @@
+import Foundation
+
+@main
+struct CompareBenchmarks {
+    static func main() throws {
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        guard arguments.count == 3 else {
+            throw BenchmarkComparisonError.invalidInput(
+                "Usage: compare_benchmarks.sh BASELINE.json CANDIDATE.json OUTPUT.json"
+            )
+        }
+
+        let baselineURL = URL(fileURLWithPath: arguments[0])
+        let candidateURL = URL(fileURLWithPath: arguments[1])
+        let outputURL = URL(fileURLWithPath: arguments[2])
+        let thresholds = try BenchmarkComparisonThresholds.load()
+        let report = try BenchmarkReportComparator.compare(
+            baselineURL: baselineURL,
+            candidateURL: candidateURL,
+            thresholds: thresholds
+        )
+
+        try FileManager.default.createDirectory(
+            at: outputURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        try encoder.encode(report).write(to: outputURL, options: .atomic)
+        printReport(report, outputURL: outputURL)
+
+        if !report.configurationCompatible {
+            Foundation.exit(2)
+        }
+        if !report.regressions.isEmpty {
+            Foundation.exit(1)
+        }
+    }
+
+    private static func printReport(_ report: BenchmarkComparisonReport, outputURL: URL) {
+        print("SpaceLens benchmark comparison")
+        print("Baseline:  \(report.baseline.runID) (\(shortRevision(report.baseline.gitRevision)))")
+        print("Candidate: \(report.candidate.runID) (\(shortRevision(report.candidate.gitRevision)))")
+        print(
+            String(
+                format: "Thresholds: scan %.1f%%, layout %.1f%%, memory %.1f%%",
+                report.thresholds.scanPercent,
+                report.thresholds.layoutPercent,
+                report.thresholds.memoryPercent
+            )
+        )
+
+        if !report.configurationDifferences.isEmpty {
+            print("Configuration mismatch:")
+            for difference in report.configurationDifferences { print("  - \(difference)") }
+        }
+
+        print("")
+        print("fixture      scan delta   throughput delta   layout delta   unreadable")
+        for fixture in report.fixtures {
+            let unreadable = "\(fixture.maximumUnreadableItemsBaseline) -> \(fixture.maximumUnreadableItemsCandidate)"
+            let scanDelta = formattedDelta(fixture.medianScanDurationSeconds)
+            let throughputDelta = formattedDelta(fixture.itemsPerSecond)
+            let layoutDelta = formattedDelta(fixture.medianLayoutDurationMilliseconds)
+            print(
+                String(
+                    format: "%-12s %10s %17s %14s %12s",
+                    (fixture.name as NSString).utf8String!,
+                    (scanDelta as NSString).utf8String!,
+                    (throughputDelta as NSString).utf8String!,
+                    (layoutDelta as NSString).utf8String!,
+                    (unreadable as NSString).utf8String!
+                )
+            )
+        }
+        let memoryDelta = formattedDelta(report.peakResidentMemoryBytes)
+        print(
+            String(
+                format: "Peak RSS: %.1f MiB -> %.1f MiB (%s)",
+                report.peakResidentMemoryBytes.baseline / 1_048_576,
+                report.peakResidentMemoryBytes.candidate / 1_048_576,
+                (memoryDelta as NSString).utf8String!
+            )
+        )
+        print("Result: \(report.passed ? "PASS" : "FAIL")")
+        if !report.regressions.isEmpty { print("Regressions: \(report.regressions.joined(separator: ", "))") }
+        print("Comparison JSON: \(outputURL.standardizedFileURL.path)")
+    }
+
+    private static func formattedDelta(_ metric: BenchmarkComparisonReport.Metric) -> String {
+        let suffix = metric.regression ? " FAIL" : ""
+        guard let delta = metric.deltaPercent else { return "n/a\(suffix)" }
+        return String(format: "%+.1f%%", delta) + suffix
+    }
+
+    private static func shortRevision(_ revision: String) -> String {
+        String(revision.prefix(8))
+    }
+}

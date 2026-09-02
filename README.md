@@ -61,6 +61,24 @@ make benchmark
 
 Fixture sizes, iteration count, scanner concurrency, directory-buffer size, output location, and selected cases can be controlled with `SPACELENS_BENCHMARK_ITERATIONS`, `SPACELENS_BENCHMARK_PARALLELISM`, `SPACELENS_BENCHMARK_DIRECTORY_BUFFER_KB`, `SPACELENS_BENCHMARK_OUTPUT_DIR`, `SPACELENS_BENCHMARK_FIXTURES`, `SPACELENS_BENCHMARK_FLAT_FILES`, `SPACELENS_BENCHMARK_DEEP_DIRECTORIES`, `SPACELENS_BENCHMARK_MIXED_DEPTH`, `SPACELENS_BENCHMARK_MIXED_FANOUT`, `SPACELENS_BENCHMARK_MIXED_FILES_PER_DIRECTORY`, and `SPACELENS_BENCHMARK_PROVIDER_TIMEOUT_MS`.
 
+Revisit the traversal scheduler with the standard parallelism sweep before changing its design:
+
+```bash
+make benchmark-parallelism
+```
+
+This runs identical benchmark fixtures at scanner parallelism 1, 2, 4, 8, and 16 and writes one report pair per value. Override the matrix with a comma-separated `SPACELENS_BENCHMARK_PARALLELISMS` value. Keep fixture settings and iteration counts identical when using these reports to decide whether a higher-risk work-queue scheduler is justified.
+
+Compare two JSON reports collected with the same fixtures and configuration:
+
+```bash
+make benchmark-compare \
+  BASELINE=BenchmarkResults/spacelens-benchmark-baseline.json \
+  CANDIDATE=BenchmarkResults/spacelens-benchmark-candidate.json
+```
+
+The comparison prints percentage deltas for median scan time, throughput, median layout time, and peak resident memory, then writes a JSON comparison beside the candidate report. It exits with status 1 when a regression exceeds a threshold and status 2 when configurations differ, so measurements with different iteration counts, scanner parallelism, directory buffers, fixtures, SDKs, hardware, or trace settings are not silently compared. The default scan, layout, and memory limits are 10%; configure them independently with `SPACELENS_BENCHMARK_SCAN_REGRESSION_THRESHOLD_PERCENT`, `SPACELENS_BENCHMARK_LAYOUT_REGRESSION_THRESHOLD_PERCENT`, and `SPACELENS_BENCHMARK_MEMORY_REGRESSION_THRESHOLD_PERCENT`.
+
 SpaceLens also emits Instruments signposts under the `local.spacelens.app` subsystem in the `Scan`, `DirectoryRead`, `ChartLayout`, `ProviderSubtree`, and `Benchmark` categories. Capture the Logging instrument while running either the packaged app or the benchmark to correlate benchmark iterations and whole scans with sampled large or slow filesystem reads, provider timeouts, and sunburst layout work. Directory-read events include entry counts and duration; small reads under one millisecond are omitted to keep full-disk traces manageable. Signpost metadata contains fixture names, counts, and configuration, not filesystem paths.
 
 With a full Xcode installation selected, capture a timestamped `.trace` alongside the reports:
