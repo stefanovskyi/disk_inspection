@@ -20,8 +20,21 @@ enum SunburstLayout {
         minimumAngularSpan: Double = 0.004,
         angularExtent: Double = .pi * 2
     ) -> [SunburstSegment] {
-        guard maxDepth > 0 else { return [] }
+        let signposter = SpaceLensSignposts.chartLayout
+        let signpostState = signposter.beginInterval(
+            "SunburstLayout",
+            "maxDepth=\(maxDepth)"
+        )
         var output: [SunburstSegment] = []
+        defer {
+            signposter.endInterval(
+                "SunburstLayout",
+                signpostState,
+                "segments=\(output.count)"
+            )
+        }
+
+        guard maxDepth > 0 else { return [] }
         let fullCircle = Double.pi * 2
         let visibleExtent = min(max(angularExtent, 0), fullCircle)
         guard visibleExtent > 0 else { return [] }

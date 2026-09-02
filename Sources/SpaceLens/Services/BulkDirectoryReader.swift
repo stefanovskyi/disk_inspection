@@ -71,8 +71,27 @@ enum LowLevelMetadataReader {
 /// The syscall reports symbolic-link metadata without following the link.
 enum BulkDirectoryReader {
     private static let bufferSize = 256 * 1024
+    private static let signpostEntryThreshold = 256
+    private static let signpostDurationThresholdNanoseconds: UInt64 = 1_000_000
 
     static func contents(of directoryURL: URL) throws -> [LowLevelDirectoryEntry] {
+        let signposter = SpaceLensSignposts.directoryRead
+        let measuresSignpost = signposter.isEnabled
+        let signpostStart = measuresSignpost ? DispatchTime.now().uptimeNanoseconds : 0
+        var measuredEntryCount = 0
+        defer {
+            if measuresSignpost {
+                let duration = DispatchTime.now().uptimeNanoseconds &- signpostStart
+                if measuredEntryCount >= signpostEntryThreshold
+                    || duration >= signpostDurationThresholdNanoseconds {
+                    signposter.emitEvent(
+                        "DirectoryReadSample",
+                        "entries=\(measuredEntryCount) durationNanoseconds=\(duration)"
+                    )
+                }
+            }
+        }
+
         let descriptor = directoryURL.withUnsafeFileSystemRepresentation { path -> Int32 in
             guard let path else { return -1 }
             return Darwin.open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
@@ -106,6 +125,7 @@ enum BulkDirectoryReader {
 
             guard count >= 0 else { throw LowLevelMetadataReader.posixError() }
             guard count > 0 else { return entries }
+            measuredEntryCount += Int(count)
 
             try buffer.withUnsafeBytes { bytes in
                 var entryOffset = 0

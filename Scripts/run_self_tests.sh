@@ -17,6 +17,7 @@ swiftc \
     "$project_dir/Sources/SpaceLens/Models/ScanSessionStore.swift" \
     "$project_dir/Sources/SpaceLens/Models/SunburstLayout.swift" \
     "$project_dir/Sources/SpaceLens/Support/Formatters.swift" \
+    "$project_dir/Sources/SpaceLens/Support/PerformanceSignposts.swift" \
     "$project_dir/Sources/SpaceLens/Services/BulkDirectoryReader.swift" \
     "$project_dir/Sources/SpaceLens/Services/DiskScanner.swift" \
     "$project_dir/Sources/SpaceLens/Services/FullDiskAccessChecker.swift" \

@@ -35,6 +35,42 @@ open dist/SpaceLens.app
 
 You can also open `Package.swift` in Xcode and run the `SpaceLens` executable target.
 
+## Performance benchmarks
+
+Run the scanner and chart-layout fixtures as an optimized release executable:
+
+```bash
+make benchmark
+```
+
+Every run writes timestamped JSON and CSV reports to the ignored `BenchmarkResults/` directory. Reports include the Git revision and dirty state, SDK and compiler, macOS and hardware details, fixture configuration, scanner parallelism, peak resident memory, per-iteration results, medians, standard deviation, and variability.
+
+The default run measures flat, deep, mixed, and stalled-provider trees. Run three read-only startup-disk scans with:
+
+```bash
+make benchmark-full
+```
+
+The external-disk fixture is also opt-in and read-only; point it at a dedicated directory on the disk rather than the volume root:
+
+```bash
+SPACELENS_BENCHMARK_FIXTURES=external \
+SPACELENS_BENCHMARK_EXTERNAL_PATH="/Volumes/TestDisk/SpaceLensFixture" \
+make benchmark
+```
+
+Fixture sizes, iteration count, scanner concurrency, output location, and selected cases can be controlled with `SPACELENS_BENCHMARK_ITERATIONS`, `SPACELENS_BENCHMARK_PARALLELISM`, `SPACELENS_BENCHMARK_OUTPUT_DIR`, `SPACELENS_BENCHMARK_FIXTURES`, `SPACELENS_BENCHMARK_FLAT_FILES`, `SPACELENS_BENCHMARK_DEEP_DIRECTORIES`, `SPACELENS_BENCHMARK_MIXED_DEPTH`, `SPACELENS_BENCHMARK_MIXED_FANOUT`, `SPACELENS_BENCHMARK_MIXED_FILES_PER_DIRECTORY`, and `SPACELENS_BENCHMARK_PROVIDER_TIMEOUT_MS`.
+
+SpaceLens also emits Instruments signposts under the `local.spacelens.app` subsystem in the `Scan`, `DirectoryRead`, `ChartLayout`, `ProviderSubtree`, and `Benchmark` categories. Capture the Logging instrument while running either the packaged app or the benchmark to correlate benchmark iterations and whole scans with sampled large or slow filesystem reads, provider timeouts, and sunburst layout work. Directory-read events include entry counts and duration; small reads under one millisecond are omitted to keep full-disk traces manageable. Signpost metadata contains fixture names, counts, and configuration, not filesystem paths.
+
+With a full Xcode installation selected, capture a timestamped `.trace` alongside the reports:
+
+```bash
+make benchmark-trace
+```
+
+The default trace template is `Logging`, which captures the benchmark signposts. Set `SPACELENS_BENCHMARK_TRACE_TEMPLATE="Time Profiler"` for CPU stack sampling or choose another installed template. For example, combine `SPACELENS_BENCHMARK_FIXTURES=full-disk`, `SPACELENS_BENCHMARK_ITERATIONS=1`, and `make benchmark-trace` for one startup-disk trace. Xcode or Instruments must have Full Disk Access for a complete startup-disk capture. Command Line Tools alone do not include `xctrace`; trace mode exits with setup guidance before running the benchmark when it is unavailable.
+
 ## Permissions
 
 macOS protects some folders. Before scanning the startup disk, SpaceLens checks whether it can read protected storage and, when needed, explains Full Disk Access before any analysis begins. Choose **Open Full Disk Access Settings**, enable SpaceLens, then return and scan again. Apple requires this permission to be granted manually in System Settings; apps cannot grant it themselves. Folder scans selected through the native picker can still be used without granting broad access.

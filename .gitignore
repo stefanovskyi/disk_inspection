@@ -1,5 +1,6 @@
 .DS_Store
 .build/
 dist/
+BenchmarkResults/
+.swiftpm/
 *.xcuserstate
-.swiftpm/xcode/package.xcworkspace/xcuserdata/

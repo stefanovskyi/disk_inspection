@@ -68,6 +68,17 @@ struct DiskScanner {
     ) async throws -> ScanResult {
         let configuration = configuration
         let worker = Task.detached(priority: .userInitiated) {
+            let signposter = SpaceLensSignposts.scan
+            let signpostID = signposter.makeSignpostID()
+            let signpostState = signposter.beginInterval(
+                "Scan",
+                id: signpostID,
+                "parallelism=\(configuration.maximumParallelism)"
+            )
+            defer {
+                signposter.endInterval("Scan", signpostState)
+            }
+
             let start = Date()
             let rootMetadata = try? LowLevelMetadataReader.metadata(at: url)
             let session = ScanSession(
@@ -94,6 +105,11 @@ struct DiskScanner {
                 try Task.checkCancellation()
                 let progress = session.progressSnapshot
                 onProgress(progress)
+                signposter.emitEvent(
+                    "ScanCompleted",
+                    id: signpostID,
+                    "items=\(progress.itemsScanned) unreadable=\(progress.unreadableItems)"
+                )
                 return ScanResult(
                     root: root,
                     duration: Date().timeIntervalSince(start),
@@ -346,6 +362,17 @@ struct DiskScanner {
         ownsWorkerPermit: Bool,
         onProgress: @escaping ProgressHandler
     ) async throws -> FileNode? {
+        let signposter = SpaceLensSignposts.providerSubtree
+        let signpostID = signposter.makeSignpostID()
+        let signpostState = signposter.beginInterval(
+            "IsolatedSubtree",
+            id: signpostID,
+            "timeoutMilliseconds=\(Int(session.configuration.stalledSubtreeTimeout * 1_000))"
+        )
+        defer {
+            signposter.endInterval("IsolatedSubtree", signpostState)
+        }
+
         let monitor = ScanActivityMonitor()
 
         let resultBox = LockedResultBox<FileNode?>()
@@ -387,6 +414,7 @@ struct DiskScanner {
             if monitor.inactiveDuration >= session.configuration.stalledSubtreeTimeout {
                 let recordedAnyItems = monitor.abandon()
                 isolatedWorker.cancel()
+                signposter.emitEvent("SubtreeTimedOut", id: signpostID)
 
                 if !recordedAnyItems {
                     _ = session.recordItem(
