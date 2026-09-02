@@ -93,6 +93,7 @@ struct ScanDiagnosticSnapshot: Codable, Equatable, Sendable {
     var directoryTasks = 0
     var retainedNodes = 0
     var discardedNodes = 0
+    var progressMerges = 0
     var progressEmissions = 0
 }
 

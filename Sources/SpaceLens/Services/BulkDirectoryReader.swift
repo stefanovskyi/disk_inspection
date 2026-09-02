@@ -381,6 +381,10 @@ final class ScanDiagnosticCounters: @unchecked Sendable {
         lock.withLock { value.progressEmissions += 1 }
     }
 
+    func recordProgressMerge() {
+        lock.withLock { value.progressMerges += 1 }
+    }
+
     func snapshot(bufferAllocations: Int) -> ScanDiagnosticSnapshot {
         lock.withLock {
             var snapshot = value

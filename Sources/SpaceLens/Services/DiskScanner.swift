@@ -103,7 +103,7 @@ struct DiskScanner {
                     signposter.emitEvent(
                         "ScanProgressCounters",
                         id: signpostID,
-                        "emissions=\(diagnostics.progressEmissions)"
+                        "merges=\(diagnostics.progressMerges) emissions=\(diagnostics.progressEmissions)"
                     )
                 }
                 signposter.endInterval("Scan", signpostState)
@@ -268,6 +268,11 @@ struct DiskScanner {
         var totalItems = 1
         var measuredDirectItems = 0
         var pendingDirectories: [(entry: LowLevelDirectoryEntry, metadata: LowLevelFileMetadata)] = []
+        var progressBatch = ScanProgressBatch(
+            session: session,
+            activityMonitor: activityMonitor,
+            onProgress: onProgress
+        )
 
         let consumeEntry: (LowLevelDirectoryEntry) throws -> Void = { entry in
             try Task.checkCancellation()
@@ -282,11 +287,10 @@ struct DiskScanner {
                     session.diagnostics.recordFallbackLstat()
                     entryMetadata = try LowLevelMetadataReader.metadata(at: entryURL)
                 } catch {
-                    guard session.recordItem(
-                        at: entryURL,
-                        activityMonitor: activityMonitor,
-                        onProgress: onProgress
-                    ) else { throw CancellationError() }
+                    guard progressBatch.recordItem(path: { entryURL.path }) else {
+                        throw CancellationError()
+                    }
+                    progressBatch.flush(path: { entryURL.path })
                     session.recordUnreadable(
                         at: entryURL,
                         unresponsive: false,
@@ -312,12 +316,11 @@ struct DiskScanner {
                 return
             }
 
-            guard session.recordItem(
-                path: { entry.url(relativeTo: url).path },
-                activityMonitor: activityMonitor,
-                onProgress: onProgress
+            guard progressBatch.recordItem(
+                path: { entry.url(relativeTo: url).path }
             ) else { throw CancellationError() }
             if !entryMetadata.isReadable {
+                progressBatch.flush(path: { entry.url(relativeTo: url).path })
                 session.recordUnreadable(
                     path: { entry.url(relativeTo: url).path },
                     unresponsive: false,
@@ -362,9 +365,11 @@ struct DiskScanner {
             }
             try Task.checkCancellation()
             guard activityMonitor?.isActive != false else { throw CancellationError() }
+            progressBatch.flush(path: { url.path })
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            progressBatch.flush(path: { url.path })
             session.recordUnreadable(at: url, unresponsive: false, onProgress: onProgress)
             return FileNode(
                 url: url,
@@ -524,7 +529,7 @@ struct DiskScanner {
             do {
                 try await Task.sleep(nanoseconds: 50_000_000)
             } catch {
-                monitor.abandon()
+                _ = monitor.abandon()
                 isolatedWorker.cancel()
                 throw error
             }
@@ -533,17 +538,22 @@ struct DiskScanner {
             do {
                 try Task.checkCancellation()
             } catch {
-                monitor.abandon()
+                _ = monitor.abandon()
                 isolatedWorker.cancel()
                 throw error
             }
 
             if monitor.inactiveDuration >= session.configuration.stalledSubtreeTimeout {
-                let recordedAnyItems = monitor.abandon()
+                let abandonment = monitor.abandon()
                 isolatedWorker.cancel()
                 signposter.emitEvent("SubtreeTimedOut", id: signpostID)
 
-                if !recordedAnyItems {
+                session.mergeItems(
+                    abandonment.pendingItems,
+                    path: { url.path },
+                    onProgress: onProgress
+                )
+                if !abandonment.recordedAnyItems {
                     _ = session.recordItem(
                         at: url,
                         activityMonitor: nil,
@@ -568,7 +578,12 @@ struct DiskScanner {
             }
         }
 
-        monitor.abandon()
+        let abandonment = monitor.abandon()
+        session.mergeItems(
+            abandonment.pendingItems,
+            path: { url.path },
+            onProgress: onProgress
+        )
         return try resultBox.take().get()
     }
 
@@ -658,12 +673,29 @@ private final class ScanSession: @unchecked Sendable {
         activityMonitor: ScanActivityMonitor?,
         onProgress: DiskScanner.ProgressHandler
     ) -> Bool {
-        if let activityMonitor, !activityMonitor.recordActivity() {
-            return false
+        let itemCount: Int
+        if let activityMonitor {
+            guard activityMonitor.recordActivity() else { return false }
+            itemCount = activityMonitor.takePendingItems()
+        } else {
+            itemCount = 1
         }
 
+        mergeItems(itemCount, path: path, onProgress: onProgress)
+        return true
+    }
+
+    func mergeItems(
+        _ itemCount: Int,
+        path: () -> String,
+        onProgress: DiskScanner.ProgressHandler
+    ) {
+        guard itemCount > 0 else { return }
+
         progressLock.lock()
-        progress.itemsScanned += 1
+        diagnostics.recordProgressMerge()
+        let addition = progress.itemsScanned.addingReportingOverflow(itemCount)
+        progress.itemsScanned = addition.overflow ? Int.max : addition.partialValue
 
         let now = DispatchTime.now().uptimeNanoseconds
         let emittedProgress: ScanProgress?
@@ -680,7 +712,6 @@ private final class ScanSession: @unchecked Sendable {
             diagnostics.recordProgressEmission()
             onProgress(emittedProgress)
         }
-        return true
     }
 
     func recordUnreadable(
@@ -718,6 +749,52 @@ private final class ScanSession: @unchecked Sendable {
             diagnostics.recordProgressEmission()
             onProgress(emittedProgress)
         }
+    }
+}
+
+private struct ScanProgressBatch {
+    private static let itemLimit = 256
+
+    let session: ScanSession
+    let activityMonitor: ScanActivityMonitor?
+    let onProgress: DiskScanner.ProgressHandler
+    private var localPendingItems = 0
+    private var itemsSinceMerge = 0
+
+    init(
+        session: ScanSession,
+        activityMonitor: ScanActivityMonitor?,
+        onProgress: @escaping DiskScanner.ProgressHandler
+    ) {
+        self.session = session
+        self.activityMonitor = activityMonitor
+        self.onProgress = onProgress
+    }
+
+    mutating func recordItem(path: () -> String) -> Bool {
+        if let activityMonitor {
+            guard activityMonitor.recordActivity() else { return false }
+        } else {
+            localPendingItems += 1
+        }
+        itemsSinceMerge += 1
+
+        if itemsSinceMerge >= Self.itemLimit {
+            flush(path: path)
+        }
+        return true
+    }
+
+    mutating func flush(path: () -> String) {
+        let itemCount: Int
+        if let activityMonitor {
+            itemCount = activityMonitor.takePendingItems()
+        } else {
+            itemCount = localPendingItems
+            localPendingItems = 0
+        }
+        itemsSinceMerge = 0
+        session.mergeItems(itemCount, path: path, onProgress: onProgress)
     }
 }
 
@@ -765,9 +842,15 @@ private struct ScannerConfiguration: @unchecked Sendable {
 }
 
 private final class ScanActivityMonitor: @unchecked Sendable {
+    struct Abandonment {
+        let recordedAnyItems: Bool
+        let pendingItems: Int
+    }
+
     private let lock = NSLock()
     private var lastActivity = DispatchTime.now().uptimeNanoseconds
     private var hasRecordedItems = false
+    private var pendingItems = 0
     private var isAbandoned = false
 
     var isActive: Bool {
@@ -789,15 +872,29 @@ private final class ScanActivityMonitor: @unchecked Sendable {
         guard !isAbandoned else { return false }
         lastActivity = DispatchTime.now().uptimeNanoseconds
         hasRecordedItems = true
+        let addition = pendingItems.addingReportingOverflow(1)
+        pendingItems = addition.overflow ? Int.max : addition.partialValue
         return true
     }
 
-    @discardableResult
-    func abandon() -> Bool {
+    func takePendingItems() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        let result = pendingItems
+        pendingItems = 0
+        return result
+    }
+
+    func abandon() -> Abandonment {
         lock.lock()
         defer { lock.unlock() }
         isAbandoned = true
-        return hasRecordedItems
+        let result = Abandonment(
+            recordedAnyItems: hasRecordedItems,
+            pendingItems: pendingItems
+        )
+        pendingItems = 0
+        return result
     }
 }
 

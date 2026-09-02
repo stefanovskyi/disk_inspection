@@ -319,6 +319,10 @@ struct SpaceLensSelfTests {
         try expect(result.root.itemCount == 151, "Compacted tree lost its represented-item count")
         try expect(result.root.directItemCount == 150, "Compacted tree lost its direct-item count")
         try expect(
+            result.diagnostics.progressMerges < result.itemsScanned / 4,
+            "Progress totals were merged once per scanned item instead of in batches"
+        )
+        try expect(
             result.root.children.reduce(Int64(0), { $0 + $1.size }) == result.root.size,
             "Aggregating smaller items changed the measured byte total"
         )
@@ -355,6 +359,7 @@ struct SpaceLensSelfTests {
 
         try expect(gate.hasStarted, "Stall watchdog fixture never entered the blocked subtree")
         try expect(duration < 1, "Stalled subtree blocked the whole scan for \(duration) seconds")
+        try expect(result.itemsScanned == 2, "Stalled subtree changed precise item accounting")
         try expect(result.unreadableItems == 1, "Stalled subtree was not counted as unreadable")
         try expect(
             result.root.children.first(where: { $0.name == "Blocked" })?.isReadable == false,

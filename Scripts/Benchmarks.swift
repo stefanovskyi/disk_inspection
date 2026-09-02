@@ -406,7 +406,8 @@ struct SpaceLensBenchmarks {
                     + "directory-tasks=\(diagnostics.directoryTasks) "
                     + "retained=\(diagnostics.retainedNodes) "
                     + "discarded=\(diagnostics.discardedNodes) "
-                    + "progress=\(diagnostics.progressEmissions)"
+                    + "progress-merges=\(diagnostics.progressMerges) "
+                    + "progress-emissions=\(diagnostics.progressEmissions)"
             )
         }
 

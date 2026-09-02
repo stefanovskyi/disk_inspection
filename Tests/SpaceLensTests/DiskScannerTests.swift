@@ -261,6 +261,7 @@ final class DiskScannerTests: XCTestCase {
         XCTAssertEqual(result.root.directItemCount, 150)
         XCTAssertEqual(result.diagnostics.retainedNodes, DiskScanner.retainedChildLimit)
         XCTAssertEqual(result.diagnostics.discardedNodes, 150 - DiskScanner.retainedChildLimit)
+        XCTAssertLessThan(result.diagnostics.progressMerges, result.itemsScanned / 4)
         XCTAssertEqual(result.root.children.reduce(Int64(0), { $0 + $1.size }), result.root.size)
     }
 
@@ -337,6 +338,7 @@ final class DiskScannerTests: XCTestCase {
 
         XCTAssertTrue(gate.hasStarted)
         XCTAssertLessThan(duration, 1)
+        XCTAssertEqual(result.itemsScanned, 2)
         XCTAssertEqual(result.unreadableItems, 1)
         XCTAssertEqual(
             result.root.children.first(where: { $0.name == "Blocked" })?.isReadable,
