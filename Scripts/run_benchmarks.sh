@@ -78,10 +78,24 @@ swiftc \
     -o "$temporary_dir/SpaceLensBenchmarks"
 
 if [[ "$capture_trace" == "1" ]]; then
-    "$xctrace_path" record \
-        --template "$trace_template" \
-        --output "$trace_path" \
+    codesign \
+        --force \
+        --sign - \
+        --entitlements "$project_dir/Support/BenchmarkProfile.entitlements" \
+        "$temporary_dir/SpaceLensBenchmarks"
+    trace_arguments=(
+        record
+        --template "$trace_template"
+        --output "$trace_path"
+    )
+    if [[ "$trace_template" != "Logging" ]]; then
+        trace_arguments+=(--instrument os_signpost)
+    fi
+    trace_arguments+=(
+        --target-stdout -
         --launch -- "$temporary_dir/SpaceLensBenchmarks"
+    )
+    "$xctrace_path" "${trace_arguments[@]}"
     "$xctrace_path" export --input "$trace_path" --toc --quiet >/dev/null
     echo "JSON report: $report_json_path"
     echo "CSV report: $report_csv_path"

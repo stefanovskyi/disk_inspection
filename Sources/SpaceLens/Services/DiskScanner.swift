@@ -8,6 +8,7 @@ struct FileIdentity: Hashable, Sendable {
 struct ScanScope: Sendable {
     let rootPath: String
     let rootDevice: UInt64?
+    let excludedPaths: Set<String>
 
     private static let logicalRootExclusions = [
         "/.vol",
@@ -21,6 +22,12 @@ struct ScanScope: Sendable {
 
     func allows(path: String, identity: FileIdentity?) -> Bool {
         if path == rootPath { return true }
+
+        if excludedPaths.contains(where: {
+            path == $0 || path.hasPrefix("\($0)/")
+        }) {
+            return false
+        }
 
         if rootPath == "/", Self.logicalRootExclusions.contains(where: {
             path == $0 || path.hasPrefix("\($0)/")
@@ -49,7 +56,8 @@ struct DiskScanner {
         directoryBufferSize: Int = BulkDirectoryReader.defaultBufferSize,
         stalledSubtreeTimeout: TimeInterval = 5,
         shouldIsolateSubtree: SubtreeIsolationPredicate? = nil,
-        directoryReader: DirectoryReader? = nil
+        directoryReader: DirectoryReader? = nil,
+        excludedURLs: [URL] = []
     ) {
         let suggestedParallelism = max(2, min(ProcessInfo.processInfo.activeProcessorCount, 8))
         precondition(directoryBufferSize >= BulkDirectoryReader.minimumBufferSize)
@@ -60,7 +68,8 @@ struct DiskScanner {
             shouldIsolateSubtree: shouldIsolateSubtree ?? { url in
                 Self.shouldIsolateProtectedSubtree(url)
             },
-            directoryReader: directoryReader
+            directoryReader: directoryReader,
+            excludedPaths: Set(excludedURLs.map { $0.standardizedFileURL.path })
         )
     }
 
@@ -78,7 +87,25 @@ struct DiskScanner {
                 id: signpostID,
                 "parallelism=\(configuration.maximumParallelism)"
             )
+            var diagnosticSession: ScanSession?
             defer {
+                if let diagnostics = diagnosticSession?.diagnosticSnapshot() {
+                    signposter.emitEvent(
+                        "ScanSyscallCounters",
+                        id: signpostID,
+                        "batches=\(diagnostics.syscallBatches) fallbackLstat=\(diagnostics.fallbackLstatCalls) bufferAllocations=\(diagnostics.bufferAllocations)"
+                    )
+                    signposter.emitEvent(
+                        "ScanNodeCounters",
+                        id: signpostID,
+                        "directoryTasks=\(diagnostics.directoryTasks) retained=\(diagnostics.retainedNodes) discarded=\(diagnostics.discardedNodes)"
+                    )
+                    signposter.emitEvent(
+                        "ScanProgressCounters",
+                        id: signpostID,
+                        "emissions=\(diagnostics.progressEmissions)"
+                    )
+                }
                 signposter.endInterval("Scan", signpostState)
             }
 
@@ -88,10 +115,12 @@ struct DiskScanner {
                 progress: ScanProgress(currentPath: standardizedURL.path),
                 scope: ScanScope(
                     rootPath: standardizedURL.path,
-                    rootDevice: rootMetadata?.identity?.device
+                    rootDevice: rootMetadata?.identity?.device,
+                    excludedPaths: configuration.excludedPaths
                 ),
                 configuration: configuration
             )
+            diagnosticSession = session
 
             do {
                 guard let root = try await Self.inspect(
@@ -107,6 +136,7 @@ struct DiskScanner {
                 }
                 try Task.checkCancellation()
                 let progress = session.progressSnapshot(at: standardizedURL)
+                session.recordProgressEmission()
                 onProgress(progress)
                 signposter.emitEvent(
                     "ScanCompleted",
@@ -117,7 +147,8 @@ struct DiskScanner {
                     root: root,
                     duration: Date().timeIntervalSince(start),
                     itemsScanned: progress.itemsScanned,
-                    unreadableItems: progress.unreadableItems
+                    unreadableItems: progress.unreadableItems,
+                    diagnostics: session.diagnosticSnapshot()
                 )
             } catch is CancellationError {
                 throw ScanFailure.cancelled
@@ -237,7 +268,8 @@ struct DiskScanner {
             if let directoryReader = session.configuration.directoryReader {
                 let urls = try directoryReader(url, [])
                 entries = urls.map {
-                    LowLevelDirectoryEntry(
+                    session.diagnostics.recordFallbackLstat()
+                    return LowLevelDirectoryEntry(
                         url: $0,
                         metadata: try? LowLevelMetadataReader.metadata(at: $0)
                     )
@@ -245,7 +277,8 @@ struct DiskScanner {
             } else {
                 entries = try BulkDirectoryReader.contents(
                     of: url,
-                    using: session.directoryBuffers
+                    using: session.directoryBuffers,
+                    diagnostics: session.diagnostics
                 )
             }
             try Task.checkCancellation()
@@ -281,6 +314,7 @@ struct DiskScanner {
                     entryMetadata = metadata
                 } else {
                     do {
+                        session.diagnostics.recordFallbackLstat()
                         entryMetadata = try LowLevelMetadataReader.metadata(at: entry.url)
                     } catch {
                         guard session.recordItem(
@@ -353,6 +387,7 @@ struct DiskScanner {
 
                 if acquiredPermit {
                     pendingTaskCount += 1
+                    session.diagnostics.recordDirectoryTask()
                     group.addTask {
                         defer { session.parallelism.release() }
                         return try await inspect(
@@ -390,6 +425,11 @@ struct DiskScanner {
                 retainedChildren.insert(RetainedNodeCandidate(node: child))
             }
         }
+
+        session.diagnostics.recordNodeDecisions(
+            retained: retainedChildren.retainedNodes.count,
+            discarded: retainedChildren.discardedDirectItems
+        )
 
         var children = retainedChildren.retainedNodes.map { $0.makeNode() }
         if retainedChildren.discardedDirectItems > 0 {
@@ -447,6 +487,7 @@ struct DiskScanner {
         let monitor = ScanActivityMonitor()
 
         let resultBox = LockedResultBox<FileNode?>()
+        session.diagnostics.recordDirectoryTask()
         let isolatedWorker = Task.detached(priority: .userInitiated) {
             do {
                 let node = try await inspect(
@@ -549,6 +590,7 @@ private final class ScanSession: @unchecked Sendable {
     let visitedDirectories = VisitedDirectoryRegistry()
     let parallelism: ScanParallelismLimiter
     let directoryBuffers: BulkDirectoryBufferPool
+    let diagnostics = ScanDiagnosticCounters()
 
     private let progressLock = NSLock()
     private var progress: ScanProgress
@@ -572,6 +614,14 @@ private final class ScanSession: @unchecked Sendable {
         defer { progressLock.unlock() }
         progress.currentPath = url.path
         return progress
+    }
+
+    func diagnosticSnapshot() -> ScanDiagnosticSnapshot {
+        diagnostics.snapshot(bufferAllocations: directoryBuffers.allocationCount)
+    }
+
+    func recordProgressEmission() {
+        diagnostics.recordProgressEmission()
     }
 
     @discardableResult
@@ -599,6 +649,7 @@ private final class ScanSession: @unchecked Sendable {
         progressLock.unlock()
 
         if let emittedProgress {
+            diagnostics.recordProgressEmission()
             onProgress(emittedProgress)
         }
         return true
@@ -622,6 +673,7 @@ private final class ScanSession: @unchecked Sendable {
         progressLock.unlock()
 
         if let emittedProgress {
+            diagnostics.recordProgressEmission()
             onProgress(emittedProgress)
         }
     }
@@ -667,6 +719,7 @@ private struct ScannerConfiguration: @unchecked Sendable {
     let stalledSubtreeTimeout: TimeInterval
     let shouldIsolateSubtree: DiskScanner.SubtreeIsolationPredicate
     let directoryReader: DiskScanner.DirectoryReader?
+    let excludedPaths: Set<String>
 }
 
 private final class ScanActivityMonitor: @unchecked Sendable {

@@ -299,7 +299,10 @@ struct SpaceLensBenchmarks {
                 try await measure(name: "full-disk", iterations: configuration.iterations) {
                     try await DiskScanner(
                         maximumParallelism: configuration.scannerParallelism,
-                        directoryBufferSize: configuration.directoryBufferSize
+                        directoryBufferSize: configuration.directoryBufferSize,
+                        excludedURLs: configuration.tracePath.map {
+                            [URL(fileURLWithPath: $0, isDirectory: true)]
+                        } ?? []
                     ).scan(url: root)
                 }
             )
@@ -394,6 +397,16 @@ struct SpaceLensBenchmarks {
                     layoutDuration * 1_000,
                     segments.count
                 )
+            )
+            let diagnostics = result.diagnostics
+            print(
+                "    counters: batches=\(diagnostics.syscallBatches) "
+                    + "fallback-lstat=\(diagnostics.fallbackLstatCalls) "
+                    + "buffers=\(diagnostics.bufferAllocations) "
+                    + "directory-tasks=\(diagnostics.directoryTasks) "
+                    + "retained=\(diagnostics.retainedNodes) "
+                    + "discarded=\(diagnostics.discardedNodes) "
+                    + "progress=\(diagnostics.progressEmissions)"
             )
         }
 

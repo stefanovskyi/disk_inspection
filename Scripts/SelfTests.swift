@@ -14,6 +14,7 @@ enum SelfTestFailure: LocalizedError {
 struct SpaceLensSelfTests {
     static func main() async throws {
         try await scannerBuildsTreeWithoutFollowingSymlinks()
+        try await diagnosticCountersTrackScannerWork()
         try await providerMatchingOnlyExaminesDirectories()
         try bulkDirectoryReaderReturnsMetadataWithoutFollowingSymlinks()
         try bulkDirectoryReaderReusesBoundedBuffersAtSupportedSizes()
@@ -28,7 +29,7 @@ struct SpaceLensSelfTests {
         try layoutLeavesRequestedFreeSpaceOpen()
         try layoutRespectsDepthLimit()
         try sessionStoreRetainsAndReplacesVolumeResults()
-        print("SpaceLens self-tests passed (15/15)")
+        print("SpaceLens self-tests passed (16/16)")
     }
 
     private static func scannerBuildsTreeWithoutFollowingSymlinks() async throws {
@@ -83,6 +84,32 @@ struct SpaceLensSelfTests {
         try expect((metadataByName["file.bin"]?.size ?? 0) > 0, "Bulk reader lost allocated file size")
         try expect(metadataByName["folder-link"]?.kind == .symbolicLink, "Bulk reader followed a symbolic link")
         try expect(metadataByName.values.allSatisfy { $0.identity != nil }, "Bulk reader lost device/inode identities")
+    }
+
+    private static func diagnosticCountersTrackScannerWork() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensDiagnostics-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data([0x41]).write(to: root.appendingPathComponent("first.bin"))
+        try Data([0x42]).write(to: root.appendingPathComponent("second.bin"))
+
+        let scanner = DiskScanner(directoryReader: { url, keys in
+            try FileManager.default.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: keys,
+                options: []
+            )
+        })
+        let result = try await scanner.scan(url: root)
+
+        try expect(result.diagnostics.syscallBatches == 0, "Custom reader recorded bulk syscall batches")
+        try expect(result.diagnostics.fallbackLstatCalls == 2, "Fallback lstat calls were not counted")
+        try expect(result.diagnostics.bufferAllocations == 0, "Custom reader allocated a bulk buffer")
+        try expect(result.diagnostics.directoryTasks == 0, "Flat scan created a directory task")
+        try expect(result.diagnostics.retainedNodes == 2, "Retained node decisions were not counted")
+        try expect(result.diagnostics.discardedNodes == 0, "Flat scan discarded a node")
+        try expect(result.diagnostics.progressEmissions >= 2, "Progress emissions were not counted")
     }
 
     private static func providerMatchingOnlyExaminesDirectories() async throws {
@@ -315,7 +342,7 @@ struct SpaceLensSelfTests {
     }
 
     private static func scanScopeStaysInsideTheSelectedVolume() throws {
-        let rootScope = ScanScope(rootPath: "/", rootDevice: 10)
+        let rootScope = ScanScope(rootPath: "/", rootDevice: 10, excludedPaths: [])
         try expect(
             rootScope.allows(path: "/Users/me", identity: FileIdentity(device: 10, inode: 2)),
             "Root scope rejected a logical main-disk folder"
@@ -329,10 +356,22 @@ struct SpaceLensSelfTests {
             "Root scope crossed into an external disk"
         )
 
-        let folderScope = ScanScope(rootPath: "/tmp/example", rootDevice: 10)
+        let folderScope = ScanScope(rootPath: "/tmp/example", rootDevice: 10, excludedPaths: [])
         try expect(
             !folderScope.allows(path: "/tmp/example/mount", identity: FileIdentity(device: 11, inode: 5)),
             "Folder scope crossed a nested volume boundary"
+        )
+        let profilingScope = ScanScope(
+            rootPath: "/",
+            rootDevice: 10,
+            excludedPaths: ["/Users/me/profile.trace"]
+        )
+        try expect(
+            !profilingScope.allows(
+                path: "/Users/me/profile.trace/run/data",
+                identity: FileIdentity(device: 10, inode: 6)
+            ),
+            "Full-disk profiling recursed into its active trace bundle"
         )
     }
 

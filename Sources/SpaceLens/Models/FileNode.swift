@@ -69,6 +69,31 @@ struct ScanResult: Equatable, Sendable {
     let duration: TimeInterval
     let itemsScanned: Int
     let unreadableItems: Int
+    let diagnostics: ScanDiagnosticSnapshot
+
+    init(
+        root: FileNode,
+        duration: TimeInterval,
+        itemsScanned: Int,
+        unreadableItems: Int,
+        diagnostics: ScanDiagnosticSnapshot = .init()
+    ) {
+        self.root = root
+        self.duration = duration
+        self.itemsScanned = itemsScanned
+        self.unreadableItems = unreadableItems
+        self.diagnostics = diagnostics
+    }
+}
+
+struct ScanDiagnosticSnapshot: Codable, Equatable, Sendable {
+    var syscallBatches = 0
+    var fallbackLstatCalls = 0
+    var bufferAllocations = 0
+    var directoryTasks = 0
+    var retainedNodes = 0
+    var discardedNodes = 0
+    var progressEmissions = 0
 }
 
 enum ScanFailure: LocalizedError {

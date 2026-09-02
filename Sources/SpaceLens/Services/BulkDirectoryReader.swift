@@ -85,7 +85,8 @@ enum BulkDirectoryReader {
 
     static func contents(
         of directoryURL: URL,
-        using bufferPool: BulkDirectoryBufferPool
+        using bufferPool: BulkDirectoryBufferPool,
+        diagnostics: ScanDiagnosticCounters? = nil
     ) throws -> [LowLevelDirectoryEntry] {
         let signposter = SpaceLensSignposts.directoryRead
         let measuresSignpost = signposter.isEnabled
@@ -125,12 +126,14 @@ enum BulkDirectoryReader {
 
                 guard count >= 0 else { throw LowLevelMetadataReader.posixError() }
                 guard count > 0 else { return entries }
+                diagnostics?.recordSyscallBatch()
                 measuredEntryCount += Int(count)
 
                 try parseBatch(
                     buffer,
                     entryCount: count,
                     parentURL: directoryURL,
+                    diagnostics: diagnostics,
                     appendingTo: &entries
                 )
             }
@@ -141,6 +144,7 @@ enum BulkDirectoryReader {
         _ buffer: UnsafeMutableRawBufferPointer,
         entryCount: Int32,
         parentURL: URL,
+        diagnostics: ScanDiagnosticCounters?,
         appendingTo entries: inout [LowLevelDirectoryEntry]
     ) throws {
         let bytes = UnsafeRawBufferPointer(buffer)
@@ -149,7 +153,8 @@ enum BulkDirectoryReader {
             let entry = try parseEntry(
                 in: bytes,
                 at: entryOffset,
-                parentURL: parentURL
+                parentURL: parentURL,
+                diagnostics: diagnostics
             )
             entries.append(entry.value)
             entryOffset += entry.length
@@ -159,7 +164,8 @@ enum BulkDirectoryReader {
     private static func parseEntry(
         in batch: UnsafeRawBufferPointer,
         at offset: Int,
-        parentURL: URL
+        parentURL: URL,
+        diagnostics: ScanDiagnosticCounters?
     ) throws -> (value: LowLevelDirectoryEntry, length: Int) {
         var lengthCursor = AttributeCursor(bytes: batch, offset: offset, limit: batch.count)
         let recordLength = Int(try lengthCursor.read(UInt32.self, default: 0))
@@ -267,6 +273,7 @@ enum BulkDirectoryReader {
                   bulkMetadata.identity != nil || bulkMetadata.kind != .directory {
             metadata = bulkMetadata
         } else {
+            diagnostics?.recordFallbackLstat()
             metadata = try? LowLevelMetadataReader.metadata(at: entryURL)
         }
 
@@ -304,6 +311,42 @@ enum BulkDirectoryReader {
         let rawName = UnsafeRawBufferPointer(rebasing: bytes[start..<(start + length)])
         let terminator = rawName.firstIndex(of: 0) ?? rawName.endIndex
         return String(decoding: rawName[..<terminator], as: UTF8.self)
+    }
+}
+
+final class ScanDiagnosticCounters: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = ScanDiagnosticSnapshot()
+
+    func recordSyscallBatch() {
+        lock.withLock { value.syscallBatches += 1 }
+    }
+
+    func recordFallbackLstat() {
+        lock.withLock { value.fallbackLstatCalls += 1 }
+    }
+
+    func recordDirectoryTask() {
+        lock.withLock { value.directoryTasks += 1 }
+    }
+
+    func recordNodeDecisions(retained: Int, discarded: Int) {
+        lock.withLock {
+            value.retainedNodes += retained
+            value.discardedNodes += discarded
+        }
+    }
+
+    func recordProgressEmission() {
+        lock.withLock { value.progressEmissions += 1 }
+    }
+
+    func snapshot(bufferAllocations: Int) -> ScanDiagnosticSnapshot {
+        lock.withLock {
+            var snapshot = value
+            snapshot.bufferAllocations = bufferAllocations
+            return snapshot
+        }
     }
 }
 

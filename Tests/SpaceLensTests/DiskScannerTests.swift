@@ -106,6 +106,34 @@ final class DiskScannerTests: XCTestCase {
 
         XCTAssertEqual(result.itemsScanned, 4)
         XCTAssertEqual(recorder.latest?.itemsScanned, 4)
+        XCTAssertGreaterThanOrEqual(result.diagnostics.syscallBatches, 1)
+        XCTAssertEqual(result.diagnostics.bufferAllocations, 1)
+        XCTAssertEqual(result.diagnostics.retainedNodes, 3)
+        XCTAssertEqual(result.diagnostics.discardedNodes, 0)
+        XCTAssertGreaterThanOrEqual(result.diagnostics.progressEmissions, 2)
+    }
+
+    func testDiagnosticCountersIncludeFallbackMetadataCalls() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensDiagnostics-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data([0x41]).write(to: root.appendingPathComponent("first.bin"))
+        try Data([0x42]).write(to: root.appendingPathComponent("second.bin"))
+
+        let scanner = DiskScanner(directoryReader: { url, keys in
+            try FileManager.default.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: keys,
+                options: []
+            )
+        })
+        let result = try await scanner.scan(url: root)
+
+        XCTAssertEqual(result.diagnostics.syscallBatches, 0)
+        XCTAssertEqual(result.diagnostics.fallbackLstatCalls, 2)
+        XCTAssertEqual(result.diagnostics.bufferAllocations, 0)
+        XCTAssertEqual(result.diagnostics.directoryTasks, 0)
     }
 
     func testProviderMatchingOnlyExaminesDirectories() async throws {
@@ -181,11 +209,13 @@ final class DiskScannerTests: XCTestCase {
         XCTAssertEqual(result.itemsScanned, 151)
         XCTAssertEqual(result.root.itemCount, 151)
         XCTAssertEqual(result.root.directItemCount, 150)
+        XCTAssertEqual(result.diagnostics.retainedNodes, DiskScanner.retainedChildLimit)
+        XCTAssertEqual(result.diagnostics.discardedNodes, 150 - DiskScanner.retainedChildLimit)
         XCTAssertEqual(result.root.children.reduce(Int64(0), { $0 + $1.size }), result.root.size)
     }
 
     func testScanScopeRejectsDuplicateAndNestedVolumes() {
-        let rootScope = ScanScope(rootPath: "/", rootDevice: 10)
+        let rootScope = ScanScope(rootPath: "/", rootDevice: 10, excludedPaths: [])
         XCTAssertTrue(
             rootScope.allows(
                 path: "/Users/me",
@@ -205,11 +235,23 @@ final class DiskScannerTests: XCTestCase {
             )
         )
 
-        let folderScope = ScanScope(rootPath: "/tmp/example", rootDevice: 10)
+        let folderScope = ScanScope(rootPath: "/tmp/example", rootDevice: 10, excludedPaths: [])
         XCTAssertFalse(
             folderScope.allows(
                 path: "/tmp/example/mount",
                 identity: FileIdentity(device: 11, inode: 5)
+            )
+        )
+
+        let profilingScope = ScanScope(
+            rootPath: "/",
+            rootDevice: 10,
+            excludedPaths: ["/Users/me/profile.trace"]
+        )
+        XCTAssertFalse(
+            profilingScope.allows(
+                path: "/Users/me/profile.trace/run/data",
+                identity: FileIdentity(device: 10, inode: 6)
             )
         )
     }
