@@ -15,6 +15,7 @@ struct SpaceLensSelfTests {
     static func main() async throws {
         try await scannerBuildsTreeWithoutFollowingSymlinks()
         try bulkDirectoryReaderReturnsMetadataWithoutFollowingSymlinks()
+        try bulkDirectoryReaderReusesBoundedBuffersAtSupportedSizes()
         try await largeDirectoriesKeepABoundedResultTree()
         try await cancellationStopsTheScannerWorker()
         try await stalledProviderSubtreeIsSkipped()
@@ -26,7 +27,7 @@ struct SpaceLensSelfTests {
         try layoutLeavesRequestedFreeSpaceOpen()
         try layoutRespectsDepthLimit()
         try sessionStoreRetainsAndReplacesVolumeResults()
-        print("SpaceLens self-tests passed (13/13)")
+        print("SpaceLens self-tests passed (14/14)")
     }
 
     private static func scannerBuildsTreeWithoutFollowingSymlinks() async throws {
@@ -81,6 +82,40 @@ struct SpaceLensSelfTests {
         try expect((metadataByName["file.bin"]?.size ?? 0) > 0, "Bulk reader lost allocated file size")
         try expect(metadataByName["folder-link"]?.kind == .symbolicLink, "Bulk reader followed a symbolic link")
         try expect(metadataByName.values.allSatisfy { $0.identity != nil }, "Bulk reader lost device/inode identities")
+    }
+
+    private static func bulkDirectoryReaderReusesBoundedBuffersAtSupportedSizes() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensBufferPool-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data([0x41]).write(to: root.appendingPathComponent("file.bin"))
+
+        for bufferSize in [32, 64, 256].map({ $0 * 1024 }) {
+            let pool = BulkDirectoryBufferPool(capacity: 2, bufferSize: bufferSize)
+            for _ in 0..<3 {
+                let entries = try BulkDirectoryReader.contents(of: root, using: pool)
+                try expect(
+                    entries.compactMap(\.metadata?.name) == ["file.bin"],
+                    "Bulk reader changed results at \(bufferSize / 1024) KB"
+                )
+            }
+            try expect(pool.bufferSize == bufferSize, "Bulk reader changed the configured buffer size")
+            try expect(pool.pooledBufferCount == 1, "Bulk reader did not reuse its pooled buffer")
+            try expect(pool.allocationCount == 1, "Bulk reader allocated a buffer per directory read")
+        }
+
+        let boundedPool = BulkDirectoryBufferPool(capacity: 1, bufferSize: 32 * 1024)
+        boundedPool.withBuffer { _, _ in
+            boundedPool.withBuffer { _, _ in
+                // The second concurrent lease is deliberately unpooled so a
+                // timed-out provider syscall cannot block unrelated reads.
+            }
+        }
+        try expect(
+            boundedPool.pooledBufferCount == boundedPool.capacity,
+            "Bulk reader retained more buffers than its configured capacity"
+        )
     }
 
     private static func layoutPreservesHierarchyAndProportion() throws {

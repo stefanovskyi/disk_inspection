@@ -28,6 +28,34 @@ final class DiskScannerTests: XCTestCase {
         XCTAssertTrue(metadataByName.values.allSatisfy { $0.identity != nil })
     }
 
+    func testBulkDirectoryReaderReusesBoundedBuffersAtSupportedSizes() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensBufferPool-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data([0x41]).write(to: root.appendingPathComponent("file.bin"))
+
+        for bufferSize in [32, 64, 256].map({ $0 * 1024 }) {
+            let pool = BulkDirectoryBufferPool(capacity: 2, bufferSize: bufferSize)
+            for _ in 0..<3 {
+                let entries = try BulkDirectoryReader.contents(of: root, using: pool)
+                XCTAssertEqual(entries.map(\.metadata?.name), ["file.bin"])
+            }
+            XCTAssertEqual(pool.bufferSize, bufferSize)
+            XCTAssertEqual(pool.pooledBufferCount, 1)
+            XCTAssertEqual(pool.allocationCount, 1)
+        }
+
+        let boundedPool = BulkDirectoryBufferPool(capacity: 1, bufferSize: 32 * 1024)
+        boundedPool.withBuffer { _, _ in
+            boundedPool.withBuffer { _, _ in
+                XCTAssertEqual(boundedPool.pooledBufferCount, 1)
+                XCTAssertEqual(boundedPool.allocationCount, 2)
+            }
+        }
+        XCTAssertEqual(boundedPool.pooledBufferCount, boundedPool.capacity)
+    }
+
     func testScannerBuildsSortedTreeAndDoesNotFollowSymbolicLinks() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("SpaceLensTests-\(UUID().uuidString)", isDirectory: true)

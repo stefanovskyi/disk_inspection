@@ -70,11 +70,23 @@ enum LowLevelMetadataReader {
 /// Reads directory names and metadata in kernel-sized batches with getattrlistbulk(2).
 /// The syscall reports symbolic-link metadata without following the link.
 enum BulkDirectoryReader {
-    private static let bufferSize = 256 * 1024
+    static let minimumBufferSize = 4 * 1024
+    static let defaultBufferSize = 64 * 1024
     private static let signpostEntryThreshold = 256
     private static let signpostDurationThresholdNanoseconds: UInt64 = 1_000_000
+    private static let standaloneBufferPool = BulkDirectoryBufferPool(
+        capacity: 1,
+        bufferSize: defaultBufferSize
+    )
 
     static func contents(of directoryURL: URL) throws -> [LowLevelDirectoryEntry] {
+        try contents(of: directoryURL, using: standaloneBufferPool)
+    }
+
+    static func contents(
+        of directoryURL: URL,
+        using bufferPool: BulkDirectoryBufferPool
+    ) throws -> [LowLevelDirectoryEntry] {
         let signposter = SpaceLensSignposts.directoryRead
         let measuresSignpost = signposter.isEnabled
         let signpostStart = measuresSignpost ? DispatchTime.now().uptimeNanoseconds : 0
@@ -99,46 +111,48 @@ enum BulkDirectoryReader {
         guard descriptor >= 0 else { throw LowLevelMetadataReader.posixError() }
         defer { Darwin.close(descriptor) }
 
-        var requested = attrlist()
-        requested.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
-        requested.commonattr = UInt32(ATTR_CMN_RETURNED_ATTRS)
-            | UInt32(ATTR_CMN_NAME)
-            | UInt32(ATTR_CMN_DEVID)
-            | UInt32(ATTR_CMN_OBJTYPE)
-            | UInt32(ATTR_CMN_FILEID)
-            | UInt32(ATTR_CMN_ERROR)
-        requested.fileattr = UInt32(ATTR_FILE_TOTALSIZE | ATTR_FILE_ALLOCSIZE)
+        return try bufferPool.withBuffer { buffer, requestedAttributes in
+            var entries: [LowLevelDirectoryEntry] = []
 
-        var entries: [LowLevelDirectoryEntry] = []
-        var buffer = [UInt8](repeating: 0, count: bufferSize)
-
-        while true {
-            let count = buffer.withUnsafeMutableBytes { bytes in
-                getattrlistbulk(
+            while true {
+                let count = getattrlistbulk(
                     descriptor,
-                    &requested,
-                    bytes.baseAddress,
-                    bytes.count,
+                    requestedAttributes,
+                    buffer.baseAddress,
+                    buffer.count,
                     0
                 )
-            }
 
-            guard count >= 0 else { throw LowLevelMetadataReader.posixError() }
-            guard count > 0 else { return entries }
-            measuredEntryCount += Int(count)
+                guard count >= 0 else { throw LowLevelMetadataReader.posixError() }
+                guard count > 0 else { return entries }
+                measuredEntryCount += Int(count)
 
-            try buffer.withUnsafeBytes { bytes in
-                var entryOffset = 0
-                for _ in 0..<count {
-                    let entry = try parseEntry(
-                        in: bytes,
-                        at: entryOffset,
-                        parentURL: directoryURL
-                    )
-                    entries.append(entry.value)
-                    entryOffset += entry.length
-                }
+                try parseBatch(
+                    buffer,
+                    entryCount: count,
+                    parentURL: directoryURL,
+                    appendingTo: &entries
+                )
             }
+        }
+    }
+
+    private static func parseBatch(
+        _ buffer: UnsafeMutableRawBufferPointer,
+        entryCount: Int32,
+        parentURL: URL,
+        appendingTo entries: inout [LowLevelDirectoryEntry]
+    ) throws {
+        let bytes = UnsafeRawBufferPointer(buffer)
+        var entryOffset = 0
+        for _ in 0..<Int(entryCount) {
+            let entry = try parseEntry(
+                in: bytes,
+                at: entryOffset,
+                parentURL: parentURL
+            )
+            entries.append(entry.value)
+            entryOffset += entry.length
         }
     }
 
@@ -290,6 +304,125 @@ enum BulkDirectoryReader {
         let rawName = UnsafeRawBufferPointer(rebasing: bytes[start..<(start + length)])
         let terminator = rawName.firstIndex(of: 0) ?? rawName.endIndex
         return String(decoding: rawName[..<terminator], as: UTF8.self)
+    }
+}
+
+/// Retains at most one reusable, uninitialized syscall buffer per scan worker.
+/// If an isolated provider syscall outlives its timeout while holding every pooled
+/// buffer, later reads use short-lived overflow buffers rather than waiting on it.
+final class BulkDirectoryBufferPool: @unchecked Sendable {
+    let capacity: Int
+    let bufferSize: Int
+
+    private let lock = NSLock()
+    private var availableBuffers: [BulkDirectoryBuffer] = []
+    private var pooledAllocations = 0
+    private var totalAllocations = 0
+
+    init(capacity: Int, bufferSize: Int) {
+        precondition(capacity > 0)
+        precondition(bufferSize >= BulkDirectoryReader.minimumBufferSize)
+        self.capacity = capacity
+        self.bufferSize = bufferSize
+    }
+
+    var pooledBufferCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return pooledAllocations
+    }
+
+    var allocationCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return totalAllocations
+    }
+
+    func withBuffer<Result>(
+        _ body: (
+            UnsafeMutableRawBufferPointer,
+            UnsafeMutablePointer<attrlist>
+        ) throws -> Result
+    ) rethrows -> Result {
+        let lease = acquire()
+        defer { release(lease) }
+
+        return try lease.buffer.withUnsafeResources(body)
+    }
+
+    private func acquire() -> BufferLease {
+        lock.lock()
+        if let buffer = availableBuffers.popLast() {
+            lock.unlock()
+            return BufferLease(buffer: buffer, isPooled: true)
+        }
+
+        let isPooled = pooledAllocations < capacity
+        if isPooled {
+            pooledAllocations += 1
+        }
+        totalAllocations += 1
+        lock.unlock()
+
+        return BufferLease(
+            buffer: BulkDirectoryBuffer(byteCount: bufferSize),
+            isPooled: isPooled
+        )
+    }
+
+    private func release(_ lease: BufferLease) {
+        guard lease.isPooled else { return }
+        lock.lock()
+        availableBuffers.append(lease.buffer)
+        lock.unlock()
+    }
+}
+
+private struct BufferLease {
+    let buffer: BulkDirectoryBuffer
+    let isPooled: Bool
+}
+
+private final class BulkDirectoryBuffer {
+    private let bytes: UnsafeMutableRawPointer
+    private let byteCount: Int
+    private var requestedAttributes: attrlist
+
+    init(byteCount: Int) {
+        self.byteCount = byteCount
+        bytes = UnsafeMutableRawPointer.allocate(
+            byteCount: byteCount,
+            alignment: MemoryLayout<UInt64>.alignment
+        )
+
+        var requested = attrlist()
+        requested.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
+        requested.commonattr = UInt32(ATTR_CMN_RETURNED_ATTRS)
+            | UInt32(ATTR_CMN_NAME)
+            | UInt32(ATTR_CMN_DEVID)
+            | UInt32(ATTR_CMN_OBJTYPE)
+            | UInt32(ATTR_CMN_FILEID)
+            | UInt32(ATTR_CMN_ERROR)
+        requested.fileattr = UInt32(ATTR_FILE_TOTALSIZE | ATTR_FILE_ALLOCSIZE)
+        requestedAttributes = requested
+    }
+
+    deinit {
+        bytes.deallocate()
+    }
+
+    func withUnsafeResources<Result>(
+        _ body: (
+            UnsafeMutableRawBufferPointer,
+            UnsafeMutablePointer<attrlist>
+        ) throws -> Result
+    ) rethrows -> Result {
+        try withUnsafeMutablePointer(to: &requestedAttributes) { requestedAttributes in
+            try body(
+                UnsafeMutableRawBufferPointer(start: bytes, count: byteCount),
+                requestedAttributes
+            )
+        }
     }
 }
 

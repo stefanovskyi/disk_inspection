@@ -33,6 +33,7 @@ struct BenchmarkConfiguration {
     let providerTimeout: TimeInterval
     let externalPath: String?
     let scannerParallelism: Int
+    let directoryBufferSize: Int
     let outputDirectory: URL
     let runID: String
     let gitRevision: String
@@ -73,6 +74,18 @@ struct BenchmarkConfiguration {
         }
 
         let suggestedParallelism = max(2, min(ProcessInfo.processInfo.activeProcessorCount, 8))
+        let directoryBufferKilobytes = try positiveInteger(
+            "SPACELENS_BENCHMARK_DIRECTORY_BUFFER_KB",
+            default: BulkDirectoryReader.defaultBufferSize / 1024,
+            environment: environment
+        )
+        guard directoryBufferKilobytes >= BulkDirectoryReader.minimumBufferSize / 1024,
+              directoryBufferKilobytes <= Int.max / 1024 else {
+            throw BenchmarkFailure.invalidConfiguration(
+                "SPACELENS_BENCHMARK_DIRECTORY_BUFFER_KB must be at least "
+                    + "\(BulkDirectoryReader.minimumBufferSize / 1024)"
+            )
+        }
         let fullDiskAccessGranted = requestedFixtures.contains("full-disk")
             ? FullDiskAccessChecker().status(for: URL(fileURLWithPath: "/")) == .granted
             : nil
@@ -97,6 +110,7 @@ struct BenchmarkConfiguration {
                 default: suggestedParallelism,
                 environment: environment
             ),
+            directoryBufferSize: directoryBufferKilobytes * 1024,
             outputDirectory: URL(
                 fileURLWithPath: environment["SPACELENS_BENCHMARK_OUTPUT_DIR"]
                     ?? FileManager.default.currentDirectoryPath,
@@ -181,6 +195,7 @@ struct SpaceLensBenchmarks {
         print("Run ID: \(configuration.runID)")
         print("Iterations: \(configuration.iterations)")
         print("Scanner parallelism: \(configuration.scannerParallelism)")
+        print("Directory buffer: \(configuration.directoryBufferSize / 1024) KB")
         print("Fixture setup and cleanup are not timed. Results are warm-cache measurements.")
 
         var measurements: [BenchmarkMeasurement] = []
@@ -191,7 +206,10 @@ struct SpaceLensBenchmarks {
             try createFlatFixture(at: root, fileCount: configuration.flatFileCount)
             measurements.append(
                 try await measure(name: "flat", iterations: configuration.iterations) {
-                    try await DiskScanner(maximumParallelism: configuration.scannerParallelism).scan(url: root)
+                    try await DiskScanner(
+                        maximumParallelism: configuration.scannerParallelism,
+                        directoryBufferSize: configuration.directoryBufferSize
+                    ).scan(url: root)
                 }
             )
         }
@@ -202,7 +220,10 @@ struct SpaceLensBenchmarks {
             try createDeepFixture(at: root, directoryCount: configuration.deepDirectoryCount)
             measurements.append(
                 try await measure(name: "deep", iterations: configuration.iterations) {
-                    try await DiskScanner(maximumParallelism: configuration.scannerParallelism).scan(url: root)
+                    try await DiskScanner(
+                        maximumParallelism: configuration.scannerParallelism,
+                        directoryBufferSize: configuration.directoryBufferSize
+                    ).scan(url: root)
                 }
             )
         }
@@ -222,7 +243,10 @@ struct SpaceLensBenchmarks {
             )
             measurements.append(
                 try await measure(name: "mixed", iterations: configuration.iterations) {
-                    try await DiskScanner(maximumParallelism: configuration.scannerParallelism).scan(url: root)
+                    try await DiskScanner(
+                        maximumParallelism: configuration.scannerParallelism,
+                        directoryBufferSize: configuration.directoryBufferSize
+                    ).scan(url: root)
                 }
             )
         }
@@ -235,6 +259,7 @@ struct SpaceLensBenchmarks {
                     let gate = DispatchSemaphore(value: 0)
                     let scanner = DiskScanner(
                         maximumParallelism: configuration.scannerParallelism,
+                        directoryBufferSize: configuration.directoryBufferSize,
                         stalledSubtreeTimeout: configuration.providerTimeout,
                         shouldIsolateSubtree: { $0.lastPathComponent == "Blocked" },
                         directoryReader: { url, keys in
@@ -272,7 +297,10 @@ struct SpaceLensBenchmarks {
             print("Full-disk fixture is read-only and will scan the startup volume: /")
             measurements.append(
                 try await measure(name: "full-disk", iterations: configuration.iterations) {
-                    try await DiskScanner(maximumParallelism: configuration.scannerParallelism).scan(url: root)
+                    try await DiskScanner(
+                        maximumParallelism: configuration.scannerParallelism,
+                        directoryBufferSize: configuration.directoryBufferSize
+                    ).scan(url: root)
                 }
             )
         }
@@ -290,7 +318,10 @@ struct SpaceLensBenchmarks {
                 print("External fixture is read-only and will scan: \(externalURL.path)")
                 measurements.append(
                     try await measure(name: "external", iterations: configuration.iterations) {
-                        try await DiskScanner(maximumParallelism: configuration.scannerParallelism).scan(url: externalURL)
+                        try await DiskScanner(
+                            maximumParallelism: configuration.scannerParallelism,
+                            directoryBufferSize: configuration.directoryBufferSize
+                        ).scan(url: externalURL)
                     }
                 )
             } else {

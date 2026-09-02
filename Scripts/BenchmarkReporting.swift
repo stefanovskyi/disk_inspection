@@ -14,6 +14,7 @@ private struct BenchmarkConfigurationReport: Codable {
     let iterations: Int
     let selectedFixtures: [String]
     let scannerParallelism: Int
+    let directoryBufferSizeBytes: Int
     let flatFileCount: Int
     let deepDirectoryCount: Int
     let mixedDepth: Int
@@ -118,7 +119,7 @@ enum BenchmarkReportWriter {
     ) -> BenchmarkReport {
         let processInfo = ProcessInfo.processInfo
         return BenchmarkReport(
-            schemaVersion: 1,
+            schemaVersion: 2,
             runID: configuration.runID,
             startedAt: startedAt,
             finishedAt: finishedAt,
@@ -140,6 +141,7 @@ enum BenchmarkReportWriter {
                 iterations: configuration.iterations,
                 selectedFixtures: configuration.selectedFixtures.sorted(),
                 scannerParallelism: configuration.scannerParallelism,
+                directoryBufferSizeBytes: configuration.directoryBufferSize,
                 flatFileCount: configuration.flatFileCount,
                 deepDirectoryCount: configuration.deepDirectoryCount,
                 mixedDepth: configuration.mixedDepth,
@@ -196,7 +198,8 @@ enum BenchmarkReportWriter {
             "schema_version", "run_id", "started_at", "git_revision", "git_dirty",
             "operating_system", "hardware_model", "active_processor_count",
             "physical_memory_bytes", "peak_resident_memory_bytes", "scanner_parallelism",
-            "fixture", "iteration", "scan_seconds", "items_scanned", "items_per_second",
+            "directory_buffer_size_bytes", "fixture", "iteration", "scan_seconds",
+            "items_scanned", "items_per_second",
             "unreadable_items", "layout_milliseconds", "segment_count"
         ]
         let formatter = ISO8601DateFormatter()
@@ -217,6 +220,7 @@ enum BenchmarkReportWriter {
                     String(report.system.physicalMemoryBytes),
                     String(report.peakResidentMemoryBytes),
                     String(report.configuration.scannerParallelism),
+                    String(report.configuration.directoryBufferSizeBytes),
                     fixture.name,
                     String(iteration.iteration),
                     String(format: "%.9f", iteration.scanDurationSeconds),

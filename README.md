@@ -7,7 +7,7 @@ SpaceLens is a native macOS disk inspector with an interactive sunburst chart. I
 - Automatic mounted-volume and external-disk discovery
 - Up-front Full Disk Access guidance before scanning the startup disk
 - Asynchronous, cancellable folder and volume scanning
-- Bounded parallel subtree scanning with batched `getattrlistbulk(2)` metadata reads and live elapsed time
+- Bounded parallel subtree scanning with pooled `getattrlistbulk(2)` metadata buffers and live elapsed time
 - In-memory scan results for inspected disks and selected folders, with explicit view-or-rescan choices
 - Mount-aware main-disk scans that avoid APFS aliases and external disks
 - Bounded scan results that group smaller items instead of retaining millions of leaf nodes
@@ -59,7 +59,7 @@ SPACELENS_BENCHMARK_EXTERNAL_PATH="/Volumes/TestDisk/SpaceLensFixture" \
 make benchmark
 ```
 
-Fixture sizes, iteration count, scanner concurrency, output location, and selected cases can be controlled with `SPACELENS_BENCHMARK_ITERATIONS`, `SPACELENS_BENCHMARK_PARALLELISM`, `SPACELENS_BENCHMARK_OUTPUT_DIR`, `SPACELENS_BENCHMARK_FIXTURES`, `SPACELENS_BENCHMARK_FLAT_FILES`, `SPACELENS_BENCHMARK_DEEP_DIRECTORIES`, `SPACELENS_BENCHMARK_MIXED_DEPTH`, `SPACELENS_BENCHMARK_MIXED_FANOUT`, `SPACELENS_BENCHMARK_MIXED_FILES_PER_DIRECTORY`, and `SPACELENS_BENCHMARK_PROVIDER_TIMEOUT_MS`.
+Fixture sizes, iteration count, scanner concurrency, directory-buffer size, output location, and selected cases can be controlled with `SPACELENS_BENCHMARK_ITERATIONS`, `SPACELENS_BENCHMARK_PARALLELISM`, `SPACELENS_BENCHMARK_DIRECTORY_BUFFER_KB`, `SPACELENS_BENCHMARK_OUTPUT_DIR`, `SPACELENS_BENCHMARK_FIXTURES`, `SPACELENS_BENCHMARK_FLAT_FILES`, `SPACELENS_BENCHMARK_DEEP_DIRECTORIES`, `SPACELENS_BENCHMARK_MIXED_DEPTH`, `SPACELENS_BENCHMARK_MIXED_FANOUT`, `SPACELENS_BENCHMARK_MIXED_FILES_PER_DIRECTORY`, and `SPACELENS_BENCHMARK_PROVIDER_TIMEOUT_MS`.
 
 SpaceLens also emits Instruments signposts under the `local.spacelens.app` subsystem in the `Scan`, `DirectoryRead`, `ChartLayout`, `ProviderSubtree`, and `Benchmark` categories. Capture the Logging instrument while running either the packaged app or the benchmark to correlate benchmark iterations and whole scans with sampled large or slow filesystem reads, provider timeouts, and sunburst layout work. Directory-read events include entry counts and duration; small reads under one millisecond are omitted to keep full-disk traces manageable. Signpost metadata contains fixture names, counts, and configuration, not filesystem paths.
 

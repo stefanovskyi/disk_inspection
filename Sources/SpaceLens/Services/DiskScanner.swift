@@ -47,13 +47,16 @@ struct DiskScanner {
 
     init(
         maximumParallelism: Int? = nil,
+        directoryBufferSize: Int = BulkDirectoryReader.defaultBufferSize,
         stalledSubtreeTimeout: TimeInterval = 5,
         shouldIsolateSubtree: SubtreeIsolationPredicate? = nil,
         directoryReader: DirectoryReader? = nil
     ) {
         let suggestedParallelism = max(2, min(ProcessInfo.processInfo.activeProcessorCount, 8))
+        precondition(directoryBufferSize >= BulkDirectoryReader.minimumBufferSize)
         configuration = ScannerConfiguration(
             maximumParallelism: max(maximumParallelism ?? suggestedParallelism, 1),
+            directoryBufferSize: directoryBufferSize,
             stalledSubtreeTimeout: stalledSubtreeTimeout,
             shouldIsolateSubtree: shouldIsolateSubtree ?? { url in
                 Self.shouldIsolateProtectedSubtree(url)
@@ -239,7 +242,10 @@ struct DiskScanner {
                     )
                 }
             } else {
-                entries = try BulkDirectoryReader.contents(of: url)
+                entries = try BulkDirectoryReader.contents(
+                    of: url,
+                    using: session.directoryBuffers
+                )
             }
             try Task.checkCancellation()
             guard activityMonitor?.isActive != false else { throw CancellationError() }
@@ -477,6 +483,7 @@ private final class ScanSession: @unchecked Sendable {
     let configuration: ScannerConfiguration
     let visitedDirectories = VisitedDirectoryRegistry()
     let parallelism: ScanParallelismLimiter
+    let directoryBuffers: BulkDirectoryBufferPool
 
     private let progressLock = NSLock()
     private var progress: ScanProgress
@@ -488,6 +495,10 @@ private final class ScanSession: @unchecked Sendable {
         self.configuration = configuration
         parallelism = ScanParallelismLimiter(
             permitCount: configuration.maximumParallelism
+        )
+        directoryBuffers = BulkDirectoryBufferPool(
+            capacity: configuration.maximumParallelism,
+            bufferSize: configuration.directoryBufferSize
         )
     }
 
@@ -584,6 +595,7 @@ private final class VisitedDirectoryRegistry: @unchecked Sendable {
 
 private struct ScannerConfiguration: @unchecked Sendable {
     let maximumParallelism: Int
+    let directoryBufferSize: Int
     let stalledSubtreeTimeout: TimeInterval
     let shouldIsolateSubtree: DiskScanner.SubtreeIsolationPredicate
     let directoryReader: DiskScanner.DirectoryReader?
