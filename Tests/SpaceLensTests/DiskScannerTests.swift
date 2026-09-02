@@ -3,6 +3,8 @@ import XCTest
 @testable import SpaceLens
 
 final class DiskScannerTests: XCTestCase {
+    private struct StopStreaming: Error {}
+
     func testBulkDirectoryReaderReturnsMetadataWithoutFollowingSymlinks() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("SpaceLensBulkReader-\(UUID().uuidString)", isDirectory: true)
@@ -54,6 +56,54 @@ final class DiskScannerTests: XCTestCase {
             }
         }
         XCTAssertEqual(boundedPool.pooledBufferCount, boundedPool.capacity)
+    }
+
+    func testBulkDirectoryReaderStreamsEntriesAndStopsWithoutReadingLaterBatches() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensStreamingReader-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for index in 0..<500 {
+            _ = FileManager.default.createFile(
+                atPath: root.appendingPathComponent("file-\(index).bin").path,
+                contents: Data([UInt8(index % 255)])
+            )
+        }
+
+        let completeDiagnostics = ScanDiagnosticCounters()
+        let completePool = BulkDirectoryBufferPool(capacity: 1, bufferSize: 4 * 1024)
+        var completeCount = 0
+        try BulkDirectoryReader.forEachEntry(
+            of: root,
+            using: completePool,
+            diagnostics: completeDiagnostics
+        ) { _ in
+            completeCount += 1
+        }
+        XCTAssertEqual(completeCount, 500)
+        XCTAssertGreaterThan(
+            completeDiagnostics.snapshot(bufferAllocations: completePool.allocationCount).syscallBatches,
+            1
+        )
+
+        let stoppedDiagnostics = ScanDiagnosticCounters()
+        let stoppedPool = BulkDirectoryBufferPool(capacity: 1, bufferSize: 4 * 1024)
+        var stoppedCount = 0
+        XCTAssertThrowsError(
+            try BulkDirectoryReader.forEachEntry(
+                of: root,
+                using: stoppedPool,
+                diagnostics: stoppedDiagnostics
+            ) { _ in
+                stoppedCount += 1
+                throw StopStreaming()
+            }
+        )
+        XCTAssertEqual(stoppedCount, 1)
+        XCTAssertEqual(
+            stoppedDiagnostics.snapshot(bufferAllocations: stoppedPool.allocationCount).syscallBatches,
+            1
+        )
     }
 
     func testScannerBuildsSortedTreeAndDoesNotFollowSymbolicLinks() async throws {

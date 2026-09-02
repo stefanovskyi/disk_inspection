@@ -10,6 +10,8 @@ enum SelfTestFailure: LocalizedError {
     }
 }
 
+private struct StopDirectoryStreaming: Error {}
+
 @main
 struct SpaceLensSelfTests {
     static func main() async throws {
@@ -18,6 +20,7 @@ struct SpaceLensSelfTests {
         try await providerMatchingOnlyExaminesDirectories()
         try bulkDirectoryReaderReturnsMetadataWithoutFollowingSymlinks()
         try bulkDirectoryReaderReusesBoundedBuffersAtSupportedSizes()
+        try bulkDirectoryReaderStreamsAndStopsEarly()
         try await largeDirectoriesKeepABoundedResultTree()
         try await cancellationStopsTheScannerWorker()
         try await stalledProviderSubtreeIsSkipped()
@@ -29,7 +32,7 @@ struct SpaceLensSelfTests {
         try layoutLeavesRequestedFreeSpaceOpen()
         try layoutRespectsDepthLimit()
         try sessionStoreRetainsAndReplacesVolumeResults()
-        print("SpaceLens self-tests passed (16/16)")
+        print("SpaceLens self-tests passed (17/17)")
     }
 
     private static func scannerBuildsTreeWithoutFollowingSymlinks() async throws {
@@ -167,6 +170,57 @@ struct SpaceLensSelfTests {
         try expect(
             boundedPool.pooledBufferCount == boundedPool.capacity,
             "Bulk reader retained more buffers than its configured capacity"
+        )
+    }
+
+    private static func bulkDirectoryReaderStreamsAndStopsEarly() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensStreamingReader-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for index in 0..<500 {
+            _ = FileManager.default.createFile(
+                atPath: root.appendingPathComponent("file-\(index).bin").path,
+                contents: Data([UInt8(index % 255)])
+            )
+        }
+
+        let completeDiagnostics = ScanDiagnosticCounters()
+        let completePool = BulkDirectoryBufferPool(capacity: 1, bufferSize: 4 * 1024)
+        var completeCount = 0
+        try BulkDirectoryReader.forEachEntry(
+            of: root,
+            using: completePool,
+            diagnostics: completeDiagnostics
+        ) { _ in
+            completeCount += 1
+        }
+        try expect(completeCount == 500, "Streaming reader omitted directory entries")
+        try expect(
+            completeDiagnostics.snapshot(bufferAllocations: completePool.allocationCount).syscallBatches > 1,
+            "Streaming fixture did not span multiple kernel batches"
+        )
+
+        let stoppedDiagnostics = ScanDiagnosticCounters()
+        let stoppedPool = BulkDirectoryBufferPool(capacity: 1, bufferSize: 4 * 1024)
+        var stoppedCount = 0
+        do {
+            try BulkDirectoryReader.forEachEntry(
+                of: root,
+                using: stoppedPool,
+                diagnostics: stoppedDiagnostics
+            ) { _ in
+                stoppedCount += 1
+                throw StopDirectoryStreaming()
+            }
+            throw SelfTestFailure.failed("Streaming reader ignored callback termination")
+        } catch is StopDirectoryStreaming {
+            // Expected.
+        }
+        try expect(stoppedCount == 1, "Streaming reader materialized entries before callback delivery")
+        try expect(
+            stoppedDiagnostics.snapshot(bufferAllocations: stoppedPool.allocationCount).syscallBatches == 1,
+            "Streaming reader fetched a later batch after callback termination"
         )
     }
 

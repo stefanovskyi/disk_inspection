@@ -17,8 +17,28 @@ struct LowLevelFileMetadata: Sendable {
 }
 
 struct LowLevelDirectoryEntry: Sendable {
-    let url: URL
+    let name: String
     let metadata: LowLevelFileMetadata?
+    private let explicitURL: URL?
+
+    init(name: String, metadata: LowLevelFileMetadata?) {
+        self.name = name
+        self.metadata = metadata
+        explicitURL = nil
+    }
+
+    init(url: URL, metadata: LowLevelFileMetadata?) {
+        name = metadata?.name ?? url.lastPathComponent
+        self.metadata = metadata
+        explicitURL = url
+    }
+
+    func url(relativeTo parentURL: URL) -> URL {
+        explicitURL ?? parentURL.appendingPathComponent(
+            name,
+            isDirectory: metadata?.kind == .directory
+        )
+    }
 }
 
 enum LowLevelMetadataReader {
@@ -88,6 +108,25 @@ enum BulkDirectoryReader {
         using bufferPool: BulkDirectoryBufferPool,
         diagnostics: ScanDiagnosticCounters? = nil
     ) throws -> [LowLevelDirectoryEntry] {
+        var entries: [LowLevelDirectoryEntry] = []
+        try forEachEntry(
+            of: directoryURL,
+            using: bufferPool,
+            diagnostics: diagnostics
+        ) { entry in
+            entries.append(entry)
+        }
+        return entries
+    }
+
+    /// Invokes `body` while each getattrlistbulk(2) batch is being parsed, so
+    /// callers can aggregate entries without retaining a directory-sized array.
+    static func forEachEntry(
+        of directoryURL: URL,
+        using bufferPool: BulkDirectoryBufferPool,
+        diagnostics: ScanDiagnosticCounters? = nil,
+        _ body: (LowLevelDirectoryEntry) throws -> Void
+    ) throws {
         let signposter = SpaceLensSignposts.directoryRead
         let measuresSignpost = signposter.isEnabled
         let signpostStart = measuresSignpost ? DispatchTime.now().uptimeNanoseconds : 0
@@ -112,9 +151,7 @@ enum BulkDirectoryReader {
         guard descriptor >= 0 else { throw LowLevelMetadataReader.posixError() }
         defer { Darwin.close(descriptor) }
 
-        return try bufferPool.withBuffer { buffer, requestedAttributes in
-            var entries: [LowLevelDirectoryEntry] = []
-
+        try bufferPool.withBuffer { buffer, requestedAttributes in
             while true {
                 let count = getattrlistbulk(
                     descriptor,
@@ -125,7 +162,7 @@ enum BulkDirectoryReader {
                 )
 
                 guard count >= 0 else { throw LowLevelMetadataReader.posixError() }
-                guard count > 0 else { return entries }
+                guard count > 0 else { return }
                 diagnostics?.recordSyscallBatch()
                 measuredEntryCount += Int(count)
 
@@ -134,7 +171,7 @@ enum BulkDirectoryReader {
                     entryCount: count,
                     parentURL: directoryURL,
                     diagnostics: diagnostics,
-                    appendingTo: &entries
+                    body
                 )
             }
         }
@@ -145,7 +182,7 @@ enum BulkDirectoryReader {
         entryCount: Int32,
         parentURL: URL,
         diagnostics: ScanDiagnosticCounters?,
-        appendingTo entries: inout [LowLevelDirectoryEntry]
+        _ body: (LowLevelDirectoryEntry) throws -> Void
     ) throws {
         let bytes = UnsafeRawBufferPointer(buffer)
         var entryOffset = 0
@@ -156,7 +193,7 @@ enum BulkDirectoryReader {
                 parentURL: parentURL,
                 diagnostics: diagnostics
             )
-            entries.append(entry.value)
+            try body(entry.value)
             entryOffset += entry.length
         }
     }
@@ -229,7 +266,6 @@ enum BulkDirectoryReader {
         }
 
         let kind = kind(for: objectType)
-        let entryURL = parentURL.appendingPathComponent(name, isDirectory: kind == .directory)
         let identity: FileIdentity?
         if let device, let inode {
             identity = FileIdentity(
@@ -274,11 +310,15 @@ enum BulkDirectoryReader {
             metadata = bulkMetadata
         } else {
             diagnostics?.recordFallbackLstat()
+            let entryURL = parentURL.appendingPathComponent(
+                name,
+                isDirectory: kind == .directory
+            )
             metadata = try? LowLevelMetadataReader.metadata(at: entryURL)
         }
 
         return (
-            LowLevelDirectoryEntry(url: entryURL, metadata: metadata),
+            LowLevelDirectoryEntry(name: name, metadata: metadata),
             recordLength
         )
     }

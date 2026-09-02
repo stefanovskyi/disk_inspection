@@ -263,23 +263,102 @@ struct DiskScanner {
             onProgress: onProgress
         ) else { throw CancellationError() }
 
-        let entries: [LowLevelDirectoryEntry]
+        var retainedChildren = BoundedNodeAccumulator(capacity: retainedChildLimit)
+        var total: Int64 = 0
+        var totalItems = 1
+        var measuredDirectItems = 0
+        var pendingDirectories: [(entry: LowLevelDirectoryEntry, metadata: LowLevelFileMetadata)] = []
+
+        let consumeEntry: (LowLevelDirectoryEntry) throws -> Void = { entry in
+            try Task.checkCancellation()
+            guard activityMonitor?.isActive != false else { throw CancellationError() }
+
+            let entryMetadata: LowLevelFileMetadata
+            if let metadata = entry.metadata {
+                entryMetadata = metadata
+            } else {
+                let entryURL = entry.url(relativeTo: url)
+                do {
+                    session.diagnostics.recordFallbackLstat()
+                    entryMetadata = try LowLevelMetadataReader.metadata(at: entryURL)
+                } catch {
+                    guard session.recordItem(
+                        at: entryURL,
+                        activityMonitor: activityMonitor,
+                        onProgress: onProgress
+                    ) else { throw CancellationError() }
+                    session.recordUnreadable(
+                        at: entryURL,
+                        unresponsive: false,
+                        onProgress: onProgress
+                    )
+                    measuredDirectItems += 1
+                    totalItems = addingWithoutOverflow(totalItems, 1)
+                    retainedChildren.insert(
+                        RetainedNodeCandidate(
+                            url: entryURL,
+                            name: entry.name,
+                            size: 0,
+                            isDirectory: false,
+                            isReadable: false
+                        )
+                    )
+                    return
+                }
+            }
+
+            if entryMetadata.kind == .directory, entryMetadata.isReadable {
+                pendingDirectories.append((entry, entryMetadata))
+                return
+            }
+
+            guard session.recordItem(
+                path: { entry.url(relativeTo: url).path },
+                activityMonitor: activityMonitor,
+                onProgress: onProgress
+            ) else { throw CancellationError() }
+            if !entryMetadata.isReadable {
+                session.recordUnreadable(
+                    path: { entry.url(relativeTo: url).path },
+                    unresponsive: false,
+                    onProgress: onProgress
+                )
+            }
+            let size = entryMetadata.isReadable ? entryMetadata.size : 0
+            measuredDirectItems += 1
+            total = addingWithoutOverflow(total, size)
+            totalItems = addingWithoutOverflow(totalItems, 1)
+            retainedChildren.insert(
+                RetainedNodeCandidate(
+                    parentURL: url,
+                    name: entryMetadata.name,
+                    size: size,
+                    isDirectory: entryMetadata.kind == .directory,
+                    isReadable: entryMetadata.isReadable
+                )
+            )
+        }
+
         do {
             if let directoryReader = session.configuration.directoryReader {
                 let urls = try directoryReader(url, [])
-                entries = urls.map {
+                for entryURL in urls {
                     session.diagnostics.recordFallbackLstat()
-                    return LowLevelDirectoryEntry(
-                        url: $0,
-                        metadata: try? LowLevelMetadataReader.metadata(at: $0)
+                    try consumeEntry(
+                        LowLevelDirectoryEntry(
+                            url: entryURL,
+                            metadata: try? LowLevelMetadataReader.metadata(at: entryURL)
+                        )
                     )
                 }
             } else {
-                entries = try BulkDirectoryReader.contents(
+                try BulkDirectoryReader.forEachEntry(
                     of: url,
                     using: session.directoryBuffers,
                     diagnostics: session.diagnostics
-                )
+                ) { entry in
+                    try consumeEntry(entry)
+                }
             }
             try Task.checkCancellation()
             guard activityMonitor?.isActive != false else { throw CancellationError() }
@@ -297,79 +376,15 @@ struct DiskScanner {
             )
         }
 
-        var retainedChildren = BoundedNodeAccumulator(capacity: retainedChildLimit)
-        var total: Int64 = 0
-        var totalItems = 1
-        var measuredDirectItems = 0
-
         try await withThrowingTaskGroup(of: FileNode?.self) { group in
             var pendingTaskCount = 0
 
-            for entry in entries {
+            for pendingDirectory in pendingDirectories {
                 try Task.checkCancellation()
                 guard activityMonitor?.isActive != false else { throw CancellationError() }
-
-                let entryMetadata: LowLevelFileMetadata
-                if let metadata = entry.metadata {
-                    entryMetadata = metadata
-                } else {
-                    do {
-                        session.diagnostics.recordFallbackLstat()
-                        entryMetadata = try LowLevelMetadataReader.metadata(at: entry.url)
-                    } catch {
-                        guard session.recordItem(
-                            at: entry.url,
-                            activityMonitor: activityMonitor,
-                            onProgress: onProgress
-                        ) else { throw CancellationError() }
-                        session.recordUnreadable(
-                            at: entry.url,
-                            unresponsive: false,
-                            onProgress: onProgress
-                        )
-                        measuredDirectItems += 1
-                        totalItems = addingWithoutOverflow(totalItems, 1)
-                        retainedChildren.insert(
-                            RetainedNodeCandidate(
-                                url: entry.url,
-                                name: displayName(for: entry.url),
-                                size: 0,
-                                isDirectory: false,
-                                isReadable: false
-                            )
-                        )
-                        continue
-                    }
-                }
-
-                guard entryMetadata.kind == .directory, entryMetadata.isReadable else {
-                    guard session.recordItem(
-                        at: entry.url,
-                        activityMonitor: activityMonitor,
-                        onProgress: onProgress
-                    ) else { throw CancellationError() }
-                    if !entryMetadata.isReadable {
-                        session.recordUnreadable(
-                            at: entry.url,
-                            unresponsive: false,
-                            onProgress: onProgress
-                        )
-                    }
-                    let size = entryMetadata.isReadable ? entryMetadata.size : 0
-                    measuredDirectItems += 1
-                    total = addingWithoutOverflow(total, size)
-                    totalItems = addingWithoutOverflow(totalItems, 1)
-                    retainedChildren.insert(
-                        RetainedNodeCandidate(
-                            url: entry.url,
-                            name: entryMetadata.name,
-                            size: size,
-                            isDirectory: entryMetadata.kind == .directory,
-                            isReadable: entryMetadata.isReadable
-                        )
-                    )
-                    continue
-                }
+                let entry = pendingDirectory.entry
+                let entryMetadata = pendingDirectory.metadata
+                let entryURL = entry.url(relativeTo: url)
 
                 var acquiredPermit = session.parallelism.tryAcquire()
                 while !acquiredPermit, !ownsWorkerPermit, pendingTaskCount > 0 {
@@ -391,7 +406,7 @@ struct DiskScanner {
                     group.addTask {
                         defer { session.parallelism.release() }
                         return try await inspect(
-                            entry.url,
+                            entryURL,
                             knownMetadata: entryMetadata,
                             session: session,
                             activityMonitor: activityMonitor,
@@ -401,7 +416,7 @@ struct DiskScanner {
                         )
                     }
                 } else if let child = try await inspect(
-                    entry.url,
+                    entryURL,
                     knownMetadata: entryMetadata,
                     session: session,
                     activityMonitor: activityMonitor,
@@ -630,6 +645,19 @@ private final class ScanSession: @unchecked Sendable {
         activityMonitor: ScanActivityMonitor?,
         onProgress: DiskScanner.ProgressHandler
     ) -> Bool {
+        recordItem(
+            path: { url.path },
+            activityMonitor: activityMonitor,
+            onProgress: onProgress
+        )
+    }
+
+    @discardableResult
+    func recordItem(
+        path: () -> String,
+        activityMonitor: ScanActivityMonitor?,
+        onProgress: DiskScanner.ProgressHandler
+    ) -> Bool {
         if let activityMonitor, !activityMonitor.recordActivity() {
             return false
         }
@@ -641,7 +669,7 @@ private final class ScanSession: @unchecked Sendable {
         let emittedProgress: ScanProgress?
         if progress.itemsScanned == 1 || now &- lastProgressEmission >= 100_000_000 {
             lastProgressEmission = now
-            progress.currentPath = url.path
+            progress.currentPath = path()
             emittedProgress = progress
         } else {
             emittedProgress = nil
@@ -661,13 +689,27 @@ private final class ScanSession: @unchecked Sendable {
         forceProgressEmission: Bool = false,
         onProgress: DiskScanner.ProgressHandler
     ) {
+        recordUnreadable(
+            path: { url.path },
+            unresponsive: unresponsive,
+            forceProgressEmission: forceProgressEmission,
+            onProgress: onProgress
+        )
+    }
+
+    func recordUnreadable(
+        path: () -> String,
+        unresponsive: Bool,
+        forceProgressEmission: Bool = false,
+        onProgress: DiskScanner.ProgressHandler
+    ) {
         progressLock.lock()
         progress.unreadableItems += 1
         if unresponsive {
             progress.unresponsiveItems += 1
         }
         if forceProgressEmission {
-            progress.currentPath = url.path
+            progress.currentPath = path()
         }
         let emittedProgress = forceProgressEmission ? progress : nil
         progressLock.unlock()
@@ -783,7 +825,12 @@ private final class LockedResultBox<Value>: @unchecked Sendable {
 }
 
 private struct RetainedNodeCandidate {
-    let url: URL
+    private enum Location {
+        case absolute(URL)
+        case child(of: URL)
+    }
+
+    private let location: Location
     let name: String
     let size: Int64
     let isDirectory: Bool
@@ -800,7 +847,25 @@ private struct RetainedNodeCandidate {
         isDirectory: Bool,
         isReadable: Bool
     ) {
-        self.url = url
+        location = .absolute(url)
+        self.name = name
+        self.size = size
+        self.isDirectory = isDirectory
+        self.isReadable = isReadable
+        children = []
+        itemCount = 1
+        directItemCount = 0
+        isAggregate = false
+    }
+
+    init(
+        parentURL: URL,
+        name: String,
+        size: Int64,
+        isDirectory: Bool,
+        isReadable: Bool
+    ) {
+        location = .child(of: parentURL)
         self.name = name
         self.size = size
         self.isDirectory = isDirectory
@@ -812,7 +877,7 @@ private struct RetainedNodeCandidate {
     }
 
     init(node: FileNode) {
-        url = node.url
+        location = .absolute(node.url)
         name = node.name
         size = node.size
         isDirectory = node.isDirectory
@@ -824,7 +889,14 @@ private struct RetainedNodeCandidate {
     }
 
     func makeNode() -> FileNode {
-        FileNode(
+        let url: URL
+        switch location {
+        case .absolute(let absoluteURL):
+            url = absoluteURL
+        case .child(let parentURL):
+            url = parentURL.appendingPathComponent(name, isDirectory: isDirectory)
+        }
+        return FileNode(
             url: url,
             name: name,
             size: size,
