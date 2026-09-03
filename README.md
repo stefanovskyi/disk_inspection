@@ -1,5 +1,8 @@
 # SpaceLens
 
+![macOS 14+ compatibility](https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white)
+![Apple Silicon arm64 architecture](https://img.shields.io/badge/architecture-Apple%20Silicon%20%28arm64%29-555555?logo=apple&logoColor=white)
+
 SpaceLens is a native macOS disk inspector with an interactive sunburst chart. It discovers mounted internal and external volumes, scans folders without following symbolic links, and lets you drill into storage usage one directory at a time.
 
 ## Features
