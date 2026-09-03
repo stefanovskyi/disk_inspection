@@ -5,16 +5,20 @@ SpaceLens is a native macOS disk inspector with an interactive sunburst chart. I
 ## Features
 
 - Automatic mounted-volume and external-disk discovery
+- Immediate startup-disk capacity overview before any folder scan begins
 - Up-front Full Disk Access guidance before scanning the startup disk
 - Asynchronous, cancellable folder and volume scanning
+- A live sunburst preview that grows during scanning, with mapped bytes, item count, elapsed time, and estimated disk coverage
 - Bounded parallel subtree scanning with pooled `getattrlistbulk(2)` metadata buffers and live elapsed time
 - In-memory scan results for inspected disks and selected folders, with explicit view-or-rescan choices
+- A small, bounded previous-disk snapshot that restores the last known chart on the next launch
 - Mount-aware main-disk scans that avoid APFS aliases and external disks
 - Bounded scan results that group smaller items instead of retaining millions of leaf nodes
 - A no-progress watchdog that skips unresponsive provider-backed folders instead of freezing a whole scan
 - Capacity-aware sunburst geometry with a transparent, labeled free-space sector
 - Angular width mapped to bytes and radial reach mapped to folder depth
-- Interactive sunburst with hover details and click-to-drill navigation
+- Interactive sunburst with hover details, click-to-drill navigation, and a 200-sector rendering budget
+- Chart-only **Smaller items** sectors that combine sub-1% or visually tiny entries while preserving exact byte totals
 - Clickable breadcrumbs and keyboard back navigation
 - Ranked item list with proportional size bars
 - Finder and Terminal context-menu actions
@@ -43,7 +47,7 @@ Run the scanner and chart-layout fixtures as an optimized release executable:
 make benchmark
 ```
 
-Every run writes timestamped JSON and CSV reports to the ignored `BenchmarkResults/` directory. Reports include the Git revision and dirty state, SDK and compiler, macOS and hardware details, fixture configuration, scanner parallelism, peak resident memory, per-iteration results, medians, standard deviation, and variability.
+Every run writes timestamped JSON and CSV reports to the ignored `BenchmarkResults/` directory. Reports include the Git revision and dirty state, SDK and compiler, macOS and hardware details, fixture configuration, scanner parallelism, peak resident memory, per-iteration results, medians, standard deviation, and variability. Iteration records also preserve scanner work counters, directory and retained-arena node counts, provider timeouts and abandoned workers, arena-construction time, resident memory immediately before and after arena construction, chart-scene construction time, and the cost of 120 cached hover lookups.
 
 The default run measures flat, deep, mixed, and stalled-provider trees. Run three read-only startup-disk scans with:
 
@@ -77,7 +81,7 @@ make benchmark-compare \
   CANDIDATE=BenchmarkResults/spacelens-benchmark-candidate.json
 ```
 
-The comparison prints percentage deltas for median scan time, throughput, median layout time, and peak resident memory, then writes a JSON comparison beside the candidate report. It exits with status 1 when a regression exceeds a threshold and status 2 when configurations differ, so measurements with different iteration counts, scanner parallelism, directory buffers, fixtures, SDKs, hardware, or trace settings are not silently compared. The default scan, layout, and memory limits are 10%; configure them independently with `SPACELENS_BENCHMARK_SCAN_REGRESSION_THRESHOLD_PERCENT`, `SPACELENS_BENCHMARK_LAYOUT_REGRESSION_THRESHOLD_PERCENT`, and `SPACELENS_BENCHMARK_MEMORY_REGRESSION_THRESHOLD_PERCENT`.
+The comparison prints percentage deltas for median scan time, throughput, median layout time, and peak resident memory, plus median scanner, data-set, provider, arena, and progress diagnostics when both reports contain them. It then writes a JSON comparison beside the candidate report. Older reports remain comparable, with unavailable diagnostics called out explicitly. The tool exits with status 1 when a regression exceeds a threshold and status 2 when configurations differ, so measurements with different iteration counts, scanner parallelism, directory buffers, fixtures, SDKs, hardware, or trace settings are not silently compared. The default scan, layout, and memory limits are 10%; configure them independently with `SPACELENS_BENCHMARK_SCAN_REGRESSION_THRESHOLD_PERCENT`, `SPACELENS_BENCHMARK_LAYOUT_REGRESSION_THRESHOLD_PERCENT`, and `SPACELENS_BENCHMARK_MEMORY_REGRESSION_THRESHOLD_PERCENT`.
 
 SpaceLens also emits Instruments signposts under the `local.spacelens.app` subsystem in the `Scan`, `DirectoryRead`, `ChartLayout`, `ProviderSubtree`, and `Benchmark` categories. Capture the Logging instrument while running either the packaged app or the benchmark to correlate benchmark iterations and whole scans with sampled large or slow filesystem reads, provider timeouts, and sunburst layout work. Directory-read events include entry counts and duration; small reads under one millisecond are omitted to keep full-disk traces manageable. Signpost metadata contains fixture names, counts, and configuration, not filesystem paths.
 
@@ -107,10 +111,14 @@ SPACELENS_CODESIGN_IDENTITY="Apple Development: Your Name (TEAMID)" make app
 
 Run `security find-identity -v -p codesigning` to see available identities. The first stable-signed build is a new app identity, so grant Full Disk Access once more to that build. Future builds signed by the same identity and using the same `local.spacelens.app` bundle identifier retain the user's privacy choice. Developer ID signing and notarization are required before distributing the app to other Macs.
 
-Some iCloud, Apple Books, and sandbox-container folders are serviced by macOS providers whose directory reads can stop responding. SpaceLens isolates these subtrees and, after five seconds without scan activity, skips the affected folder as unreadable so the rest of the disk scan can finish. The progress spinner continues independently while the filesystem is waiting.
+Some iCloud, Apple Books, and sandbox-container folders are serviced by macOS providers whose directory reads can stop responding. SpaceLens isolates these subtrees and, after five seconds without scan activity, skips the affected folder as unreadable so the rest of the disk scan can finish. The progress indicator and elapsed timer continue independently while the filesystem is waiting.
+
+The storage map appears as soon as a scan starts and updates as SpaceLens measures files. For mounted disks, the progress percentage is an estimate based on mapped allocated bytes compared with the disk's reported used capacity; protected data, filesystem metadata, snapshots, and files changing during a scan mean it is not an exact item-completion percentage. First-time folder scans use an indeterminate progress bar because their total size is not known until traversal finishes. Rescans may use the previous session result as an estimate.
+
+Before a scan starts, SpaceLens reads total and available capacity directly from macOS and can display that overview immediately. After a completed disk scan, it also stores a bounded summary of the largest folders in the user's Application Support directory. On a later launch that summary is shown as a clearly labeled **Previous scan** until a new live scan replaces it. SpaceLens does not guess folder sizes from the macOS version or processor because installations and user data vary too widely for such estimates to be reliable.
 
 SpaceLens never deletes or modifies scanned files.
 
-Completed disk and folder scans remain available until SpaceLens quits. Returning home or inspecting another location does not discard them. A folder selected with **Scan a Folder** appears in the sidebar for the session, and its small × button removes the entry and cached result without touching the folder on disk. A checkmark beside a location indicates that a session result is available; selecting it offers to view the existing result immediately or rescan it.
+Complete disk and folder scan results remain available until SpaceLens quits. Returning home or inspecting another location does not discard them. Only the bounded disk summary described above persists between launches. A folder selected with **Scan a Folder** appears in the sidebar for the session, and its small × button removes the entry and cached result without touching the folder on disk. A checkmark beside a location indicates that a session result is available; selecting it offers to view the existing result immediately or rescan it.
 
 For very large folders, SpaceLens retains the 96 largest direct items and combines the remainder into an accurate **Smaller items** entry. The combined entry preserves total byte and item counts while keeping memory usage bounded.

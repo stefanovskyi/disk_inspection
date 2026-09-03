@@ -17,6 +17,7 @@ struct SpaceLensSelfTests {
     static func main() async throws {
         try await scannerBuildsTreeWithoutFollowingSymlinks()
         try await diagnosticCountersTrackScannerWork()
+        try await liveScanProgressPublishesPreviewAndMappedBytes()
         try await providerMatchingOnlyExaminesDirectories()
         try bulkDirectoryReaderReturnsMetadataWithoutFollowingSymlinks()
         try bulkDirectoryReaderReusesBoundedBuffersAtSupportedSizes()
@@ -31,8 +32,68 @@ struct SpaceLensSelfTests {
         try layoutPreservesHierarchyAndProportion()
         try layoutLeavesRequestedFreeSpaceOpen()
         try layoutRespectsDepthLimit()
+        try sceneReusesLayoutForHitTesting()
+        try interactiveSceneGroupsSmallItemsAndHonorsItsBudget()
         try sessionStoreRetainsAndReplacesVolumeResults()
-        print("SpaceLens self-tests passed (17/17)")
+        try previousScanSummaryIsBoundedAndPersistent()
+        print("SpaceLens self-tests passed (21/21)")
+    }
+
+    private static func previousScanSummaryIsBoundedAndPersistent() throws {
+        let rootURL = URL(fileURLWithPath: "/Volumes/SelfTest", isDirectory: true)
+        let children = (0..<12).map { index in
+            FileNode(
+                url: rootURL.appendingPathComponent("Folder-\(index)"),
+                name: "Folder-\(index)",
+                size: Int64(index + 1),
+                isDirectory: true,
+                isReadable: true,
+                children: [],
+                itemCount: index + 1
+            )
+        }
+        let total = children.reduce(Int64(0)) { $0 + $1.size }
+        let root = FileNode(
+            url: rootURL,
+            name: "SelfTest",
+            size: total,
+            isDirectory: true,
+            isReadable: true,
+            children: children,
+            itemCount: children.reduce(1) { $0 + $1.itemCount }
+        )
+        let result = ScanResult(
+            root: root,
+            duration: 1,
+            itemsScanned: root.itemCount,
+            unreadableItems: 0
+        )
+        let volume = VolumeInfo(
+            url: rootURL,
+            name: "SelfTest",
+            totalCapacity: 1_000,
+            availableCapacity: 200,
+            isExternal: true,
+            isReadOnly: false,
+            uuid: "SELF-TEST"
+        )
+        let summary = PreviousScanSummary(result: result, volume: volume)
+        let restoredRoot = summary.makeRoot(at: rootURL)
+        try expect(restoredRoot.children.count == 9, "Previous scan snapshot was not bounded")
+        try expect(
+            restoredRoot.children.reduce(Int64(0)) { $0 + $1.size } == total,
+            "Previous scan snapshot did not preserve omitted byte totals"
+        )
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensSummarySelfTest-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = PreviousScanStore(fileURL: directory.appendingPathComponent("summary.json"))
+        try store.store(summary)
+        try expect(
+            store.load()[volume.persistentIdentifier] == summary,
+            "Previous scan snapshot did not round-trip"
+        )
     }
 
     private static func scannerBuildsTreeWithoutFollowingSymlinks() async throws {
@@ -62,6 +123,39 @@ struct SpaceLensSelfTests {
         try expect(symlink != nil, "Scanner omitted the symbolic link entry")
         try expect(symlink?.isDirectory == false, "Scanner followed a symbolic link as a directory")
         try expect(symlink?.children.isEmpty == true, "Symbolic link unexpectedly has descendants")
+    }
+
+    private static func liveScanProgressPublishesPreviewAndMappedBytes() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensLivePreview-\(UUID().uuidString)", isDirectory: true)
+        let nested = root.appendingPathComponent("Nested", isDirectory: true)
+        let deeper = nested.appendingPathComponent("Deeper", isDirectory: true)
+        try FileManager.default.createDirectory(at: deeper, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(repeating: 0x41, count: 8_192)
+            .write(to: deeper.appendingPathComponent("payload.bin"))
+
+        let recorder = SelfTestProgressRecorder()
+        let result = try await DiskScanner().scan(url: root) { progress in
+            recorder.record(progress)
+        }
+        let snapshots = recorder.snapshots
+
+        try expect(
+            snapshots.contains { $0.previewRoot != nil && $0.itemsScanned < result.itemsScanned },
+            "Scanner did not publish a provisional tree before completion"
+        )
+        try expect(
+            snapshots.last?.mappedBytes == result.root.size,
+            "Final mapped-byte progress did not match the result"
+        )
+        try expect(
+            (snapshots.last?.previewRoot?.storageMetrics.nodeCount ?? Int.max)
+                < result.root.storageMetrics.nodeCount,
+            "Final progress duplicated the complete retained result"
+        )
+        let mappedBytes = snapshots.map(\.mappedBytes)
+        try expect(mappedBytes == mappedBytes.sorted(), "Mapped-byte progress moved backwards")
     }
 
     private static func bulkDirectoryReaderReturnsMetadataWithoutFollowingSymlinks() throws {
@@ -110,9 +204,20 @@ struct SpaceLensSelfTests {
         try expect(result.diagnostics.fallbackLstatCalls == 2, "Fallback lstat calls were not counted")
         try expect(result.diagnostics.bufferAllocations == 0, "Custom reader allocated a bulk buffer")
         try expect(result.diagnostics.directoryTasks == 0, "Flat scan created a directory task")
+        try expect(result.diagnostics.directoryCount == 1, "Directory count did not include the scan root")
         try expect(result.diagnostics.retainedNodes == 2, "Retained node decisions were not counted")
         try expect(result.diagnostics.discardedNodes == 0, "Flat scan discarded a node")
         try expect(result.diagnostics.progressEmissions >= 2, "Progress emissions were not counted")
+        try expect(result.diagnostics.retainedArenaNodeCount == 3, "Retained arena nodes were not counted")
+        try expect(
+            result.diagnostics.arenaConstructionDurationSeconds > 0,
+            "Arena construction duration was not measured"
+        )
+        try expect(
+            result.diagnostics.rssBeforeArenaConstructionBytes > 0
+                && result.diagnostics.rssAfterArenaConstructionBytes > 0,
+            "Arena RSS boundaries were not measured"
+        )
     }
 
     private static func providerMatchingOnlyExaminesDirectories() async throws {
@@ -232,9 +337,9 @@ struct SpaceLensSelfTests {
         let root = node("test", size: 100, at: rootURL, children: [large, small])
         let segments = SunburstLayout.segments(for: root, maxDepth: 4, minimumAngularSpan: 0)
 
-        guard let largeSegment = segments.first(where: { $0.node.name == "large" }),
-              let smallSegment = segments.first(where: { $0.node.name == "small" }),
-              let deepSegment = segments.first(where: { $0.node.name == "deep" }) else {
+        guard let largeSegment = segments.first(where: { $0.node?.name == "large" }),
+              let smallSegment = segments.first(where: { $0.node?.name == "small" }),
+              let deepSegment = segments.first(where: { $0.node?.name == "deep" }) else {
             throw SelfTestFailure.failed("Layout omitted expected segments")
         }
 
@@ -259,6 +364,53 @@ struct SpaceLensSelfTests {
         try expect(
             abs(furthestAngle - (.pi * 1.5)) < 0.001,
             "Layout filled the free-space sector instead of leaving it open"
+        )
+    }
+
+    private static func sceneReusesLayoutForHitTesting() throws {
+        let rootURL = URL(fileURLWithPath: "/test")
+        let large = node("large", size: 75, at: rootURL.appendingPathComponent("large"))
+        let small = node("small", size: 25, at: rootURL.appendingPathComponent("small"))
+        let root = node("test", size: 100, at: rootURL, children: [large, small])
+        let scene = SunburstScene(root: root, maxDepth: 4, minimumAngularSpan: 0)
+
+        try expect(scene.segments.count == 2, "Chart scene omitted expected segments")
+        for _ in 0..<1_000 {
+            try expect(
+                scene.segmentIndex(atDepth: 0, angle: .pi)
+                    .flatMap { scene.segments[$0].node?.name } == "large",
+                "Chart scene hit testing changed across repeated lookups"
+            )
+        }
+    }
+
+    private static func interactiveSceneGroupsSmallItemsAndHonorsItsBudget() throws {
+        let rootURL = URL(fileURLWithPath: "/test")
+        let large = node("large", size: 950, at: rootURL.appendingPathComponent("large"))
+        let small = (0..<10).map { index in
+            node("small-\(index)", size: 5, at: rootURL.appendingPathComponent("small-\(index)"))
+        }
+        let root = node("test", size: 1_000, at: rootURL, children: [large] + small)
+        let scene = SunburstScene(
+            root: root,
+            maxDepth: 4,
+            angularExtent: .pi * 2,
+            interactionRadius: 200,
+            policy: .interactive
+        )
+
+        guard let group = scene.segments.compactMap(\.smallerItems).first else {
+            throw SelfTestFailure.failed("Interactive chart omitted the smaller-items group")
+        }
+        try expect(scene.segments.count == 2, "Interactive chart retained sub-percent segments")
+        try expect(group.size == 50, "Interactive chart changed grouped byte totals")
+        try expect(group.children.count == 10, "Interactive chart lost grouped item links")
+        try expect(
+            SunburstScenePolicy.interactive.minimumAngularSpan(
+                angularExtent: .pi,
+                interactionRadius: 100
+            ) == 0.06,
+            "Interactive chart did not enforce the pixel floor"
         )
     }
 
@@ -372,6 +524,9 @@ struct SpaceLensSelfTests {
         try expect(duration < 1, "Stalled subtree blocked the whole scan for \(duration) seconds")
         try expect(result.itemsScanned == 2, "Stalled subtree changed precise item accounting")
         try expect(result.unreadableItems == 1, "Stalled subtree was not counted as unreadable")
+        try expect(result.diagnostics.directoryCount == 2, "Stalled provider directory was not counted")
+        try expect(result.diagnostics.providerTimeouts == 1, "Provider timeout was not counted")
+        try expect(result.diagnostics.abandonedWorkers == 1, "Abandoned provider worker was not counted")
         try expect(
             result.root.children.first(where: { $0.name == "Blocked" })?.isReadable == false,
             "Stalled subtree was not represented as unreadable"
@@ -557,6 +712,23 @@ private final class CancellationTestGate: @unchecked Sendable {
 
     func release() {
         continuation.signal()
+    }
+}
+
+private final class SelfTestProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [ScanProgress] = []
+
+    var snapshots: [ScanProgress] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
+
+    func record(_ progress: ScanProgress) {
+        lock.lock()
+        values.append(progress)
+        lock.unlock()
     }
 }
 

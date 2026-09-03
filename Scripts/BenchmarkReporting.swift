@@ -29,10 +29,26 @@ private struct BenchmarkIterationReport: Codable {
     let iteration: Int
     let scanDurationSeconds: Double
     let itemsScanned: Int
+    let directoryCount: Int
     let itemsPerSecond: Double
     let unreadableItems: Int
     let layoutDurationMilliseconds: Double
+    let cachedHoverLookup120Milliseconds: Double
     let segmentCount: Int
+    let syscallBatches: Int
+    let fallbackLstatCalls: Int
+    let bufferAllocations: Int
+    let directoryTasks: Int
+    let retainedNodes: Int
+    let discardedNodes: Int
+    let progressMerges: Int
+    let progressEmissions: Int
+    let providerTimeouts: Int
+    let abandonedWorkers: Int
+    let retainedArenaNodeCount: Int
+    let arenaConstructionDurationMilliseconds: Double
+    let rssBeforeArenaConstructionBytes: UInt64
+    let rssAfterArenaConstructionBytes: UInt64
 }
 
 private struct BenchmarkSummaryReport: Codable {
@@ -44,6 +60,7 @@ private struct BenchmarkSummaryReport: Codable {
     let variabilityPercent: Double
     let itemsPerSecond: Double
     let medianLayoutDurationMilliseconds: Double
+    let medianCachedHoverLookup120Milliseconds: Double
     let medianSegmentCount: Int
     let maximumUnreadableItems: Int
 }
@@ -119,7 +136,7 @@ enum BenchmarkReportWriter {
     ) -> BenchmarkReport {
         let processInfo = ProcessInfo.processInfo
         return BenchmarkReport(
-            schemaVersion: 2,
+            schemaVersion: 4,
             runID: configuration.runID,
             startedAt: startedAt,
             finishedAt: finishedAt,
@@ -164,14 +181,31 @@ enum BenchmarkReportWriter {
         let iterationReports = measurement.scanDurations.indices.map { index in
             let scanDuration = measurement.scanDurations[index]
             let itemCount = measurement.itemCounts[index]
+            let diagnostics = measurement.diagnostics[index]
             return BenchmarkIterationReport(
                 iteration: index + 1,
                 scanDurationSeconds: scanDuration,
                 itemsScanned: itemCount,
+                directoryCount: diagnostics.directoryCount,
                 itemsPerSecond: scanDuration > 0 ? Double(itemCount) / scanDuration : 0,
                 unreadableItems: measurement.unreadableCounts[index],
                 layoutDurationMilliseconds: measurement.layoutDurations[index] * 1_000,
-                segmentCount: measurement.segmentCounts[index]
+                cachedHoverLookup120Milliseconds: measurement.cachedHoverDurations[index] * 1_000,
+                segmentCount: measurement.segmentCounts[index],
+                syscallBatches: diagnostics.syscallBatches,
+                fallbackLstatCalls: diagnostics.fallbackLstatCalls,
+                bufferAllocations: diagnostics.bufferAllocations,
+                directoryTasks: diagnostics.directoryTasks,
+                retainedNodes: diagnostics.retainedNodes,
+                discardedNodes: diagnostics.discardedNodes,
+                progressMerges: diagnostics.progressMerges,
+                progressEmissions: diagnostics.progressEmissions,
+                providerTimeouts: diagnostics.providerTimeouts,
+                abandonedWorkers: diagnostics.abandonedWorkers,
+                retainedArenaNodeCount: diagnostics.retainedArenaNodeCount,
+                arenaConstructionDurationMilliseconds: diagnostics.arenaConstructionDurationSeconds * 1_000,
+                rssBeforeArenaConstructionBytes: diagnostics.rssBeforeArenaConstructionBytes,
+                rssAfterArenaConstructionBytes: diagnostics.rssAfterArenaConstructionBytes
             )
         }
 
@@ -186,6 +220,7 @@ enum BenchmarkReportWriter {
                 variabilityPercent: measurement.variabilityFraction * 100,
                 itemsPerSecond: measurement.itemsPerSecond,
                 medianLayoutDurationMilliseconds: measurement.medianLayoutDuration * 1_000,
+                medianCachedHoverLookup120Milliseconds: measurement.medianCachedHoverDuration * 1_000,
                 medianSegmentCount: measurement.medianSegmentCount,
                 maximumUnreadableItems: measurement.maximumUnreadableCount
             ),
@@ -199,8 +234,15 @@ enum BenchmarkReportWriter {
             "operating_system", "hardware_model", "active_processor_count",
             "physical_memory_bytes", "peak_resident_memory_bytes", "scanner_parallelism",
             "directory_buffer_size_bytes", "fixture", "iteration", "scan_seconds",
-            "items_scanned", "items_per_second",
-            "unreadable_items", "layout_milliseconds", "segment_count"
+            "items_scanned", "directory_count", "items_per_second",
+            "unreadable_items", "layout_milliseconds",
+            "cached_hover_lookup_120_milliseconds", "segment_count",
+            "syscall_batches", "fallback_lstat_calls", "buffer_allocations",
+            "directory_tasks", "retained_nodes", "discarded_nodes",
+            "progress_merges", "progress_emissions", "provider_timeouts",
+            "abandoned_workers", "retained_arena_node_count",
+            "arena_construction_milliseconds", "rss_before_arena_construction_bytes",
+            "rss_after_arena_construction_bytes"
         ]
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -208,7 +250,7 @@ enum BenchmarkReportWriter {
 
         for fixture in report.fixtures {
             for iteration in fixture.iterations {
-                let values = [
+                var values: [String] = [
                     String(report.schemaVersion),
                     report.runID,
                     formatter.string(from: report.startedAt),
@@ -225,11 +267,29 @@ enum BenchmarkReportWriter {
                     String(iteration.iteration),
                     String(format: "%.9f", iteration.scanDurationSeconds),
                     String(iteration.itemsScanned),
+                    String(iteration.directoryCount),
                     String(format: "%.3f", iteration.itemsPerSecond),
                     String(iteration.unreadableItems),
                     String(format: "%.6f", iteration.layoutDurationMilliseconds),
+                    String(format: "%.6f", iteration.cachedHoverLookup120Milliseconds),
                     String(iteration.segmentCount)
                 ]
+                values.append(contentsOf: [
+                    String(iteration.syscallBatches),
+                    String(iteration.fallbackLstatCalls),
+                    String(iteration.bufferAllocations),
+                    String(iteration.directoryTasks),
+                    String(iteration.retainedNodes),
+                    String(iteration.discardedNodes),
+                    String(iteration.progressMerges),
+                    String(iteration.progressEmissions),
+                    String(iteration.providerTimeouts),
+                    String(iteration.abandonedWorkers),
+                    String(iteration.retainedArenaNodeCount),
+                    String(format: "%.6f", iteration.arenaConstructionDurationMilliseconds),
+                    String(iteration.rssBeforeArenaConstructionBytes),
+                    String(iteration.rssAfterArenaConstructionBytes)
+                ])
                 rows.append(values.map(csvField).joined(separator: ","))
             }
         }

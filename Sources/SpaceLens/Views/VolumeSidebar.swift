@@ -153,6 +153,7 @@ struct VolumeSidebar: View {
                         volume: volume,
                         isActive: model.result?.root.url.standardizedFileURL == volume.url.standardizedFileURL
                             || model.scanningURL?.standardizedFileURL == volume.url.standardizedFileURL
+                            || model.selectedVolumeOverview?.url.standardizedFileURL == volume.url.standardizedFileURL
                     )
                 }
             }
@@ -273,7 +274,7 @@ private struct VolumeRow: View {
             "\(volume.name), \(StorageFormatters.percent(volume.usedFraction)) used"
                 + (hasCachedResult ? ", session scan available" : "")
         )
-        .accessibilityHint(hasCachedResult ? "Offers to view or rescan this disk" : "Scans this disk")
+        .accessibilityHint(hasCachedResult ? "Offers to view or rescan this disk" : "Shows this disk overview")
     }
 }
 

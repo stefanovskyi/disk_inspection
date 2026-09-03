@@ -3,6 +3,7 @@ import SwiftUI
 struct AppRootView: View {
     @EnvironmentObject private var model: AppViewModel
     @Environment(\.colorScheme) private var colorScheme
+    @State private var smallerItemsSelection: SunburstSmallerItems?
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
@@ -31,9 +32,6 @@ struct AppRootView: View {
             if model.isRequestingFullDiskAccess {
                 FullDiskAccessPrompt()
                     .transition(.opacity)
-            } else if model.isScanning {
-                ScanProgressOverlay()
-                    .transition(.opacity)
             }
         }
         .animation(.easeOut(duration: 0.2), value: model.errorMessage)
@@ -47,21 +45,57 @@ struct AppRootView: View {
             if let current = model.currentNode {
                 NavigationHeader(node: current)
 
-                HStack(spacing: 14) {
-                    ChartPanel(node: current, volume: model.volumeForChart(node: current))
-                        .frame(minWidth: 500)
+                if model.isScanning {
+                    ScanProgressBar()
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 2)
+                }
 
-                    ItemInspector(node: current)
+                HStack(spacing: 14) {
+                    ChartPanel(
+                        node: current,
+                        volume: model.volumeForChart(node: current),
+                        isProvisional: model.isScanning,
+                        inspectSmallerItems: { smallerItemsSelection = $0 }
+                    )
+                        .frame(minWidth: 500)
+                        .allowsHitTesting(!model.isScanning)
+
+                    Group {
+                        if let selection = smallerItemsSelection,
+                           selection.chartRootID == current.id {
+                            SmallerItemsInspector(selection: selection) {
+                                smallerItemsSelection = nil
+                            }
+                        } else {
+                            ItemInspector(node: current)
+                        }
+                    }
                         .frame(minWidth: 300, idealWidth: 340, maxWidth: 390)
+                        .allowsHitTesting(!model.isScanning)
                 }
                 .padding(14)
                 .padding(.top, -2)
+            } else if let volume = model.selectedVolumeOverview {
+                DiskOverview(
+                    volume: volume,
+                    previousSummary: model.previousScanSummary,
+                    previousRoot: model.previousScanRoot
+                )
             } else {
                 WelcomeView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme.background)
+        .onChange(of: model.currentNode?.id) {
+            smallerItemsSelection = nil
+        }
+        .onChange(of: model.isScanning) {
+            if model.isScanning {
+                smallerItemsSelection = nil
+            }
+        }
     }
 }
 
@@ -184,115 +218,95 @@ private struct ErrorBanner: View {
     }
 }
 
-private struct ScanProgressOverlay: View {
+private struct ScanProgressBar: View {
     @EnvironmentObject private var model: AppViewModel
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
 
-        ZStack {
-            Color.black.opacity(colorScheme == .dark ? 0.38 : 0.18)
-                .ignoresSafeArea()
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Label("Mapping storage", systemImage: "externaldrive.badge.timemachine")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(theme.primaryText)
 
-            VStack(spacing: 16) {
-                ScanningSpinner(
-                    itemCount: model.progress.itemsScanned,
-                    trackColor: theme.border,
-                    accent: theme.accent
-                )
-                .frame(width: 54, height: 54)
-
-                VStack(spacing: 5) {
-                    Text("Inspecting storage")
-                        .font(.system(size: 18, weight: .semibold))
-                    Text(model.progress.currentPath)
-                        .font(.system(size: 11, design: .monospaced))
+                if let fraction = model.estimatedScanFraction {
+                    Text("~\(Int((fraction * 100).rounded(.down)))%")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(theme.accent)
+                        .help("Estimated from mapped bytes; filesystem scans cannot know all remaining work in advance")
+                } else {
+                    Text("Estimating…")
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(theme.secondaryText)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: 360)
-                    Text("\(model.progress.itemsScanned.formatted()) items measured")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(theme.tertiaryText)
+                }
 
-                    if let startedAt = model.scanStartedAt {
-                        TimelineView(.periodic(from: startedAt, by: 1)) { timeline in
-                            Label(
-                                "Elapsed \(StorageFormatters.duration(max(timeline.date.timeIntervalSince(startedAt), 0)))",
-                                systemImage: "clock"
-                            )
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(theme.secondaryText)
-                        }
-                    }
+                Spacer(minLength: 10)
 
-                    if model.progress.unresponsiveItems > 0 {
+                Text("\(StorageFormatters.bytes(model.progress.mappedBytes)) mapped")
+                Text("\(model.progress.itemsScanned.formatted()) items")
+
+                if let startedAt = model.scanStartedAt {
+                    TimelineView(.periodic(from: startedAt, by: 1)) { timeline in
                         Label(
-                            "\(model.progress.unresponsiveItems) unresponsive folder skipped",
-                            systemImage: "exclamationmark.triangle.fill"
+                            StorageFormatters.duration(
+                                max(timeline.date.timeIntervalSince(startedAt), 0)
+                            ),
+                            systemImage: "clock"
                         )
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(theme.warning)
                     }
+                }
+
+                if model.progress.unresponsiveItems > 0 {
+                    Label(
+                        "\(model.progress.unresponsiveItems) skipped",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(theme.warning)
                 }
 
                 Button("Cancel") { model.cancelScan() }
                     .buttonStyle(.bordered)
+                    .controlSize(.small)
                     .keyboardShortcut(.cancelAction)
             }
-            .foregroundStyle(theme.primaryText)
-            .padding(.horizontal, 32)
-            .padding(.vertical, 26)
-            .background(theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(theme.border, lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.28), radius: 24, y: 12)
-        }
-    }
-}
 
-private struct ScanningSpinner: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let itemCount: Int
-    let trackColor: Color
-    let accent: Color
-
-    var body: some View {
-        Group {
-            if reduceMotion {
-                spinnerRing
-                    .rotationEffect(.degrees(18))
-            } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-                    let cycle = timeline.date.timeIntervalSinceReferenceDate
-                        .truncatingRemainder(dividingBy: 1.1) / 1.1
-                    spinnerRing
-                        .rotationEffect(.degrees(cycle * 360))
+            Group {
+                if let fraction = model.estimatedScanFraction {
+                    ProgressView(value: fraction)
+                } else {
+                    ProgressView()
                 }
             }
+            .progressViewStyle(.linear)
+            .tint(theme.accent)
+
+            Text(model.progress.currentPath)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(theme.tertiaryText)
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
-        .accessibilityElement(children: .ignore)
+        .font(.system(size: 10, weight: .medium))
+        .foregroundStyle(theme.secondaryText)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(theme.border, lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("Scanning in progress")
-        .accessibilityValue("\(itemCount.formatted()) items measured")
+        .accessibilityValue(accessibilityValue)
     }
 
-    private var spinnerRing: some View {
-        ZStack {
-            Circle()
-                .stroke(trackColor, lineWidth: 6)
-            Circle()
-                .trim(from: 0.08, to: 0.74)
-                .stroke(
-                    AngularGradient(
-                        colors: [accent, .cyan, accent],
-                        center: .center
-                    ),
-                    style: StrokeStyle(lineWidth: 6, lineCap: .round)
-                )
-        }
+    private var accessibilityValue: String {
+        let estimate = model.estimatedScanFraction.map {
+            "estimated \(Int(($0 * 100).rounded(.down))) percent, "
+        } ?? ""
+        return "\(estimate)\(model.progress.itemsScanned.formatted()) items, \(StorageFormatters.bytes(model.progress.mappedBytes)) mapped"
     }
 }

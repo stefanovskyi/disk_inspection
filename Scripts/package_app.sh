@@ -20,6 +20,7 @@ swift build -c "$configuration"
 rm -rf "$app_dir"
 mkdir -p "$contents_dir/MacOS" "$contents_dir/Resources"
 cp "$build_dir/SpaceLens" "$contents_dir/MacOS/SpaceLens"
+cp "$project_dir/Support/PrivacyInfo.xcprivacy" "$contents_dir/Resources/PrivacyInfo.xcprivacy"
 
 mkdir -p "$iconset_dir"
 for icon_size in 16 32 128 256 512; do

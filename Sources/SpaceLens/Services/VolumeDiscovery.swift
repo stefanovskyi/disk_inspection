@@ -1,6 +1,6 @@
 import Foundation
 
-struct VolumeDiscovery {
+struct VolumeDiscovery: Sendable {
     private let keys: Set<URLResourceKey> = [
         .volumeNameKey,
         .volumeLocalizedNameKey,
@@ -8,8 +8,16 @@ struct VolumeDiscovery {
         .volumeAvailableCapacityKey,
         .volumeIsRemovableKey,
         .volumeIsEjectableKey,
-        .volumeIsReadOnlyKey
+        .volumeIsReadOnlyKey,
+        .volumeUUIDStringKey,
+        .volumeTypeNameKey,
+        .volumeIsEncryptedKey,
+        .volumeIsLocalKey
     ]
+
+    func startupVolume() -> VolumeInfo? {
+        volumeInfo(for: URL(fileURLWithPath: "/", isDirectory: true))
+    }
 
     func mountedVolumes() -> [VolumeInfo] {
         let urls = FileManager.default.mountedVolumeURLs(
@@ -39,7 +47,11 @@ struct VolumeDiscovery {
             totalCapacity: Int64(values.volumeTotalCapacity ?? 0),
             availableCapacity: Int64(values.volumeAvailableCapacity ?? 0),
             isExternal: isExternal,
-            isReadOnly: values.volumeIsReadOnly ?? false
+            isReadOnly: values.volumeIsReadOnly ?? false,
+            uuid: values.volumeUUIDString,
+            fileSystemType: values.volumeTypeName,
+            isEncrypted: values.volumeIsEncrypted,
+            isLocal: values.volumeIsLocal ?? true
         )
     }
 }

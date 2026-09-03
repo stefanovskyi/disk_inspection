@@ -77,11 +77,11 @@ struct ItemInspector: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 3) {
-                        ForEach(Array(visibleChildren.enumerated()), id: \.element.id) { index, child in
+                        ForEach(visibleChildren) { child in
                             InspectorRow(
                                 node: child,
                                 parentSize: node.size,
-                                hue: SpacePalette.hues[index % SpacePalette.hues.count]
+                                hue: SunburstLayout.hue(for: child.id)
                             )
                         }
 
@@ -118,14 +118,74 @@ struct ItemInspector: View {
     }
 }
 
+struct SmallerItemsInspector: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let selection: SunburstSmallerItems
+    let dismiss: () -> Void
+
+    var body: some View {
+        let theme = SpaceTheme(colorScheme: colorScheme)
+
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(selection.name)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(theme.primaryText)
+                        Text("in \(selection.parent.name) · \(selection.children.count.formatted()) entries")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(theme.tertiaryText)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    Button(action: dismiss) {
+                        Image(systemName: "xmark")
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Return to all items")
+                    .accessibilityLabel("Close smaller items")
+                }
+
+                Text(StorageFormatters.bytes(selection.size))
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(theme.primaryText)
+            }
+            .padding(16)
+
+            Rectangle()
+                .fill(theme.border)
+                .frame(height: 1)
+
+            ScrollView {
+                LazyVStack(spacing: 3) {
+                    ForEach(selection.children) { child in
+                        InspectorRow(
+                            node: child,
+                            parentSize: selection.size,
+                            hue: SunburstLayout.hue(for: child.id)
+                        )
+                    }
+                }
+                .padding(8)
+            }
+        }
+        .spacePanel()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(
+            "Smaller items in \(selection.parent.name), \(StorageFormatters.bytes(selection.size))"
+        )
+    }
+}
+
 private struct InspectorRow: View {
     @EnvironmentObject private var model: AppViewModel
     @Environment(\.colorScheme) private var colorScheme
+    @State private var isHovered = false
     let node: FileNode
     let parentSize: Int64
     let hue: Double
-
-    private var isHovered: Bool { model.hoveredNode?.id == node.id }
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
@@ -193,11 +253,7 @@ private struct InspectorRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering in
-            if hovering {
-                model.hoveredNode = node
-            } else if model.hoveredNode?.id == node.id {
-                model.hoveredNode = nil
-            }
+            isHovered = hovering
         }
         .contextMenu {
             if node.isAggregate {

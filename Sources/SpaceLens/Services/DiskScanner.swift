@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 struct FileIdentity: Hashable, Sendable {
@@ -98,12 +99,17 @@ struct DiskScanner {
                     signposter.emitEvent(
                         "ScanNodeCounters",
                         id: signpostID,
-                        "directoryTasks=\(diagnostics.directoryTasks) retained=\(diagnostics.retainedNodes) discarded=\(diagnostics.discardedNodes)"
+                        "directoryTasks=\(diagnostics.directoryTasks) directories=\(diagnostics.directoryCount) retained=\(diagnostics.retainedNodes) discarded=\(diagnostics.discardedNodes)"
                     )
                     signposter.emitEvent(
                         "ScanProgressCounters",
                         id: signpostID,
                         "merges=\(diagnostics.progressMerges) emissions=\(diagnostics.progressEmissions)"
+                    )
+                    signposter.emitEvent(
+                        "ScanProviderCounters",
+                        id: signpostID,
+                        "timeouts=\(diagnostics.providerTimeouts) abandonedWorkers=\(diagnostics.abandonedWorkers)"
                     )
                 }
                 signposter.endInterval("Scan", signpostState)
@@ -113,6 +119,8 @@ struct DiskScanner {
             let rootMetadata = try? LowLevelMetadataReader.metadata(at: standardizedURL)
             let session = ScanSession(
                 progress: ScanProgress(currentPath: standardizedURL.path),
+                rootURL: standardizedURL,
+                rootName: rootMetadata?.name ?? Self.displayName(for: standardizedURL),
                 scope: ScanScope(
                     rootPath: standardizedURL.path,
                     rootDevice: rootMetadata?.identity?.device,
@@ -143,12 +151,32 @@ struct DiskScanner {
                     id: signpostID,
                     "items=\(progress.itemsScanned) unreadable=\(progress.unreadableItems)"
                 )
+
+                let rssBeforeArenaConstruction = Self.currentResidentMemoryBytes()
+                let arenaConstructionStart = DispatchTime.now().uptimeNanoseconds
+                let retainedRoot = FileNode(rootURL: standardizedURL, snapshot: root)
+                let arenaConstructionEnd = DispatchTime.now().uptimeNanoseconds
+                let rssAfterArenaConstruction = withExtendedLifetime(root) {
+                    Self.currentResidentMemoryBytes()
+                }
+                var diagnostics = session.diagnosticSnapshot()
+                diagnostics.retainedArenaNodeCount = retainedRoot.storageMetrics.nodeCount
+                diagnostics.arenaConstructionDurationSeconds = TimeInterval(
+                    arenaConstructionEnd &- arenaConstructionStart
+                ) / 1_000_000_000
+                diagnostics.rssBeforeArenaConstructionBytes = rssBeforeArenaConstruction
+                diagnostics.rssAfterArenaConstructionBytes = rssAfterArenaConstruction
+                signposter.emitEvent(
+                    "ScanArenaConstruction",
+                    id: signpostID,
+                    "nodes=\(diagnostics.retainedArenaNodeCount) durationMilliseconds=\(diagnostics.arenaConstructionDurationSeconds * 1_000) rssBefore=\(rssBeforeArenaConstruction) rssAfter=\(rssAfterArenaConstruction)"
+                )
                 return ScanResult(
-                    root: FileNode(rootURL: standardizedURL, snapshot: root),
+                    root: retainedRoot,
                     duration: Date().timeIntervalSince(start),
                     itemsScanned: progress.itemsScanned,
                     unreadableItems: progress.unreadableItems,
-                    diagnostics: session.diagnosticSnapshot()
+                    diagnostics: diagnostics
                 )
             } catch is CancellationError {
                 throw ScanFailure.cancelled
@@ -210,6 +238,9 @@ struct DiskScanner {
                 activityMonitor: activityMonitor,
                 onProgress: onProgress
             ) else { throw CancellationError() }
+            if isDirectory {
+                session.diagnostics.recordDirectory()
+            }
             session.recordUnreadable(at: url, unresponsive: false, onProgress: onProgress)
             return FileNodeSnapshot(
                 name: name,
@@ -226,6 +257,13 @@ struct DiskScanner {
                 activityMonitor: activityMonitor,
                 onProgress: onProgress
             ) else { throw CancellationError() }
+            if activityMonitor == nil {
+                session.mergeMappedBytes(
+                    metadata.size,
+                    itemCount: 1,
+                    within: url.deletingLastPathComponent()
+                )
+            }
             return FileNodeSnapshot(
                 name: name,
                 size: metadata.size,
@@ -259,6 +297,7 @@ struct DiskScanner {
             activityMonitor: activityMonitor,
             onProgress: onProgress
         ) else { throw CancellationError() }
+        session.diagnostics.recordDirectory()
 
         var retainedChildren = BoundedNodeAccumulator(capacity: retainedChildLimit)
         var total: Int64 = 0
@@ -268,6 +307,7 @@ struct DiskScanner {
         var progressBatch = ScanProgressBatch(
             session: session,
             activityMonitor: activityMonitor,
+            previewURL: url,
             onProgress: onProgress
         )
 
@@ -284,7 +324,7 @@ struct DiskScanner {
                     session.diagnostics.recordFallbackLstat()
                     entryMetadata = try LowLevelMetadataReader.metadata(at: entryURL)
                 } catch {
-                    guard progressBatch.recordItem(path: { entryURL.path }) else {
+                    guard progressBatch.recordItem(size: 0, path: { entryURL.path }) else {
                         throw CancellationError()
                     }
                     progressBatch.flush(path: { entryURL.path })
@@ -313,6 +353,7 @@ struct DiskScanner {
             }
 
             guard progressBatch.recordItem(
+                size: entryMetadata.isReadable ? entryMetadata.size : 0,
                 path: { entry.url(relativeTo: url).path }
             ) else { throw CancellationError() }
             if !entryMetadata.isReadable {
@@ -390,6 +431,7 @@ struct DiskScanner {
                     if let completedChild = try await group.next() {
                         pendingTaskCount -= 1
                         if let completedChild {
+                            session.recordCompletedPreview(completedChild, parentURL: url)
                             measuredDirectItems += 1
                             total = addingWithoutOverflow(total, completedChild.size)
                             totalItems = addingWithoutOverflow(totalItems, completedChild.itemCount)
@@ -423,6 +465,7 @@ struct DiskScanner {
                     ownsWorkerPermit: ownsWorkerPermit,
                     onProgress: onProgress
                 ) {
+                    session.recordCompletedPreview(child, parentURL: url)
                     measuredDirectItems += 1
                     total = addingWithoutOverflow(total, child.size)
                     totalItems = addingWithoutOverflow(totalItems, child.itemCount)
@@ -433,6 +476,7 @@ struct DiskScanner {
             for try await child in group {
                 pendingTaskCount -= 1
                 guard let child else { continue }
+                session.recordCompletedPreview(child, parentURL: url)
                 measuredDirectItems += 1
                 total = addingWithoutOverflow(total, child.size)
                 totalItems = addingWithoutOverflow(totalItems, child.itemCount)
@@ -538,6 +582,7 @@ struct DiskScanner {
             if monitor.inactiveDuration >= session.configuration.stalledSubtreeTimeout {
                 let abandonment = monitor.abandon()
                 isolatedWorker.cancel()
+                session.diagnostics.recordProviderTimeoutAndAbandonedWorker()
                 signposter.emitEvent("SubtreeTimedOut", id: signpostID)
 
                 session.mergeItems(
@@ -551,6 +596,7 @@ struct DiskScanner {
                         activityMonitor: nil,
                         onProgress: onProgress
                     )
+                    session.diagnostics.recordDirectory()
                 }
                 session.recordUnreadable(
                     at: url,
@@ -575,7 +621,11 @@ struct DiskScanner {
             path: { url.path },
             onProgress: onProgress
         )
-        return try resultBox.take().get()
+        let result = try resultBox.take().get()
+        if let result {
+            session.mergeMappedBytes(result.size, itemCount: result.itemCount, within: url)
+        }
+        return result
     }
 
     private static func shouldIsolateProtectedSubtree(_ url: URL) -> Bool {
@@ -586,6 +636,25 @@ struct DiskScanner {
             || path.contains("/Library/Mobile Documents/")
             || path.hasSuffix("/Library/CloudStorage")
             || path.contains("/Library/CloudStorage/")
+    }
+
+    private static func currentResidentMemoryBytes() -> UInt64 {
+        var info = mach_task_basic_info_data_t()
+        var count = mach_msg_type_number_t(
+            MemoryLayout<mach_task_basic_info_data_t>.size / MemoryLayout<natural_t>.size
+        )
+        let result = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { reboundPointer in
+                task_info(
+                    mach_task_self_,
+                    task_flavor_t(MACH_TASK_BASIC_INFO),
+                    reboundPointer,
+                    &count
+                )
+            }
+        }
+        guard result == KERN_SUCCESS else { return 0 }
+        return UInt64(info.resident_size)
     }
 
     private static func addingWithoutOverflow(_ left: Int64, _ right: Int64) -> Int64 {
@@ -606,6 +675,16 @@ struct DiskScanner {
 }
 
 private final class ScanSession: @unchecked Sendable {
+    private static let completedPreviewChildLimit = 8
+    private static let progressEmissionIntervalNanoseconds: UInt64 = 200_000_000
+
+    private struct PreviewBranch {
+        let name: String
+        var size: Int64
+        var itemCount: Int
+        var completedSnapshot: FileNodeSnapshot?
+    }
+
     let scope: ScanScope
     let configuration: ScannerConfiguration
     let visitedDirectories = VisitedDirectoryRegistry()
@@ -614,11 +693,24 @@ private final class ScanSession: @unchecked Sendable {
     let diagnostics = ScanDiagnosticCounters()
 
     private let progressLock = NSLock()
+    private let rootURL: URL
+    private let rootName: String
     private var progress: ScanProgress
     private var lastProgressEmission: UInt64 = 0
+    private var previewBranches: [String: PreviewBranch] = [:]
+    private var ungroupedPreviewSize: Int64 = 0
+    private var ungroupedPreviewItems = 0
 
-    init(progress: ScanProgress, scope: ScanScope, configuration: ScannerConfiguration) {
+    init(
+        progress: ScanProgress,
+        rootURL: URL,
+        rootName: String,
+        scope: ScanScope,
+        configuration: ScannerConfiguration
+    ) {
         self.progress = progress
+        self.rootURL = rootURL
+        self.rootName = rootName
         self.scope = scope
         self.configuration = configuration
         parallelism = ScanParallelismLimiter(
@@ -634,6 +726,7 @@ private final class ScanSession: @unchecked Sendable {
         progressLock.lock()
         defer { progressLock.unlock() }
         progress.currentPath = url.path
+        progress.previewRoot = makePreviewRoot()
         return progress
     }
 
@@ -690,9 +783,11 @@ private final class ScanSession: @unchecked Sendable {
 
         let now = DispatchTime.now().uptimeNanoseconds
         let emittedProgress: ScanProgress?
-        if progress.itemsScanned == 1 || now &- lastProgressEmission >= 100_000_000 {
+        if progress.itemsScanned == 1
+            || now &- lastProgressEmission >= Self.progressEmissionIntervalNanoseconds {
             lastProgressEmission = now
             progress.currentPath = path()
+            progress.previewRoot = makePreviewRoot()
             emittedProgress = progress
         } else {
             emittedProgress = nil
@@ -703,6 +798,55 @@ private final class ScanSession: @unchecked Sendable {
             diagnostics.recordProgressEmission()
             onProgress(emittedProgress)
         }
+    }
+
+    func mergeMappedBytes(_ bytes: Int64, itemCount: Int, within directoryURL: URL) {
+        guard bytes > 0 else { return }
+
+        progressLock.lock()
+        progress.mappedBytes = addingWithoutOverflow(progress.mappedBytes, bytes)
+
+        if let branchName = rootBranchName(containing: directoryURL) {
+            if var branch = previewBranches[branchName] {
+                branch.size = addingWithoutOverflow(branch.size, bytes)
+                branch.itemCount = addingWithoutOverflow(branch.itemCount, itemCount)
+                previewBranches[branchName] = branch
+            } else if previewBranches.count < Self.completedPreviewChildLimit {
+                previewBranches[branchName] = PreviewBranch(
+                    name: branchName,
+                    size: bytes,
+                    itemCount: itemCount,
+                    completedSnapshot: nil
+                )
+            } else {
+                ungroupedPreviewSize = addingWithoutOverflow(ungroupedPreviewSize, bytes)
+                ungroupedPreviewItems = addingWithoutOverflow(ungroupedPreviewItems, itemCount)
+            }
+        } else {
+            ungroupedPreviewSize = addingWithoutOverflow(ungroupedPreviewSize, bytes)
+            ungroupedPreviewItems = addingWithoutOverflow(ungroupedPreviewItems, itemCount)
+        }
+        progressLock.unlock()
+    }
+
+    func recordCompletedPreview(_ snapshot: FileNodeSnapshot, parentURL: URL) {
+        guard parentURL.standardizedFileURL.path == rootURL.path else { return }
+
+        progressLock.lock()
+        if var branch = previewBranches[snapshot.name] {
+            branch.completedSnapshot = projectedPreview(snapshot, remainingDepth: 1)
+            branch.size = max(branch.size, snapshot.size)
+            branch.itemCount = max(branch.itemCount, snapshot.itemCount)
+            previewBranches[snapshot.name] = branch
+        } else if previewBranches.count < Self.completedPreviewChildLimit {
+            previewBranches[snapshot.name] = PreviewBranch(
+                name: snapshot.name,
+                size: snapshot.size,
+                itemCount: snapshot.itemCount,
+                completedSnapshot: projectedPreview(snapshot, remainingDepth: 1)
+            )
+        }
+        progressLock.unlock()
     }
 
     func recordUnreadable(
@@ -732,6 +876,7 @@ private final class ScanSession: @unchecked Sendable {
         }
         if forceProgressEmission {
             progress.currentPath = path()
+            progress.previewRoot = makePreviewRoot()
         }
         let emittedProgress = forceProgressEmission ? progress : nil
         progressLock.unlock()
@@ -741,6 +886,137 @@ private final class ScanSession: @unchecked Sendable {
             onProgress(emittedProgress)
         }
     }
+
+    private func rootBranchName(containing directoryURL: URL) -> String? {
+        let directoryPath = directoryURL.standardizedFileURL.path
+        let rootPath = rootURL.path
+        guard directoryPath != rootPath else { return nil }
+
+        let relativeStart = rootPath == "/" ? 1 : rootPath.count + 1
+        guard directoryPath.count >= relativeStart else { return nil }
+        let relative = String(directoryPath.dropFirst(relativeStart))
+        return relative.split(separator: "/", maxSplits: 1).first.map(String.init)
+    }
+
+    private func makePreviewRoot() -> FileNode {
+        var children = previewBranches.values.map { branch in
+            if let completed = branch.completedSnapshot {
+                return completed
+            }
+            return FileNodeSnapshot(
+                name: branch.name,
+                size: branch.size,
+                isDirectory: true,
+                isReadable: true,
+                children: [],
+                itemCount: max(branch.itemCount, 1),
+                directItemCount: 0,
+                isAggregate: false
+            )
+        }
+        if ungroupedPreviewSize > 0 || ungroupedPreviewItems > 0 {
+            children.append(
+                FileNodeSnapshot(
+                    name: "Smaller items",
+                    size: ungroupedPreviewSize,
+                    isDirectory: false,
+                    isReadable: true,
+                    children: [],
+                    itemCount: max(ungroupedPreviewItems, 1),
+                    directItemCount: 0,
+                    isAggregate: true
+                )
+            )
+        }
+        children.sort { left, right in
+            RetainedNodeCandidate.isPreferred(
+                RetainedNodeCandidate(node: left),
+                over: RetainedNodeCandidate(node: right)
+            )
+        }
+
+        return FileNode(
+            rootURL: rootURL,
+            snapshot: FileNodeSnapshot(
+                name: rootName,
+                size: progress.mappedBytes,
+                isDirectory: true,
+                isReadable: true,
+                children: children,
+                itemCount: max(progress.itemsScanned, 1),
+                directItemCount: children.count,
+                isAggregate: false
+            )
+        )
+    }
+
+    private func projectedPreview(
+        _ snapshot: FileNodeSnapshot,
+        remainingDepth: Int
+    ) -> FileNodeSnapshot {
+        guard remainingDepth > 0, !snapshot.children.isEmpty else {
+            return FileNodeSnapshot(
+                name: snapshot.name,
+                size: snapshot.size,
+                isDirectory: snapshot.isDirectory,
+                isReadable: snapshot.isReadable,
+                children: [],
+                itemCount: snapshot.itemCount,
+                directItemCount: snapshot.directItemCount,
+                isAggregate: snapshot.isAggregate
+            )
+        }
+
+        let ordinaryChildren = snapshot.children.filter { !$0.isAggregate }
+        let retained = ordinaryChildren.prefix(Self.completedPreviewChildLimit)
+        let discarded = snapshot.children.filter { child in
+            child.isAggregate || !retained.contains(where: { $0.name == child.name })
+        }
+        var children = retained.map {
+            projectedPreview($0, remainingDepth: remainingDepth - 1)
+        }
+        let discardedSize = discarded.reduce(Int64(0)) {
+            addingWithoutOverflow($0, $1.size)
+        }
+        let discardedItems = discarded.reduce(0) {
+            addingWithoutOverflow($0, $1.itemCount)
+        }
+        if discardedSize > 0 || discardedItems > 0 {
+            children.append(
+                FileNodeSnapshot(
+                    name: "Smaller items",
+                    size: discardedSize,
+                    isDirectory: false,
+                    isReadable: true,
+                    children: [],
+                    itemCount: max(discardedItems, 1),
+                    directItemCount: 0,
+                    isAggregate: true
+                )
+            )
+        }
+
+        return FileNodeSnapshot(
+            name: snapshot.name,
+            size: snapshot.size,
+            isDirectory: snapshot.isDirectory,
+            isReadable: snapshot.isReadable,
+            children: children,
+            itemCount: snapshot.itemCount,
+            directItemCount: snapshot.directItemCount,
+            isAggregate: snapshot.isAggregate
+        )
+    }
+
+    private func addingWithoutOverflow(_ left: Int64, _ right: Int64) -> Int64 {
+        let addition = left.addingReportingOverflow(right)
+        return addition.overflow ? Int64.max : addition.partialValue
+    }
+
+    private func addingWithoutOverflow(_ left: Int, _ right: Int) -> Int {
+        let addition = left.addingReportingOverflow(right)
+        return addition.overflow ? Int.max : addition.partialValue
+    }
 }
 
 private struct ScanProgressBatch {
@@ -748,25 +1024,31 @@ private struct ScanProgressBatch {
 
     let session: ScanSession
     let activityMonitor: ScanActivityMonitor?
+    let previewURL: URL
     let onProgress: DiskScanner.ProgressHandler
     private var localPendingItems = 0
     private var itemsSinceMerge = 0
+    private var mappedBytesSinceMerge: Int64 = 0
 
     init(
         session: ScanSession,
         activityMonitor: ScanActivityMonitor?,
+        previewURL: URL,
         onProgress: @escaping DiskScanner.ProgressHandler
     ) {
         self.session = session
         self.activityMonitor = activityMonitor
+        self.previewURL = previewURL
         self.onProgress = onProgress
     }
 
-    mutating func recordItem(path: () -> String) -> Bool {
+    mutating func recordItem(size: Int64, path: () -> String) -> Bool {
         if let activityMonitor {
             guard activityMonitor.recordActivity() else { return false }
         } else {
             localPendingItems += 1
+            let addition = mappedBytesSinceMerge.addingReportingOverflow(size)
+            mappedBytesSinceMerge = addition.overflow ? Int64.max : addition.partialValue
         }
         itemsSinceMerge += 1
 
@@ -785,6 +1067,11 @@ private struct ScanProgressBatch {
             localPendingItems = 0
         }
         itemsSinceMerge = 0
+        let mappedBytes = mappedBytesSinceMerge
+        mappedBytesSinceMerge = 0
+        if activityMonitor == nil {
+            session.mergeMappedBytes(mappedBytes, itemCount: itemCount, within: previewURL)
+        }
         session.mergeItems(itemCount, path: path, onProgress: onProgress)
     }
 }

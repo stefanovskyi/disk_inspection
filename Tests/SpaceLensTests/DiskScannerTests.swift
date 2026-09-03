@@ -156,11 +156,102 @@ final class DiskScannerTests: XCTestCase {
 
         XCTAssertEqual(result.itemsScanned, 4)
         XCTAssertEqual(recorder.latest?.itemsScanned, 4)
+        XCTAssertEqual(recorder.latest?.mappedBytes, result.root.size)
+        XCTAssertEqual(recorder.latest?.previewRoot?.size, result.root.size)
+        XCTAssertLessThanOrEqual(
+            recorder.latest?.previewRoot?.storageMetrics.nodeCount ?? Int.max,
+            result.root.storageMetrics.nodeCount
+        )
+        XCTAssertTrue(recorder.snapshots.contains { progress in
+            progress.previewRoot != nil && progress.itemsScanned < result.itemsScanned
+        })
+        let mappedByteSamples = recorder.snapshots.map(\.mappedBytes)
+        XCTAssertEqual(mappedByteSamples, mappedByteSamples.sorted())
         XCTAssertGreaterThanOrEqual(result.diagnostics.syscallBatches, 1)
         XCTAssertEqual(result.diagnostics.bufferAllocations, 1)
+        XCTAssertEqual(result.diagnostics.directoryCount, 1)
         XCTAssertEqual(result.diagnostics.retainedNodes, 3)
         XCTAssertEqual(result.diagnostics.discardedNodes, 0)
         XCTAssertGreaterThanOrEqual(result.diagnostics.progressEmissions, 2)
+        XCTAssertEqual(result.diagnostics.retainedArenaNodeCount, 4)
+        XCTAssertGreaterThan(result.diagnostics.arenaConstructionDurationSeconds, 0)
+        XCTAssertGreaterThan(result.diagnostics.rssBeforeArenaConstructionBytes, 0)
+        XCTAssertGreaterThan(result.diagnostics.rssAfterArenaConstructionBytes, 0)
+    }
+
+    func testLivePreviewGrowsBeforeCompletedTreeIsAvailable() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensLivePreview-\(UUID().uuidString)", isDirectory: true)
+        let nested = root.appendingPathComponent("Nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(repeating: 0x41, count: 8_192)
+            .write(to: nested.appendingPathComponent("payload.bin"))
+
+        let scanner = DiskScanner(directoryReader: { url, keys in
+            if url.standardizedFileURL == nested.standardizedFileURL {
+                Thread.sleep(forTimeInterval: 0.25)
+            }
+            return try FileManager.default.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: keys,
+                options: []
+            )
+        })
+        let recorder = ProgressRecorder()
+        let result = try await scanner.scan(url: root) { recorder.record($0) }
+
+        let growingPreview = recorder.snapshots.first { progress in
+            guard progress.mappedBytes > 0,
+                  let nestedPreview = progress.previewRoot?.children.first(where: {
+                      $0.name == "Nested"
+                  }) else { return false }
+            return nestedPreview.size > 0 && nestedPreview.children.isEmpty
+        }
+        XCTAssertNotNil(growingPreview)
+        XCTAssertNotEqual(growingPreview?.previewRoot, result.root)
+    }
+
+    func testFinalProgressKeepsBoundedPreviewInsteadOfDuplicatingResult() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensBoundedFinalPreview-\(UUID().uuidString)", isDirectory: true)
+        let levelOne = root.appendingPathComponent("LevelOne", isDirectory: true)
+        let levelTwo = levelOne.appendingPathComponent("LevelTwo", isDirectory: true)
+        try FileManager.default.createDirectory(at: levelTwo, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(repeating: 0x41, count: 4_096)
+            .write(to: levelTwo.appendingPathComponent("payload.bin"))
+
+        let recorder = ProgressRecorder()
+        let result = try await DiskScanner().scan(url: root) { recorder.record($0) }
+        let finalPreview = try XCTUnwrap(recorder.latest?.previewRoot)
+
+        XCTAssertEqual(recorder.latest?.mappedBytes, result.root.size)
+        XCTAssertLessThan(
+            finalPreview.storageMetrics.nodeCount,
+            result.root.storageMetrics.nodeCount
+        )
+        XCTAssertNotEqual(finalPreview, result.root)
+    }
+
+    func testLivePreviewRetainsOnlyEightRootBranches() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensBoundedPreviewBranches-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for index in 0..<12 {
+            let directory = root.appendingPathComponent("Branch-\(index)", isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try Data(repeating: UInt8(index), count: 1_024)
+                .write(to: directory.appendingPathComponent("payload.bin"))
+        }
+
+        let recorder = ProgressRecorder()
+        _ = try await DiskScanner().scan(url: root) { recorder.record($0) }
+        let finalPreview = try XCTUnwrap(recorder.latest?.previewRoot)
+
+        XCTAssertLessThanOrEqual(finalPreview.children.count, 9)
+        XCTAssertEqual(finalPreview.children.filter(\.isAggregate).count, 1)
     }
 
     func testDiagnosticCountersIncludeFallbackMetadataCalls() async throws {
@@ -184,6 +275,7 @@ final class DiskScannerTests: XCTestCase {
         XCTAssertEqual(result.diagnostics.fallbackLstatCalls, 2)
         XCTAssertEqual(result.diagnostics.bufferAllocations, 0)
         XCTAssertEqual(result.diagnostics.directoryTasks, 0)
+        XCTAssertEqual(result.diagnostics.directoryCount, 1)
     }
 
     func testProviderMatchingOnlyExaminesDirectories() async throws {
@@ -357,6 +449,9 @@ final class DiskScannerTests: XCTestCase {
         XCTAssertLessThan(duration, 1)
         XCTAssertEqual(result.itemsScanned, 2)
         XCTAssertEqual(result.unreadableItems, 1)
+        XCTAssertEqual(result.diagnostics.directoryCount, 2)
+        XCTAssertEqual(result.diagnostics.providerTimeouts, 1)
+        XCTAssertEqual(result.diagnostics.abandonedWorkers, 1)
         XCTAssertEqual(
             result.root.children.first(where: { $0.name == "Blocked" })?.isReadable,
             false
@@ -420,6 +515,7 @@ private final class CancellationGate: @unchecked Sendable {
 private final class ProgressRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var value: ScanProgress?
+    private var values: [ScanProgress] = []
 
     var latest: ScanProgress? {
         lock.lock()
@@ -427,9 +523,16 @@ private final class ProgressRecorder: @unchecked Sendable {
         return value
     }
 
+    var snapshots: [ScanProgress] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
+
     func record(_ progress: ScanProgress) {
         lock.lock()
         value = progress
+        values.append(progress)
         lock.unlock()
     }
 }

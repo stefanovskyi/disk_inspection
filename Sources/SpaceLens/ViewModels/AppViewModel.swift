@@ -5,6 +5,10 @@ import Foundation
 @MainActor
 final class AppViewModel: ObservableObject {
     @Published private(set) var volumes: [VolumeInfo] = []
+    @Published private(set) var selectedVolumeOverview: VolumeInfo?
+    @Published private(set) var previousScanSummary: PreviousScanSummary?
+    @Published private(set) var previousScanRoot: FileNode?
+    @Published private(set) var isDiscoveringVolumes = true
     @Published private(set) var result: ScanResult?
     @Published private(set) var navigationPath: [FileNode] = []
     @Published private(set) var isScanning = false
@@ -14,14 +18,17 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var pendingFullDiskScanURL: URL?
     @Published private(set) var sessionFolders: [SessionFolder] = []
     @Published private(set) var pendingScanChoice: PendingScanChoice?
-    @Published var hoveredNode: FileNode?
     @Published var errorMessage: String?
 
     private let scanner = DiskScanner()
     private let volumeDiscovery = VolumeDiscovery()
     private let fullDiskAccessChecker = FullDiskAccessChecker()
+    private let previousScanStore = PreviousScanStore()
     private var scanSessionStore = ScanSessionStore()
+    private var previousSummaries: [String: PreviousScanSummary] = [:]
     private var scanTask: Task<Void, Never>?
+    private var volumeRefreshTask: Task<Void, Never>?
+    private var scanFallbackResult: ScanResult?
     private var activeScanID = UUID()
     private var volumeObserverTokens: [NSObjectProtocol] = []
     private var activationObserverToken: NSObjectProtocol?
@@ -34,6 +41,7 @@ final class AppViewModel: ObservableObject {
 
     deinit {
         scanTask?.cancel()
+        volumeRefreshTask?.cancel()
         for token in volumeObserverTokens {
             NSWorkspace.shared.notificationCenter.removeObserver(token)
         }
@@ -42,29 +50,83 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    var currentNode: FileNode? { navigationPath.last }
-    var canNavigateBack: Bool { navigationPath.count > 1 }
+    var currentNode: FileNode? {
+        isScanning ? progress.previewRoot : navigationPath.last
+    }
+    var canNavigateBack: Bool { !isScanning && navigationPath.count > 1 }
     var isRequestingFullDiskAccess: Bool { pendingFullDiskScanURL != nil }
 
+    var estimatedScanFraction: Double? {
+        guard isScanning, let scanningURL else { return nil }
+        let standardizedPath = scanningURL.standardizedFileURL.path
+        let targetBytes = volumes.first {
+            $0.url.standardizedFileURL.path == standardizedPath
+        }?.usedCapacity ?? scanFallbackResult?.root.size ?? 0
+        guard targetBytes > 0 else { return nil }
+        return min(max(Double(progress.mappedBytes) / Double(targetBytes), 0), 0.99)
+    }
+
     func volumeForChart(node: FileNode) -> VolumeInfo? {
-        guard result?.root.id == node.id else { return nil }
         let rootPath = node.url.standardizedFileURL.path
         return volumes.first { $0.url.standardizedFileURL.path == rootPath }
     }
 
     func refreshVolumes() {
-        volumes = volumeDiscovery.mountedVolumes()
+        volumeRefreshTask?.cancel()
+        isDiscoveringVolumes = true
+        let discovery = volumeDiscovery
+        let store = previousScanStore
+
+        volumeRefreshTask = Task { [weak self] in
+            let startupTask = Task.detached(priority: .userInitiated) {
+                discovery.startupVolume()
+            }
+            let volumesTask = Task.detached(priority: .utility) {
+                discovery.mountedVolumes()
+            }
+            let summariesTask = Task.detached(priority: .utility) {
+                store.load()
+            }
+
+            if let startupVolume = await startupTask.value,
+               !Task.isCancelled,
+               self?.selectedVolumeOverview == nil {
+                self?.selectedVolumeOverview = startupVolume
+            }
+
+            let discoveredVolumes = await volumesTask.value
+            let summaries = await summariesTask.value
+            guard let self, !Task.isCancelled else { return }
+            volumes = discoveredVolumes
+            previousSummaries = summaries
+
+            if let selectedVolumeOverview,
+               let refreshedSelection = discoveredVolumes.first(where: {
+                   $0.url.standardizedFileURL.path
+                       == selectedVolumeOverview.url.standardizedFileURL.path
+               }) {
+                self.selectedVolumeOverview = refreshedSelection
+            } else if selectedVolumeOverview == nil {
+                self.selectedVolumeOverview = preferredStartupVolume(in: discoveredVolumes)
+            }
+            updatePreviousScanPresentation()
+            isDiscoveringVolumes = false
+            volumeRefreshTask = nil
+        }
     }
 
     func selectVolume(_ volume: VolumeInfo) {
         if cachedResult(for: volume) != nil {
             pendingScanChoice = PendingScanChoice(volume: volume)
         } else {
-            scan(volume.url)
+            showVolumeOverview(volume)
         }
     }
 
     func selectSessionFolder(_ folder: SessionFolder) {
+        selectedVolumeOverview = nil
+        previousScanSummary = nil
+        previousScanRoot = nil
         if cachedResult(for: folder) != nil {
             pendingScanChoice = PendingScanChoice(folder: folder)
         } else {
@@ -94,8 +156,13 @@ final class AppViewModel: ObservableObject {
         cancelScan()
         result = cachedResult
         navigationPath = [cachedResult.root]
-        hoveredNode = nil
         errorMessage = nil
+        if let volume = volumes.first(where: {
+            $0.url.standardizedFileURL.path == url.standardizedFileURL.path
+        }) {
+            selectedVolumeOverview = volume
+            updatePreviousScanPresentation()
+        }
     }
 
     func dismissScanChoice() {
@@ -116,7 +183,6 @@ final class AppViewModel: ObservableObject {
         if result?.root.url.standardizedFileURL.path == folderPath {
             result = nil
             navigationPath = []
-            hoveredNode = nil
         }
     }
 
@@ -126,8 +192,9 @@ final class AppViewModel: ObservableObject {
         pendingScanChoice = nil
         result = nil
         navigationPath = []
-        hoveredNode = nil
         progress = ScanProgress()
+        selectedVolumeOverview = preferredStartupVolume(in: volumes)
+        updatePreviousScanPresentation()
         refreshVolumes()
     }
 
@@ -146,11 +213,20 @@ final class AppViewModel: ObservableObject {
         if !sessionFolders.contains(folder) {
             sessionFolders.append(folder)
         }
+        selectedVolumeOverview = nil
+        previousScanSummary = nil
+        previousScanRoot = nil
         scan(folder.url)
     }
 
     func scan(_ url: URL) {
         pendingScanChoice = nil
+        if let volume = volumes.first(where: {
+            $0.url.standardizedFileURL.path == url.standardizedFileURL.path
+        }) {
+            selectedVolumeOverview = volume
+            updatePreviousScanPresentation()
+        }
         if fullDiskAccessChecker.status(for: url) == .needsUserApproval {
             pendingFullDiskScanURL = url
             return
@@ -179,31 +255,60 @@ final class AppViewModel: ObservableObject {
         scanTask?.cancel()
         let scanID = UUID()
         activeScanID = scanID
+        let standardizedURL = url.standardizedFileURL
+        scanFallbackResult = result?.root.url.standardizedFileURL.path == standardizedURL.path
+            ? result
+            : scanSessionStore.result(for: standardizedURL)
         scanningURL = url
         scanStartedAt = Date()
         isScanning = true
-        progress = ScanProgress(currentPath: url.path)
+        let initialPreview = FileNode(
+            url: standardizedURL,
+            name: displayName(for: standardizedURL),
+            size: 0,
+            isDirectory: true,
+            isReadable: true,
+            children: [],
+            itemCount: 1
+        )
+        progress = ScanProgress(currentPath: url.path, previewRoot: initialPreview)
+        navigationPath = []
         errorMessage = nil
-        hoveredNode = nil
 
         scanTask = Task { [weak self] in
             guard let self else { return }
             do {
                 let result = try await scanner.scan(url: url) { progress in
                     Task { @MainActor [weak self] in
-                        guard let self, self.activeScanID == scanID else { return }
+                        guard let self,
+                              self.activeScanID == scanID,
+                              self.isScanning else { return }
                         self.progress = progress
                     }
                 }
 
                 guard !Task.isCancelled, activeScanID == scanID else { return }
                 self.result = result
+                progress.previewRoot = nil
+                scanFallbackResult = nil
                 if volumes.contains(where: {
                     $0.url.standardizedFileURL.path == url.standardizedFileURL.path
                 }) || sessionFolders.contains(where: {
                     $0.url.standardizedFileURL.path == url.standardizedFileURL.path
                 }) {
                     scanSessionStore.store(result, for: url)
+                }
+                if let volume = volumes.first(where: {
+                    $0.url.standardizedFileURL.path == url.standardizedFileURL.path
+                }) {
+                    let summary = PreviousScanSummary(result: result, volume: volume)
+                    previousSummaries[summary.volumeIdentifier] = summary
+                    previousScanSummary = summary
+                    previousScanRoot = summary.makeRoot(at: volume.url)
+                    let store = previousScanStore
+                    Task.detached(priority: .utility) {
+                        try? store.store(summary)
+                    }
                 }
                 navigationPath = [result.root]
                 isScanning = false
@@ -212,10 +317,15 @@ final class AppViewModel: ObservableObject {
                 scanTask = nil
             } catch {
                 guard activeScanID == scanID else { return }
+                let fallbackResult = scanFallbackResult
                 isScanning = false
                 scanningURL = nil
                 scanStartedAt = nil
+                progress.previewRoot = nil
+                scanFallbackResult = nil
                 scanTask = nil
+                result = fallbackResult
+                navigationPath = fallbackResult.map { [$0.root] } ?? []
                 if error is CancellationError { return }
                 if let failure = error as? ScanFailure, case .cancelled = failure {
                     return
@@ -226,12 +336,17 @@ final class AppViewModel: ObservableObject {
     }
 
     func cancelScan() {
+        let fallbackResult = scanFallbackResult
         activeScanID = UUID()
         scanTask?.cancel()
         scanTask = nil
         isScanning = false
         scanningURL = nil
         scanStartedAt = nil
+        progress.previewRoot = nil
+        scanFallbackResult = nil
+        result = fallbackResult
+        navigationPath = fallbackResult.map { [$0.root] } ?? []
     }
 
     func rescan() {
@@ -239,22 +354,27 @@ final class AppViewModel: ObservableObject {
         scan(rootURL)
     }
 
+    func showVolumeOverview(_ volume: VolumeInfo) {
+        cancelScan()
+        result = nil
+        navigationPath = []
+        selectedVolumeOverview = volume
+        updatePreviousScanPresentation()
+    }
+
     func navigate(into node: FileNode) {
-        guard node.isDirectory, !node.children.isEmpty else { return }
+        guard !isScanning, node.isDirectory, !node.children.isEmpty else { return }
         navigationPath.append(node)
-        hoveredNode = nil
     }
 
     func navigate(toBreadcrumbAt index: Int) {
         guard navigationPath.indices.contains(index) else { return }
         navigationPath = Array(navigationPath.prefix(index + 1))
-        hoveredNode = nil
     }
 
     func navigateBack() {
         guard canNavigateBack else { return }
         navigationPath.removeLast()
-        hoveredNode = nil
     }
 
     func showInFinder(_ node: FileNode) {
@@ -322,5 +442,27 @@ final class AppViewModel: ObservableObject {
                 self?.resumePendingDiskScanIfAuthorized()
             }
         }
+    }
+
+    private func displayName(for url: URL) -> String {
+        if url.path == "/" { return "Macintosh HD" }
+        return url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent
+    }
+
+    private func preferredStartupVolume(in volumes: [VolumeInfo]) -> VolumeInfo? {
+        volumes.first { $0.url.standardizedFileURL.path == "/" }
+            ?? volumes.first { !$0.isExternal && $0.isLocal }
+            ?? volumes.first
+    }
+
+    private func updatePreviousScanPresentation() {
+        guard let volume = selectedVolumeOverview,
+              let summary = previousSummaries[volume.persistentIdentifier] else {
+            previousScanSummary = nil
+            previousScanRoot = nil
+            return
+        }
+        previousScanSummary = summary
+        previousScanRoot = summary.makeRoot(at: volume.url)
     }
 }

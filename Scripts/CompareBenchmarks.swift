@@ -57,22 +57,25 @@ struct CompareBenchmarks {
         }
 
         print("")
-        print("fixture      scan delta   throughput delta   layout delta   unreadable")
+        print("fixture      scan delta   throughput delta   layout delta       items   unreadable")
         for fixture in report.fixtures {
             let unreadable = "\(fixture.maximumUnreadableItemsBaseline) -> \(fixture.maximumUnreadableItemsCandidate)"
             let scanDelta = formattedDelta(fixture.medianScanDurationSeconds)
             let throughputDelta = formattedDelta(fixture.itemsPerSecond)
             let layoutDelta = formattedDelta(fixture.medianLayoutDurationMilliseconds)
+            let items = fixture.medianItemsScanned.map(formattedIntegerPair) ?? "n/a"
             print(
                 String(
-                    format: "%-12s %10s %17s %14s %12s",
+                    format: "%-12s %10s %17s %14s %11s %12s",
                     (fixture.name as NSString).utf8String!,
                     (scanDelta as NSString).utf8String!,
                     (throughputDelta as NSString).utf8String!,
                     (layoutDelta as NSString).utf8String!,
+                    (items as NSString).utf8String!,
                     (unreadable as NSString).utf8String!
                 )
             )
+            printDiagnostics(fixture.diagnostics)
         }
         let memoryDelta = formattedDelta(report.peakResidentMemoryBytes)
         print(
@@ -92,6 +95,55 @@ struct CompareBenchmarks {
         let suffix = metric.regression ? " FAIL" : ""
         guard let delta = metric.deltaPercent else { return "n/a\(suffix)" }
         return String(format: "%+.1f%%", delta) + suffix
+    }
+
+    private static func printDiagnostics(_ diagnostics: BenchmarkComparisonReport.Diagnostics?) {
+        guard let diagnostics else {
+            print("  diagnostics: unavailable in one or both reports")
+            return
+        }
+        print(
+            "  traversal: directories \(formattedIntegerPair(diagnostics.directoryCount)), "
+                + "batches \(formattedIntegerPair(diagnostics.syscallBatches)), "
+                + "fallback-lstat \(formattedIntegerPair(diagnostics.fallbackLstatCalls)), "
+                + "buffers \(formattedIntegerPair(diagnostics.bufferAllocations)), "
+                + "tasks \(formattedIntegerPair(diagnostics.directoryTasks))"
+        )
+        print(
+            "  nodes: retained \(formattedIntegerPair(diagnostics.retainedNodes)), "
+                + "discarded \(formattedIntegerPair(diagnostics.discardedNodes)), "
+                + "arena \(formattedIntegerPair(diagnostics.retainedArenaNodeCount))"
+        )
+        print(
+            "  progress: merges \(formattedIntegerPair(diagnostics.progressMerges)), "
+                + "emissions \(formattedIntegerPair(diagnostics.progressEmissions)); "
+                + "providers: timeouts \(formattedIntegerPair(diagnostics.providerTimeouts)), "
+                + "abandoned \(formattedIntegerPair(diagnostics.abandonedWorkers))"
+        )
+        print(
+            "  arena: \(formattedDecimalPair(diagnostics.arenaConstructionDurationMilliseconds, suffix: " ms")), "
+                + "RSS before \(formattedMemoryPair(diagnostics.rssBeforeArenaConstructionBytes)), "
+                + "after \(formattedMemoryPair(diagnostics.rssAfterArenaConstructionBytes))"
+        )
+    }
+
+    private static func formattedIntegerPair(_ metric: BenchmarkComparisonReport.Metric) -> String {
+        String(format: "%.0f -> %.0f", metric.baseline, metric.candidate)
+    }
+
+    private static func formattedDecimalPair(
+        _ metric: BenchmarkComparisonReport.Metric,
+        suffix: String
+    ) -> String {
+        String(format: "%.3f -> %.3f", metric.baseline, metric.candidate) + suffix
+    }
+
+    private static func formattedMemoryPair(_ metric: BenchmarkComparisonReport.Metric) -> String {
+        String(
+            format: "%.1f -> %.1f MiB",
+            metric.baseline / 1_048_576,
+            metric.candidate / 1_048_576
+        )
     }
 
     private static func shortRevision(_ revision: String) -> String {

@@ -370,6 +370,10 @@ final class ScanDiagnosticCounters: @unchecked Sendable {
         lock.withLock { value.directoryTasks += 1 }
     }
 
+    func recordDirectory() {
+        lock.withLock { value.directoryCount += 1 }
+    }
+
     func recordNodeDecisions(retained: Int, discarded: Int) {
         lock.withLock {
             value.retainedNodes += retained
@@ -383,6 +387,13 @@ final class ScanDiagnosticCounters: @unchecked Sendable {
 
     func recordProgressMerge() {
         lock.withLock { value.progressMerges += 1 }
+    }
+
+    func recordProviderTimeoutAndAbandonedWorker() {
+        lock.withLock {
+            value.providerTimeouts += 1
+            value.abandonedWorkers += 1
+        }
     }
 
     func snapshot(bufferAllocations: Int) -> ScanDiagnosticSnapshot {

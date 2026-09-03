@@ -146,9 +146,11 @@ struct BenchmarkMeasurement {
     let name: String
     let scanDurations: [TimeInterval]
     let layoutDurations: [TimeInterval]
+    let cachedHoverDurations: [TimeInterval]
     let itemCounts: [Int]
     let segmentCounts: [Int]
     let unreadableCounts: [Int]
+    let diagnostics: [ScanDiagnosticSnapshot]
 
     var medianScanDuration: TimeInterval { median(scanDurations) }
     var fastestScanDuration: TimeInterval { scanDurations.min() ?? 0 }
@@ -170,6 +172,7 @@ struct BenchmarkMeasurement {
         return (slowestScanDuration - fastestScanDuration) / medianScanDuration
     }
     var medianLayoutDuration: TimeInterval { median(layoutDurations) }
+    var medianCachedHoverDuration: TimeInterval { median(cachedHoverDurations) }
     var medianItemCount: Int { Int(median(itemCounts.map(Double.init))) }
     var medianSegmentCount: Int { Int(median(segmentCounts.map(Double.init))) }
     var maximumUnreadableCount: Int { unreadableCounts.max() ?? 0 }
@@ -350,9 +353,11 @@ struct SpaceLensBenchmarks {
     ) async throws -> BenchmarkMeasurement {
         var scanDurations: [TimeInterval] = []
         var layoutDurations: [TimeInterval] = []
+        var cachedHoverDurations: [TimeInterval] = []
         var itemCounts: [Int] = []
         var segmentCounts: [Int] = []
         var unreadableCounts: [Int] = []
+        var diagnostics: [ScanDiagnosticSnapshot] = []
 
         for iteration in 1...iterations {
             let signposter = SpaceLensSignposts.benchmark
@@ -371,31 +376,54 @@ struct SpaceLensBenchmarks {
             let scanEnd = DispatchTime.now().uptimeNanoseconds
 
             let layoutStart = DispatchTime.now().uptimeNanoseconds
-            let segments = SunburstLayout.segments(for: result.root, maxDepth: 6)
+            let scene = SunburstScene(
+                root: result.root,
+                maxDepth: 6,
+                angularExtent: .pi * 2,
+                interactionRadius: 100,
+                policy: .interactive
+            )
             let layoutEnd = DispatchTime.now().uptimeNanoseconds
+            let cachedHoverStart = DispatchTime.now().uptimeNanoseconds
+            var hoverMatchCount = 0
+            if !scene.segments.isEmpty {
+                for event in 0..<120 {
+                    let segment = scene.segments[event % scene.segments.count]
+                    let midpoint = segment.startAngle + (segment.angularSpan / 2)
+                    if scene.segmentIndex(atDepth: segment.depth, angle: midpoint) != nil {
+                        hoverMatchCount += 1
+                    }
+                }
+            }
+            let cachedHoverEnd = DispatchTime.now().uptimeNanoseconds
+            precondition(scene.segments.isEmpty || hoverMatchCount == 120)
             signposter.endInterval(
                 "BenchmarkIteration",
                 signpostState,
-                "items=\(result.itemsScanned) segments=\(segments.count)"
+                "items=\(result.itemsScanned) segments=\(scene.segments.count)"
             )
 
             let scanDuration = seconds(from: scanStart, to: scanEnd)
             let layoutDuration = seconds(from: layoutStart, to: layoutEnd)
+            let cachedHoverDuration = seconds(from: cachedHoverStart, to: cachedHoverEnd)
             scanDurations.append(scanDuration)
             layoutDurations.append(layoutDuration)
+            cachedHoverDurations.append(cachedHoverDuration)
             itemCounts.append(result.itemsScanned)
-            segmentCounts.append(segments.count)
+            segmentCounts.append(scene.segments.count)
             unreadableCounts.append(result.unreadableItems)
+            diagnostics.append(result.diagnostics)
 
             print(
                 String(
-                    format: "  %-9s run %d: %.4f s, %d items, %.3f ms layout, %d segments",
+                    format: "  %-9s run %d: %.4f s, %d items, %.3f ms scene, %.3f ms/120 hover lookups, %d segments",
                     (name as NSString).utf8String!,
                     iteration,
                     scanDuration,
                     result.itemsScanned,
                     layoutDuration * 1_000,
-                    segments.count
+                    cachedHoverDuration * 1_000,
+                    scene.segments.count
                 )
             )
             let diagnostics = result.diagnostics
@@ -404,10 +432,22 @@ struct SpaceLensBenchmarks {
                     + "fallback-lstat=\(diagnostics.fallbackLstatCalls) "
                     + "buffers=\(diagnostics.bufferAllocations) "
                     + "directory-tasks=\(diagnostics.directoryTasks) "
+                    + "directories=\(diagnostics.directoryCount) "
                     + "retained=\(diagnostics.retainedNodes) "
                     + "discarded=\(diagnostics.discardedNodes) "
                     + "progress-merges=\(diagnostics.progressMerges) "
-                    + "progress-emissions=\(diagnostics.progressEmissions)"
+                    + "progress-emissions=\(diagnostics.progressEmissions) "
+                    + "provider-timeouts=\(diagnostics.providerTimeouts) "
+                    + "abandoned-workers=\(diagnostics.abandonedWorkers)"
+            )
+            print(
+                String(
+                    format: "    arena: nodes=%d construction=%.3f ms rss-before=%.1f MiB rss-after=%.1f MiB",
+                    diagnostics.retainedArenaNodeCount,
+                    diagnostics.arenaConstructionDurationSeconds * 1_000,
+                    Double(diagnostics.rssBeforeArenaConstructionBytes) / 1_048_576,
+                    Double(diagnostics.rssAfterArenaConstructionBytes) / 1_048_576
+                )
             )
         }
 
@@ -415,9 +455,11 @@ struct SpaceLensBenchmarks {
             name: name,
             scanDurations: scanDurations,
             layoutDurations: layoutDurations,
+            cachedHoverDurations: cachedHoverDurations,
             itemCounts: itemCounts,
             segmentCounts: segmentCounts,
-            unreadableCounts: unreadableCounts
+            unreadableCounts: unreadableCounts,
+            diagnostics: diagnostics
         )
     }
 

@@ -223,6 +223,8 @@ struct ScanProgress: Equatable, Sendable {
     var itemsScanned = 0
     var unreadableItems = 0
     var unresponsiveItems = 0
+    var mappedBytes: Int64 = 0
+    var previewRoot: FileNode?
 }
 
 struct ScanResult: Equatable, Sendable {
@@ -252,10 +254,17 @@ struct ScanDiagnosticSnapshot: Codable, Equatable, Sendable {
     var fallbackLstatCalls = 0
     var bufferAllocations = 0
     var directoryTasks = 0
+    var directoryCount = 0
     var retainedNodes = 0
     var discardedNodes = 0
     var progressMerges = 0
     var progressEmissions = 0
+    var providerTimeouts = 0
+    var abandonedWorkers = 0
+    var retainedArenaNodeCount = 0
+    var arenaConstructionDurationSeconds: TimeInterval = 0
+    var rssBeforeArenaConstructionBytes: UInt64 = 0
+    var rssAfterArenaConstructionBytes: UInt64 = 0
 }
 
 enum ScanFailure: LocalizedError {

@@ -58,7 +58,7 @@ struct NavigationHeader: View {
 
             Spacer(minLength: 12)
 
-            if let result = model.result {
+            if let result = model.result, !model.isScanning {
                 HStack(spacing: 12) {
                     if result.unreadableItems > 0 {
                         Button {
@@ -91,6 +91,7 @@ struct NavigationHeader: View {
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .help("Rescan")
             .accessibilityLabel("Rescan")
+            .disabled(model.isScanning)
         }
         .padding(.top, 35)
         .padding(.horizontal, 16)

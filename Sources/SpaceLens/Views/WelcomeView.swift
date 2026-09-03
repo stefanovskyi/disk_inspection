@@ -25,6 +25,20 @@ struct WelcomeView: View {
                     .lineSpacing(3)
             }
 
+            if model.isDiscoveringVolumes {
+                VStack(spacing: 8) {
+                    Label("Reading disk capacity…", systemImage: "internaldrive")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(theme.secondaryText)
+                    ProgressView()
+                        .progressViewStyle(.linear)
+                        .tint(theme.accent)
+                        .frame(width: 190)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Reading disk capacity")
+            }
+
             Button {
                 model.chooseFolder()
             } label: {

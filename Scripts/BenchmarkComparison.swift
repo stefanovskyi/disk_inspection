@@ -59,8 +59,28 @@ struct BenchmarkComparisonReport: Codable {
         let medianScanDurationSeconds: Metric
         let itemsPerSecond: Metric
         let medianLayoutDurationMilliseconds: Metric
+        let medianItemsScanned: Metric?
         let maximumUnreadableItemsBaseline: Int
         let maximumUnreadableItemsCandidate: Int
+        let diagnostics: Diagnostics?
+    }
+
+    struct Diagnostics: Codable {
+        let directoryCount: Metric
+        let syscallBatches: Metric
+        let fallbackLstatCalls: Metric
+        let bufferAllocations: Metric
+        let directoryTasks: Metric
+        let retainedNodes: Metric
+        let discardedNodes: Metric
+        let progressMerges: Metric
+        let progressEmissions: Metric
+        let providerTimeouts: Metric
+        let abandonedWorkers: Metric
+        let retainedArenaNodeCount: Metric
+        let arenaConstructionDurationMilliseconds: Metric
+        let rssBeforeArenaConstructionBytes: Metric
+        let rssAfterArenaConstructionBytes: Metric
     }
 
     let schemaVersion: Int
@@ -116,8 +136,28 @@ private struct BenchmarkInputReport: Decodable {
     }
 
     struct Fixture: Decodable {
+        struct Iteration: Decodable {
+            let itemsScanned: Int?
+            let directoryCount: Int?
+            let syscallBatches: Int?
+            let fallbackLstatCalls: Int?
+            let bufferAllocations: Int?
+            let directoryTasks: Int?
+            let retainedNodes: Int?
+            let discardedNodes: Int?
+            let progressMerges: Int?
+            let progressEmissions: Int?
+            let providerTimeouts: Int?
+            let abandonedWorkers: Int?
+            let retainedArenaNodeCount: Int?
+            let arenaConstructionDurationMilliseconds: Double?
+            let rssBeforeArenaConstructionBytes: UInt64?
+            let rssAfterArenaConstructionBytes: UInt64?
+        }
+
         let name: String
         let summary: Summary
+        let iterations: [Iteration]?
     }
 
     struct Trace: Decodable {
@@ -185,8 +225,17 @@ enum BenchmarkReportComparator {
                 medianScanDurationSeconds: scan,
                 itemsPerSecond: throughput,
                 medianLayoutDurationMilliseconds: layout,
+                medianItemsScanned: iterationMetric(
+                    baseline: baselineFixture,
+                    candidate: candidateFixture,
+                    value: { $0.itemsScanned.map(Double.init) }
+                ),
                 maximumUnreadableItemsBaseline: baselineFixture.summary.maximumUnreadableItems,
-                maximumUnreadableItemsCandidate: candidateFixture.summary.maximumUnreadableItems
+                maximumUnreadableItemsCandidate: candidateFixture.summary.maximumUnreadableItems,
+                diagnostics: diagnosticComparison(
+                    baseline: baselineFixture,
+                    candidate: candidateFixture
+                )
             )
         }
 
@@ -199,7 +248,7 @@ enum BenchmarkReportComparator {
         if memory.regression { regressions.append("peak resident memory") }
 
         return BenchmarkComparisonReport(
-            schemaVersion: 1,
+            schemaVersion: 2,
             createdAt: Date(),
             baseline: .init(
                 path: baselineURL.standardizedFileURL.path,
@@ -262,6 +311,89 @@ enum BenchmarkReportComparator {
         return ((candidate - baseline) / baseline) * 100
     }
 
+    private static func diagnosticComparison(
+        baseline: BenchmarkInputReport.Fixture,
+        candidate: BenchmarkInputReport.Fixture
+    ) -> BenchmarkComparisonReport.Diagnostics? {
+        func compared(
+            _ value: (BenchmarkInputReport.Fixture.Iteration) -> Double?
+        ) -> BenchmarkComparisonReport.Metric? {
+            iterationMetric(baseline: baseline, candidate: candidate, value: value)
+        }
+
+        guard
+            let directoryCount = compared({ $0.directoryCount.map(Double.init) }),
+            let syscallBatches = compared({ $0.syscallBatches.map(Double.init) }),
+            let fallbackLstatCalls = compared({ $0.fallbackLstatCalls.map(Double.init) }),
+            let bufferAllocations = compared({ $0.bufferAllocations.map(Double.init) }),
+            let directoryTasks = compared({ $0.directoryTasks.map(Double.init) }),
+            let retainedNodes = compared({ $0.retainedNodes.map(Double.init) }),
+            let discardedNodes = compared({ $0.discardedNodes.map(Double.init) }),
+            let progressMerges = compared({ $0.progressMerges.map(Double.init) }),
+            let progressEmissions = compared({ $0.progressEmissions.map(Double.init) }),
+            let providerTimeouts = compared({ $0.providerTimeouts.map(Double.init) }),
+            let abandonedWorkers = compared({ $0.abandonedWorkers.map(Double.init) }),
+            let retainedArenaNodeCount = compared({ $0.retainedArenaNodeCount.map(Double.init) }),
+            let arenaConstructionDurationMilliseconds = compared({
+                $0.arenaConstructionDurationMilliseconds
+            }),
+            let rssBeforeArenaConstructionBytes = compared({
+                $0.rssBeforeArenaConstructionBytes.map { Double($0) }
+            }),
+            let rssAfterArenaConstructionBytes = compared({
+                $0.rssAfterArenaConstructionBytes.map { Double($0) }
+            })
+        else { return nil }
+
+        return .init(
+            directoryCount: directoryCount,
+            syscallBatches: syscallBatches,
+            fallbackLstatCalls: fallbackLstatCalls,
+            bufferAllocations: bufferAllocations,
+            directoryTasks: directoryTasks,
+            retainedNodes: retainedNodes,
+            discardedNodes: discardedNodes,
+            progressMerges: progressMerges,
+            progressEmissions: progressEmissions,
+            providerTimeouts: providerTimeouts,
+            abandonedWorkers: abandonedWorkers,
+            retainedArenaNodeCount: retainedArenaNodeCount,
+            arenaConstructionDurationMilliseconds: arenaConstructionDurationMilliseconds,
+            rssBeforeArenaConstructionBytes: rssBeforeArenaConstructionBytes,
+            rssAfterArenaConstructionBytes: rssAfterArenaConstructionBytes
+        )
+    }
+
+    private static func iterationMetric(
+        baseline: BenchmarkInputReport.Fixture,
+        candidate: BenchmarkInputReport.Fixture,
+        value: (BenchmarkInputReport.Fixture.Iteration) -> Double?
+    ) -> BenchmarkComparisonReport.Metric? {
+        guard let baselineIterations = baseline.iterations,
+              let candidateIterations = candidate.iterations else { return nil }
+        let baselineValues = baselineIterations.compactMap(value)
+        let candidateValues = candidateIterations.compactMap(value)
+        guard baselineValues.count == baselineIterations.count,
+              candidateValues.count == candidateIterations.count,
+              !baselineValues.isEmpty,
+              !candidateValues.isEmpty else { return nil }
+        return metric(
+            baseline: median(baselineValues),
+            candidate: median(candidateValues),
+            threshold: nil,
+            lowerIsBetter: true
+        )
+    }
+
+    private static func median(_ values: [Double]) -> Double {
+        let sorted = values.sorted()
+        let middle = sorted.count / 2
+        if sorted.count.isMultiple(of: 2) {
+            return (sorted[middle - 1] + sorted[middle]) / 2
+        }
+        return sorted[middle]
+    }
+
     private static func configurationDifferences(
         baseline: BenchmarkInputReport,
         candidate: BenchmarkInputReport
@@ -271,7 +403,6 @@ enum BenchmarkReportComparator {
             if left != right { differences.append("\(name): \(left) != \(right)") }
         }
 
-        compare("schema version", baseline.schemaVersion, candidate.schemaVersion)
         compare("operating system", baseline.system.operatingSystem, candidate.system.operatingSystem)
         compare("hardware model", baseline.system.hardwareModel, candidate.system.hardwareModel)
         compare("active processor count", baseline.system.activeProcessorCount, candidate.system.activeProcessorCount)
