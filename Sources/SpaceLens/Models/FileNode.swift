@@ -153,8 +153,7 @@ struct FileNode: Identifiable, Equatable, Sendable {
     }
 
     static func == (lhs: FileNode, rhs: FileNode) -> Bool {
-        if lhs.storage === rhs.storage, lhs.index == rhs.index { return true }
-        return lhs.snapshot == rhs.snapshot && lhs.url == rhs.url
+        lhs.storage === rhs.storage && lhs.index == rhs.index
     }
 
     /// Allocation-shape facts used by regression tests without exposing the arena.

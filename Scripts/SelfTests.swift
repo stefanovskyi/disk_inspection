@@ -34,9 +34,45 @@ struct SpaceLensSelfTests {
         try layoutRespectsDepthLimit()
         try sceneReusesLayoutForHitTesting()
         try interactiveSceneGroupsSmallItemsAndHonorsItsBudget()
+        try fileNodeEqualityUsesImmutableArenaIdentity()
         try sessionStoreRetainsAndReplacesVolumeResults()
         try previousScanSummaryIsBoundedAndPersistent()
-        print("SpaceLens self-tests passed (21/21)")
+        print("SpaceLens self-tests passed (22/22)")
+    }
+
+    private static func fileNodeEqualityUsesImmutableArenaIdentity() throws {
+        let rootURL = URL(fileURLWithPath: "/identity-self-test", isDirectory: true)
+        let child = FileNode(
+            url: rootURL.appendingPathComponent("child"),
+            name: "child",
+            size: 1,
+            isDirectory: false,
+            isReadable: true,
+            children: []
+        )
+        let root = FileNode(
+            url: rootURL,
+            name: "identity-self-test",
+            size: 1,
+            isDirectory: true,
+            isReadable: true,
+            children: [child]
+        )
+        let independentlyCreatedRoot = FileNode(
+            url: rootURL,
+            name: root.name,
+            size: root.size,
+            isDirectory: root.isDirectory,
+            isReadable: root.isReadable,
+            children: root.children
+        )
+
+        try expect(root == root, "A node stopped comparing equal to itself")
+        try expect(root != root.children[0], "Different nodes in one arena compared equal")
+        try expect(
+            root != independentlyCreatedRoot,
+            "Nodes from different immutable arenas compared equal"
+        )
     }
 
     private static func previousScanSummaryIsBoundedAndPersistent() throws {
