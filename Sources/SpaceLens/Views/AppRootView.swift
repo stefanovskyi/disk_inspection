@@ -75,6 +75,7 @@ struct AppRootView: View {
                 }
         }
         .navigationSplitViewStyle(.balanced)
+        .tint(theme.accent)
         .frame(minWidth: isInspectorVisible ? 1100 : 760)
         .background(theme.background)
         .overlay(alignment: .top) {
@@ -337,7 +338,7 @@ private struct ErrorBanner: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(theme.warning.opacity(0.35), lineWidth: 1)
         }
-        .shadow(color: .black.opacity(0.22), radius: 16, y: 8)
+        .shadow(color: theme.shadow.opacity(0.28), radius: 16, y: 8)
         .padding(.horizontal, 20)
     }
 }

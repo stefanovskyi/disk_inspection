@@ -72,7 +72,7 @@ struct NavigationHeader: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(.bar)
+        .background(theme.surface)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(theme.border)

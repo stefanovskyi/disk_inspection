@@ -318,14 +318,14 @@ private struct SunburstInteractionLayer: View {
         ZStack {
             if let selectedSegment {
                 Canvas { context, _ in
-                    drawSelection(segment: selectedSegment, context: &context)
+                    drawSelection(segment: selectedSegment, context: &context, theme: theme)
                 }
                 .allowsHitTesting(false)
             }
 
             if let hoveredSegment {
                 Canvas { context, _ in
-                    drawHover(segment: hoveredSegment, context: &context)
+                    drawHover(segment: hoveredSegment, context: &context, theme: theme)
                 }
                 .allowsHitTesting(false)
             }
@@ -406,7 +406,11 @@ private struct SunburstInteractionLayer: View {
         }
     }
 
-    private func drawHover(segment: SunburstSegment, context: inout GraphicsContext) {
+    private func drawHover(
+        segment: SunburstSegment,
+        context: inout GraphicsContext,
+        theme: SpaceTheme
+    ) {
         let angularGap = min(0.006, segment.angularSpan * 0.14)
         let radius = metrics.radius(forDepth: segment.depth)
         var arc = Path()
@@ -429,12 +433,16 @@ private struct SunburstInteractionLayer: View {
         )
         context.stroke(
             arc,
-            with: .color(Color.white.opacity(0.75)),
+            with: .color(theme.chartHighlight.opacity(0.82)),
             style: StrokeStyle(lineWidth: 1.2, lineCap: .butt)
         )
     }
 
-    private func drawSelection(segment: SunburstSegment, context: inout GraphicsContext) {
+    private func drawSelection(
+        segment: SunburstSegment,
+        context: inout GraphicsContext,
+        theme: SpaceTheme
+    ) {
         let angularGap = min(0.006, segment.angularSpan * 0.14)
         let radius = metrics.radius(forDepth: segment.depth)
         var arc = Path()
@@ -447,7 +455,7 @@ private struct SunburstInteractionLayer: View {
         )
         context.stroke(
             arc,
-            with: .color(Color.accentColor.opacity(0.95)),
+            with: .color(theme.accent.opacity(0.96)),
             style: StrokeStyle(lineWidth: max(3, metrics.ringWidth + 1.5), lineCap: .butt)
         )
     }
@@ -697,7 +705,7 @@ private struct ChartHoverCard: View {
             RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .stroke(theme.border, lineWidth: 1)
         }
-        .shadow(color: .black.opacity(0.16), radius: 4, y: 2)
+        .shadow(color: theme.shadow.opacity(0.22), radius: 4, y: 2)
     }
 
     private var percentage: Double {

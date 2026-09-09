@@ -226,7 +226,7 @@ final class SunburstScene: @unchecked Sendable {
 }
 
 enum SunburstLayout {
-    private static let hues: [Double] = [0.43, 0.50, 0.58, 0.72, 0.88, 0.98, 0.08, 0.18]
+    private static let hues: [Double] = [0.46, 0.53, 0.60, 0.69, 0.78, 0.88, 0.96, 0.35]
 
     static func hue(for identifier: String) -> Double {
         var hash: UInt64 = 14_695_981_039_346_656_037

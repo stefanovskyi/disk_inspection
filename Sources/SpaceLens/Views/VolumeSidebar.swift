@@ -14,7 +14,7 @@ struct VolumeSidebar: View {
         VStack(spacing: 0) {
             brand(theme: theme)
 
-            List(selection: sidebarSelection) {
+            List {
                 volumeSection("This Mac", volumes: internalVolumes, theme: theme)
 
                 if !externalVolumes.isEmpty {
@@ -54,7 +54,7 @@ struct VolumeSidebar: View {
                 .accessibilityHint("Refreshes the list of mounted disks")
             }
             .padding(14)
-            .background(.bar)
+            .background(theme.surface)
         }
         .background(theme.sidebar)
         .background {
@@ -82,7 +82,14 @@ struct VolumeSidebar: View {
                         .padding(5)
                     Circle()
                         .trim(from: 0.16, to: 0.56)
-                        .stroke(Color.cyan, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .stroke(
+                            SpacePalette.color(
+                                hue: 0.60,
+                                depth: 1,
+                                isDark: colorScheme == .dark
+                            ),
+                            style: StrokeStyle(lineWidth: 2, lineCap: .round)
+                        )
                         .padding(10)
                 }
                 .frame(width: 38, height: 38)
@@ -114,7 +121,7 @@ struct VolumeSidebar: View {
 
     @ViewBuilder
     private func volumeSection(_ title: String, volumes: [VolumeInfo], theme: SpaceTheme) -> some View {
-        Section(title) {
+        Section {
             if volumes.isEmpty {
                 Text(title == "External" ? "No external disks mounted" : "No disks found")
                     .font(.caption)
@@ -124,60 +131,40 @@ struct VolumeSidebar: View {
                 ForEach(volumes) { volume in
                     VolumeRow(
                         volume: volume,
-                        showsLocation: volumes.filter { $0.name == volume.name }.count > 1
+                        showsLocation: volumes.filter { $0.name == volume.name }.count > 1,
+                        isSelected: activeLocationPath == volume.url.standardizedFileURL.path
                     )
-                    .tag(SidebarSelection.volume(volume.url.standardizedFileURL.path))
                     .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                 }
             }
+        } header: {
+            sectionHeader(title, theme: theme)
         }
     }
 
     private func sessionFolderSection(theme: SpaceTheme) -> some View {
-        Section("Folders") {
+        Section {
             ForEach(model.sessionFolders) { folder in
-                SessionFolderRow(folder: folder)
-                    .tag(SidebarSelection.folder(folder.id))
+                SessionFolderRow(
+                    folder: folder,
+                    isSelected: activeLocationPath == folder.id
+                )
                     .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
             }
+        } header: {
+            sectionHeader("Folders", theme: theme)
         }
     }
 
-    private var sidebarSelection: Binding<SidebarSelection?> {
-        Binding(
-            get: {
-                guard let path = activeLocationPath else { return nil }
-                if model.sessionFolders.contains(where: { $0.id == path }) {
-                    return .folder(path)
-                }
-                if model.volumes.contains(where: {
-                    $0.url.standardizedFileURL.path == path
-                }) {
-                    return .volume(path)
-                }
-                return nil
-            },
-            set: { selection in
-                switch selection {
-                case .volume(let path):
-                    if let volume = model.volumes.first(where: {
-                        $0.url.standardizedFileURL.path == path
-                    }) {
-                        model.selectVolume(volume)
-                    }
-                case .folder(let path):
-                    if let folder = model.sessionFolders.first(where: { $0.id == path }) {
-                        model.selectSessionFolder(folder)
-                    }
-                case nil:
-                    break
-                }
-            }
-        )
+    private func sectionHeader(_ title: String, theme: SpaceTheme) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(theme.secondaryText)
+            .textCase(nil)
     }
 
     private var activeLocationPath: String? {
@@ -187,7 +174,7 @@ struct VolumeSidebar: View {
     }
 
     private func removeSelectedFolder() {
-        guard case .folder(let path) = sidebarSelection.wrappedValue,
+        guard let path = activeLocationPath,
               let folder = model.sessionFolders.first(where: { $0.id == path }) else { return }
         model.removeSessionFolder(folder)
     }
@@ -199,16 +186,12 @@ struct VolumeSidebar: View {
     }
 }
 
-private enum SidebarSelection: Hashable {
-    case volume(String)
-    case folder(String)
-}
-
 private struct VolumeRow: View {
     @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
     let volume: VolumeInfo
     let showsLocation: Bool
+    let isSelected: Bool
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
@@ -229,7 +212,7 @@ private struct VolumeRow: View {
 
                         Text(volumeSubtitle)
                             .font(.caption2.weight(.medium))
-                            .foregroundStyle(theme.tertiaryText)
+                            .foregroundStyle(isSelected ? theme.secondaryText : theme.tertiaryText)
                             .lineLimit(1)
                     }
 
@@ -267,6 +250,17 @@ private struct VolumeRow: View {
             }
             .padding(11)
             .contentShape(Rectangle())
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isSelected ? theme.selectionSurface : Color.clear)
+                .overlay {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(theme.selectionBorder, lineWidth: 1)
+                    }
+                }
+        }
+        .onTapGesture { model.selectVolume(volume) }
         .contextMenu {
             if hasCachedResult {
                 Button("View Existing Result") { model.viewCachedResult(at: volume.url) }
@@ -294,6 +288,8 @@ private struct VolumeRow: View {
                 + (hasCachedResult ? ", session scan available" : "")
         )
         .accessibilityHint(hasCachedResult ? "Opens the saved scan immediately" : "Shows this disk overview")
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { model.selectVolume(volume) }
     }
 
     private var volumeSubtitle: String {
@@ -306,6 +302,7 @@ private struct SessionFolderRow: View {
     @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
     let folder: SessionFolder
+    let isSelected: Bool
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
@@ -331,7 +328,7 @@ private struct SessionFolderRow: View {
                             } ?? folder.url.deletingLastPathComponent().path
                         )
                         .font(.caption2.weight(.medium))
-                        .foregroundStyle(theme.tertiaryText)
+                        .foregroundStyle(isSelected ? theme.secondaryText : theme.tertiaryText)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     }
@@ -354,6 +351,9 @@ private struct SessionFolderRow: View {
                 .padding(.leading, 9)
                 .padding(.vertical, 10)
                 .contentShape(Rectangle())
+                .onTapGesture { model.selectSessionFolder(folder) }
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                .accessibilityAction { model.selectSessionFolder(folder) }
             .frame(maxWidth: .infinity)
 
             Button {
@@ -371,6 +371,16 @@ private struct SessionFolderRow: View {
             .padding(.trailing, 4)
         }
         .contentShape(Rectangle())
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isSelected ? theme.selectionSurface : Color.clear)
+                .overlay {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(theme.selectionBorder, lineWidth: 1)
+                    }
+                }
+        }
         .contextMenu {
             if cachedResult != nil {
                 Button("View Existing Result") { model.viewCachedResult(at: folder.url) }

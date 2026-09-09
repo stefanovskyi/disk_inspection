@@ -71,7 +71,7 @@ struct DiskOverview: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(.bar)
+        .background(theme.surface)
     }
 
     private func mapPanel(theme: SpaceTheme) -> some View {
