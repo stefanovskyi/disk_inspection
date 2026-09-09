@@ -33,7 +33,7 @@ for icon_size in 16 32 128 256 512; do
 done
 iconutil --convert icns --output "$contents_dir/Resources/SpaceLens.icns" "$iconset_dir"
 
-sed "s/@VERSION@/1.0.0/g" "$project_dir/Support/Info.plist.in" > "$contents_dir/Info.plist"
+sed "s/@VERSION@/1.1.0/g" "$project_dir/Support/Info.plist.in" > "$contents_dir/Info.plist"
 codesign --force --deep --sign "$signing_identity" "$app_dir"
 
 if [[ "$signing_identity" == "-" ]]; then
