@@ -112,15 +112,16 @@ final class AppViewModel {
                 self.selectedVolumeOverview = preferredStartupVolume(in: discoveredVolumes)
             }
             updatePreviousScanPresentation()
+            if !isScanning, result == nil, let selectedVolumeOverview {
+                presentStoredResult(for: selectedVolumeOverview)
+            }
             isDiscoveringVolumes = false
             volumeRefreshTask = nil
         }
     }
 
     func selectVolume(_ volume: VolumeInfo) {
-        if cachedResult(for: volume) != nil {
-            viewCachedResult(at: volume.url)
-        } else if viewPreviousScan(for: volume) {
+        if presentStoredResult(for: volume) {
             return
         } else {
             showVolumeOverview(volume)
@@ -225,6 +226,9 @@ final class AppViewModel {
         progress = ScanProgress()
         selectedVolumeOverview = preferredStartupVolume(in: volumes)
         updatePreviousScanPresentation()
+        if let selectedVolumeOverview {
+            presentStoredResult(for: selectedVolumeOverview)
+        }
         refreshVolumes()
     }
 
@@ -488,6 +492,15 @@ final class AppViewModel {
         volumes.first { $0.url.standardizedFileURL.path == "/" }
             ?? volumes.first { !$0.isExternal && $0.isLocal }
             ?? volumes.first
+    }
+
+    @discardableResult
+    private func presentStoredResult(for volume: VolumeInfo) -> Bool {
+        if cachedResult(for: volume) != nil {
+            viewCachedResult(at: volume.url)
+            return true
+        }
+        return viewPreviousScan(for: volume)
     }
 
     private func updatePreviousScanPresentation() {

@@ -1,8 +1,10 @@
 import Foundation
 
 struct PreviousScanSummary: Codable, Equatable, Sendable {
-    private static let retainedChildLimit = 8
-    private static let retainedDepth = 3
+    // Persist every child retained by DiskScanner through every level the chart can render.
+    // This keeps a reopened scan visually consistent with the result shown at completion.
+    private static let retainedChildLimit = DiskScanner.retainedChildLimit
+    private static let retainedDepth = 6
 
     let volumeIdentifier: String
     let scannedAt: Date

@@ -116,7 +116,7 @@ struct SpaceLensSelfTests {
         let summary = PreviousScanSummary(result: result, volume: volume)
         let restoredRoot = summary.makeRoot(at: rootURL)
         let restoredResult = summary.makeResult(at: rootURL)
-        try expect(restoredRoot.children.count == 9, "Previous scan snapshot was not bounded")
+        try expect(restoredRoot.children.count == 12, "Previous scan snapshot lost retained children")
         try expect(
             restoredRoot.children.reduce(Int64(0)) { $0 + $1.size } == total,
             "Previous scan snapshot did not preserve omitted byte totals"
@@ -125,6 +125,48 @@ struct SpaceLensSelfTests {
         try expect(restoredResult.root.size == restoredRoot.size, "Previous scan result lost its root size")
         try expect(restoredResult.duration == result.duration, "Previous scan result lost its duration")
         try expect(restoredResult.itemsScanned == result.itemsScanned, "Previous scan result lost its item count")
+
+        var nestedChild = FileNode(
+            url: rootURL.appendingPathComponent("Level-7"),
+            name: "Level-7",
+            size: 1,
+            isDirectory: true,
+            isReadable: true,
+            children: []
+        )
+        for level in stride(from: 6, through: 1, by: -1) {
+            nestedChild = FileNode(
+                url: rootURL.appendingPathComponent("Level-\(level)"),
+                name: "Level-\(level)",
+                size: 1,
+                isDirectory: true,
+                isReadable: true,
+                children: [nestedChild]
+            )
+        }
+        let nestedResult = ScanResult(
+            root: FileNode(
+                url: rootURL,
+                name: "SelfTest",
+                size: 1,
+                isDirectory: true,
+                isReadable: true,
+                children: [nestedChild]
+            ),
+            duration: 1,
+            itemsScanned: 8,
+            unreadableItems: 0
+        )
+        var restoredNestedNode = PreviousScanSummary(
+            result: nestedResult,
+            volume: volume
+        ).makeRoot(at: rootURL)
+        for level in 1...6 {
+            guard let child = restoredNestedNode.children.first else {
+                throw SelfTestFailure.failed("Previous scan snapshot lost chart level \(level)")
+            }
+            restoredNestedNode = child
+        }
 
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("SpaceLensSummarySelfTest-\(UUID().uuidString)", isDirectory: true)

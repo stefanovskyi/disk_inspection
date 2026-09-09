@@ -30,16 +30,59 @@ final class PreviousScanStoreTests: XCTestCase {
         XCTAssertEqual(restoredResult.unreadableItems, result.unreadableItems)
     }
 
-    func testSummaryBoundsChildrenAndAggregatesOmittedTotals() throws {
+    func testSummaryRetainsAllScannerChildren() throws {
         let volume = makeVolume(uuid: nil)
         let result = makeResult(childCount: 12)
         let summary = PreviousScanSummary(result: result, volume: volume)
         let root = summary.makeRoot(at: volume.url)
 
-        XCTAssertEqual(root.children.count, 9)
-        XCTAssertEqual(root.children.filter(\.isAggregate).count, 1)
+        XCTAssertEqual(root.children.count, 12)
+        XCTAssertEqual(root.children.filter(\.isAggregate).count, 0)
         XCTAssertEqual(root.children.reduce(Int64(0)) { $0 + $1.size }, result.root.size)
         XCTAssertEqual(summary.volumeIdentifier, "path:/Volumes/Test")
+    }
+
+    func testSummaryRetainsEveryLevelVisibleInTheChart() throws {
+        let volume = makeVolume(uuid: "VISIBLE-DEPTH")
+        let rootURL = volume.url
+        var descendant = FileNode(
+            url: rootURL.appendingPathComponent("Level-7"),
+            name: "Level-7",
+            size: 1,
+            isDirectory: true,
+            isReadable: true,
+            children: []
+        )
+        for level in stride(from: 6, through: 1, by: -1) {
+            descendant = FileNode(
+                url: rootURL.appendingPathComponent("Level-\(level)"),
+                name: "Level-\(level)",
+                size: 1,
+                isDirectory: true,
+                isReadable: true,
+                children: [descendant]
+            )
+        }
+        let result = ScanResult(
+            root: FileNode(
+                url: rootURL,
+                name: "Test",
+                size: 1,
+                isDirectory: true,
+                isReadable: true,
+                children: [descendant]
+            ),
+            duration: 1,
+            itemsScanned: 8,
+            unreadableItems: 0
+        )
+
+        let restoredRoot = PreviousScanSummary(result: result, volume: volume).makeRoot(at: rootURL)
+        var restored = restoredRoot
+        for level in 1...6 {
+            restored = try XCTUnwrap(restored.children.first, "Missing chart level \(level)")
+        }
+        XCTAssertEqual(restored.name, "Level-6")
     }
 
     func testCorruptArchiveLoadsAsEmpty() throws {
