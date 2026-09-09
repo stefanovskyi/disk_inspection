@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct DiskOverview: View {
-    @EnvironmentObject private var model: AppViewModel
+    @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
 
     let volume: VolumeInfo
@@ -14,15 +14,14 @@ struct DiskOverview: View {
         VStack(spacing: 0) {
             header(theme: theme)
 
-            HStack(spacing: 14) {
+            HSplitView {
                 mapPanel(theme: theme)
                     .frame(minWidth: 500)
 
                 detailsPanel(theme: theme)
-                    .frame(minWidth: 300, idealWidth: 340, maxWidth: 390)
+                    .frame(minWidth: 300, idealWidth: 340, maxWidth: 440)
             }
-            .padding(14)
-            .padding(.top, -2)
+            .padding(12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -68,12 +67,11 @@ struct DiskOverview: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(theme.accent)
-            .foregroundStyle(Color.black.opacity(0.82))
             .keyboardShortcut(.defaultAction)
         }
-        .padding(.top, 35)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.bar)
     }
 
     private func mapPanel(theme: SpaceTheme) -> some View {

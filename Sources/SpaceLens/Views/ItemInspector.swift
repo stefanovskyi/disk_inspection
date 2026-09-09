@@ -1,9 +1,10 @@
 import SwiftUI
 
 struct ItemInspector: View {
-    @EnvironmentObject private var model: AppViewModel
+    @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
     @State private var showsSmallItems = false
+    @State private var selectedChildID: String?
     let node: FileNode
 
     private static let minimumVisibleFraction = 0.01
@@ -16,33 +17,35 @@ struct ItemInspector: View {
         }
         let smallItemCount = children.count - prominentChildren.count
         let visibleChildren = showsSmallItems ? children : prominentChildren
+        let selectedChild = children.first { $0.id == selectedChildID }
+        let inspectedNode = selectedChild ?? node
 
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 9) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(node.name)
+                        Text(inspectedNode.name)
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(theme.primaryText)
                             .lineLimit(1)
-                        Text("\((node.directItemCount > 0 ? node.directItemCount : children.count).formatted()) direct items")
+                        Text(inspectorSubtitle(for: inspectedNode, childCount: children.count))
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(theme.tertiaryText)
                     }
                     Spacer()
-                    Text(StorageFormatters.bytes(node.size))
+                    Text(StorageFormatters.bytes(inspectedNode.size))
                         .font(.system(size: 16, weight: .bold, design: .rounded))
                         .foregroundStyle(theme.primaryText)
                 }
 
                 HStack(spacing: 8) {
                     Button {
-                        model.showInFinder(node)
+                        model.showInFinder(inspectedNode)
                     } label: {
                         Label("Finder", systemImage: "folder")
                     }
                     Button {
-                        model.openInTerminal(node)
+                        model.openInTerminal(inspectedNode)
                     } label: {
                         Label("Terminal", systemImage: "terminal")
                     }
@@ -81,7 +84,9 @@ struct ItemInspector: View {
                             InspectorRow(
                                 node: child,
                                 parentSize: node.size,
-                                hue: SunburstLayout.hue(for: child.id)
+                                hue: SunburstLayout.hue(for: child.id),
+                                isSelected: child.id == selectedChildID,
+                                select: { selectedChildID = child.id }
                             )
                         }
 
@@ -113,8 +118,16 @@ struct ItemInspector: View {
         }
         .onChange(of: node.id) {
             showsSmallItems = false
+            selectedChildID = nil
         }
         .spacePanel()
+    }
+
+    private func inspectorSubtitle(for inspectedNode: FileNode, childCount: Int) -> String {
+        if inspectedNode.id != node.id {
+            return inspectedNode.isDirectory ? "Selected folder" : "Selected file"
+        }
+        return "\((node.directItemCount > 0 ? node.directItemCount : childCount).formatted()) direct items"
     }
 }
 
@@ -180,12 +193,14 @@ struct SmallerItemsInspector: View {
 }
 
 private struct InspectorRow: View {
-    @EnvironmentObject private var model: AppViewModel
+    @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
     @State private var isHovered = false
     let node: FileNode
     let parentSize: Int64
     let hue: Double
+    var isSelected = false
+    var select: (() -> Void)?
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
@@ -193,12 +208,10 @@ private struct InspectorRow: View {
         let color = SpacePalette.color(hue: hue, depth: 0, isDark: colorScheme == .dark)
 
         Button {
-            if node.isAggregate {
-                model.showInFinder(node)
-            } else if node.isDirectory, !node.children.isEmpty {
-                model.navigate(into: node)
+            if let select {
+                select()
             } else {
-                model.showInFinder(node)
+                activate()
             }
         } label: {
             VStack(spacing: 8) {
@@ -247,11 +260,15 @@ private struct InspectorRow: View {
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 8)
-            .background(isHovered ? theme.elevatedSurface : Color.clear)
+            .background(isSelected || isHovered ? theme.elevatedSurface : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .simultaneousGesture(
+            TapGesture(count: 2)
+                .onEnded { activate() }
+        )
         .onHover { hovering in
             isHovered = hovering
         }
@@ -270,7 +287,28 @@ private struct InspectorRow: View {
             }
         }
         .accessibilityLabel("\(node.name), \(StorageFormatters.bytes(node.size)), \(StorageFormatters.percent(fraction))")
-        .accessibilityHint(node.isDirectory && !node.children.isEmpty ? "Opens this folder's storage map" : "Shows this item in Finder")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityHint(
+            select == nil
+                ? activationHint
+                : "Selects this item. Double-click to \(activationHint.lowercased())"
+        )
+    }
+
+    private var activationHint: String {
+        node.isDirectory && !node.children.isEmpty
+            ? "Open this folder's storage map"
+            : "Show this item in Finder"
+    }
+
+    private func activate() {
+        if node.isAggregate {
+            model.showInFinder(node)
+        } else if node.isDirectory, !node.children.isEmpty {
+            model.navigate(into: node)
+        } else {
+            model.showInFinder(node)
+        }
     }
 
     private var iconName: String {

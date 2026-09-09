@@ -1,24 +1,24 @@
 import AppKit
-import Combine
 import Foundation
+import Observation
 
 @MainActor
-final class AppViewModel: ObservableObject {
-    @Published private(set) var volumes: [VolumeInfo] = []
-    @Published private(set) var selectedVolumeOverview: VolumeInfo?
-    @Published private(set) var previousScanSummary: PreviousScanSummary?
-    @Published private(set) var previousScanRoot: FileNode?
-    @Published private(set) var isDiscoveringVolumes = true
-    @Published private(set) var result: ScanResult?
-    @Published private(set) var navigationPath: [FileNode] = []
-    @Published private(set) var isScanning = false
-    @Published private(set) var progress = ScanProgress()
-    @Published private(set) var scanningURL: URL?
-    @Published private(set) var scanStartedAt: Date?
-    @Published private(set) var pendingFullDiskScanURL: URL?
-    @Published private(set) var sessionFolders: [SessionFolder] = []
-    @Published private(set) var pendingScanChoice: PendingScanChoice?
-    @Published var errorMessage: String?
+@Observable
+final class AppViewModel {
+    private(set) var volumes: [VolumeInfo] = []
+    private(set) var selectedVolumeOverview: VolumeInfo?
+    private(set) var previousScanSummary: PreviousScanSummary?
+    private(set) var previousScanRoot: FileNode?
+    private(set) var isDiscoveringVolumes = true
+    private(set) var result: ScanResult?
+    private(set) var navigationPath: [FileNode] = []
+    private(set) var isScanning = false
+    private(set) var progress = ScanProgress()
+    private(set) var scanningURL: URL?
+    private(set) var scanStartedAt: Date?
+    private(set) var pendingFullDiskScanURL: URL?
+    private(set) var sessionFolders: [SessionFolder] = []
+    var errorMessage: String?
 
     private let scanner = DiskScanner()
     private let volumeDiscovery = VolumeDiscovery()
@@ -26,12 +26,12 @@ final class AppViewModel: ObservableObject {
     private let previousScanStore = PreviousScanStore()
     private var scanSessionStore = ScanSessionStore()
     private var previousSummaries: [String: PreviousScanSummary] = [:]
-    private var scanTask: Task<Void, Never>?
-    private var volumeRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var scanTask: Task<Void, Never>?
+    @ObservationIgnored private var volumeRefreshTask: Task<Void, Never>?
     private var scanFallbackResult: ScanResult?
     private var activeScanID = UUID()
-    private var volumeObserverTokens: [NSObjectProtocol] = []
-    private var activationObserverToken: NSObjectProtocol?
+    @ObservationIgnored private var volumeObserverTokens: [NSObjectProtocol] = []
+    @ObservationIgnored private var activationObserverToken: NSObjectProtocol?
 
     init() {
         refreshVolumes()
@@ -51,7 +51,7 @@ final class AppViewModel: ObservableObject {
     }
 
     var currentNode: FileNode? {
-        isScanning ? progress.previewRoot : navigationPath.last
+        navigationPath.last ?? (isScanning ? progress.previewRoot : nil)
     }
     var canNavigateBack: Bool { !isScanning && navigationPath.count > 1 }
     var isRequestingFullDiskAccess: Bool { pendingFullDiskScanURL != nil }
@@ -117,7 +117,7 @@ final class AppViewModel: ObservableObject {
 
     func selectVolume(_ volume: VolumeInfo) {
         if cachedResult(for: volume) != nil {
-            pendingScanChoice = PendingScanChoice(volume: volume)
+            viewCachedResult(at: volume.url)
         } else {
             showVolumeOverview(volume)
         }
@@ -128,7 +128,7 @@ final class AppViewModel: ObservableObject {
         previousScanSummary = nil
         previousScanRoot = nil
         if cachedResult(for: folder) != nil {
-            pendingScanChoice = PendingScanChoice(folder: folder)
+            viewCachedResult(at: folder.url)
         } else {
             scan(folder.url)
         }
@@ -147,7 +147,6 @@ final class AppViewModel: ObservableObject {
     }
 
     func viewCachedResult(at url: URL) {
-        pendingScanChoice = nil
         guard let cachedResult = cachedResult(at: url) else {
             scan(url)
             return
@@ -165,18 +164,11 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    func dismissScanChoice() {
-        pendingScanChoice = nil
-    }
-
     func removeSessionFolder(_ folder: SessionFolder) {
         let folderPath = folder.url.standardizedFileURL.path
         sessionFolders.removeAll { $0.id == folder.id }
         scanSessionStore.removeResult(for: folder.url)
 
-        if pendingScanChoice?.url.standardizedFileURL.path == folderPath {
-            pendingScanChoice = nil
-        }
         if scanningURL?.standardizedFileURL.path == folderPath {
             cancelScan()
         }
@@ -189,7 +181,6 @@ final class AppViewModel: ObservableObject {
     func showDiskList() {
         cancelScan()
         pendingFullDiskScanURL = nil
-        pendingScanChoice = nil
         result = nil
         navigationPath = []
         progress = ScanProgress()
@@ -220,7 +211,6 @@ final class AppViewModel: ObservableObject {
     }
 
     func scan(_ url: URL) {
-        pendingScanChoice = nil
         if let volume = volumes.first(where: {
             $0.url.standardizedFileURL.path == url.standardizedFileURL.path
         }) {
@@ -272,7 +262,13 @@ final class AppViewModel: ObservableObject {
             itemCount: 1
         )
         progress = ScanProgress(currentPath: url.path, previewRoot: initialPreview)
-        navigationPath = []
+        if let scanFallbackResult {
+            result = scanFallbackResult
+            navigationPath = [scanFallbackResult.root]
+        } else {
+            result = nil
+            navigationPath = []
+        }
         errorMessage = nil
 
         scanTask = Task { [weak self] in

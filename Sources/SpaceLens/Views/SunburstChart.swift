@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ChartPanel: View {
-    @EnvironmentObject private var model: AppViewModel
+    @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
     let node: FileNode
     let volume: VolumeInfo?
@@ -57,6 +57,7 @@ struct ChartPanel: View {
 }
 
 struct SunburstChart: View {
+    @StateObject private var sceneCache = SunburstSceneCache()
     let root: FileNode
     let volume: VolumeInfo?
     let isProvisional: Bool
@@ -84,12 +85,12 @@ struct SunburstChart: View {
     var body: some View {
         GeometryReader { proxy in
             let sizingMetrics = ChartMetrics(size: proxy.size, ringCount: 6)
-            let scene = SunburstScene(
+            let scene = sceneCache.scene(
                 root: root,
-                maxDepth: 6,
                 angularExtent: capacity.chartedAngularExtent,
                 interactionRadius: Double(sizingMetrics.radius(forDepth: 0)),
-                policy: .interactive
+                size: proxy.size,
+                isProvisional: isProvisional
             )
             let metrics = ChartMetrics(size: proxy.size, ringCount: scene.ringCount)
 
@@ -120,6 +121,63 @@ struct SunburstChart: View {
             summary += ", with \(StorageFormatters.bytes(capacity.freeSpace)) free"
         }
         return summary
+    }
+}
+
+private final class SunburstSceneCache: ObservableObject {
+    private struct Key: Equatable {
+        struct Child: Equatable {
+            let id: String
+            let size: Int64
+            let itemCount: Int
+        }
+
+        let rootID: String
+        let rootSize: Int64
+        let itemCount: Int
+        let children: [Child]
+        let angularExtent: Double
+        let width: Int
+        let height: Int
+        let isProvisional: Bool
+    }
+
+    private var cachedKey: Key?
+    private var cachedScene: SunburstScene?
+
+    func scene(
+        root: FileNode,
+        angularExtent: Double,
+        interactionRadius: Double,
+        size: CGSize,
+        isProvisional: Bool
+    ) -> SunburstScene {
+        let key = Key(
+            rootID: root.id,
+            rootSize: root.size,
+            itemCount: root.itemCount,
+            children: root.children.map {
+                Key.Child(id: $0.id, size: $0.size, itemCount: $0.itemCount)
+            },
+            angularExtent: angularExtent,
+            width: Int(size.width.rounded()),
+            height: Int(size.height.rounded()),
+            isProvisional: isProvisional
+        )
+        if key == cachedKey, let cachedScene {
+            return cachedScene
+        }
+
+        let scene = SunburstScene(
+            root: root,
+            maxDepth: 6,
+            angularExtent: angularExtent,
+            interactionRadius: interactionRadius,
+            policy: .interactive
+        )
+        cachedKey = key
+        cachedScene = scene
+        return scene
     }
 }
 

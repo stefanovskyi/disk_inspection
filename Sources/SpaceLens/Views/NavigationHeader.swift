@@ -1,31 +1,18 @@
 import SwiftUI
 
 struct NavigationHeader: View {
-    @EnvironmentObject private var model: AppViewModel
+    @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
     let node: FileNode
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
+        let breadcrumbs = model.navigationPath.isEmpty ? [node] : model.navigationPath
 
-        HStack(spacing: 10) {
-            Button {
-                model.navigateBack()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 12, weight: .bold))
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(model.canNavigateBack ? theme.primaryText : theme.tertiaryText.opacity(0.45))
-            .background(theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .disabled(!model.canNavigateBack)
-            .accessibilityLabel("Back")
-
+        HStack(spacing: 12) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 5) {
-                    ForEach(Array(model.navigationPath.enumerated()), id: \.element.id) { index, breadcrumb in
+                    ForEach(Array(breadcrumbs.enumerated()), id: \.element.id) { index, breadcrumb in
                         if index > 0 {
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 9, weight: .bold))
@@ -43,11 +30,11 @@ struct NavigationHeader: View {
                                 Text(breadcrumb.name)
                                     .lineLimit(1)
                             }
-                            .font(.system(size: 12, weight: index == model.navigationPath.count - 1 ? .semibold : .medium))
-                            .foregroundStyle(index == model.navigationPath.count - 1 ? theme.primaryText : theme.secondaryText)
+                            .font(.system(size: 12, weight: index == breadcrumbs.count - 1 ? .semibold : .medium))
+                            .foregroundStyle(index == breadcrumbs.count - 1 ? theme.primaryText : theme.secondaryText)
                             .padding(.horizontal, 9)
                             .padding(.vertical, 6)
-                            .background(index == model.navigationPath.count - 1 ? theme.elevatedSurface : Color.clear)
+                            .background(index == breadcrumbs.count - 1 ? theme.elevatedSurface : Color.clear)
                             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                         }
                         .buttonStyle(.plain)
@@ -58,7 +45,11 @@ struct NavigationHeader: View {
 
             Spacer(minLength: 12)
 
-            if let result = model.result, !model.isScanning {
+            if model.isScanning {
+                Label("Updating", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(theme.secondaryText)
+            } else if let result = model.result {
                 HStack(spacing: 12) {
                     if result.unreadableItems > 0 {
                         Button {
@@ -78,23 +69,14 @@ struct NavigationHeader: View {
                 }
             }
 
-            Button {
-                model.rescan()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(theme.secondaryText)
-            .background(theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .help("Rescan")
-            .accessibilityLabel("Rescan")
-            .disabled(model.isScanning)
         }
-        .padding(.top, 35)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.bar)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(theme.border)
+                .frame(height: 1)
+        }
     }
 }

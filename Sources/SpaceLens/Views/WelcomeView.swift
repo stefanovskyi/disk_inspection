@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct WelcomeView: View {
-    @EnvironmentObject private var model: AppViewModel
+    @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -49,7 +49,6 @@ struct WelcomeView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(theme.accent)
-            .foregroundStyle(Color.black.opacity(0.82))
             .keyboardShortcut(.defaultAction)
 
             Spacer()

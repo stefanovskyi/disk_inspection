@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct VolumeSidebar: View {
-    @EnvironmentObject private var model: AppViewModel
+    @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
 
     private var internalVolumes: [VolumeInfo] { model.volumes.filter { !$0.isExternal } }
@@ -13,21 +13,19 @@ struct VolumeSidebar: View {
         VStack(spacing: 0) {
             brand(theme: theme)
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 18) {
-                    volumeSection("This Mac", volumes: internalVolumes, theme: theme)
+            List {
+                volumeSection("This Mac", volumes: internalVolumes, theme: theme)
 
-                    if !externalVolumes.isEmpty {
-                        volumeSection("External", volumes: externalVolumes, theme: theme)
-                    }
-
-                    if !model.sessionFolders.isEmpty {
-                        sessionFolderSection(theme: theme)
-                    }
+                if !externalVolumes.isEmpty {
+                    volumeSection("External", volumes: externalVolumes, theme: theme)
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 16)
+
+                if !model.sessionFolders.isEmpty {
+                    sessionFolderSection(theme: theme)
+                }
             }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
 
             Spacer(minLength: 0)
 
@@ -42,7 +40,6 @@ struct VolumeSidebar: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(theme.accent)
-                .foregroundStyle(Color.black.opacity(0.8))
 
                 Button {
                     model.refreshVolumes()
@@ -55,38 +52,9 @@ struct VolumeSidebar: View {
                 .accessibilityHint("Refreshes the list of mounted disks")
             }
             .padding(14)
-            .background(theme.surface.opacity(0.72))
+            .background(.bar)
         }
         .background(theme.sidebar)
-        .alert(
-            "Session scan available",
-            isPresented: Binding(
-                get: { model.pendingScanChoice != nil },
-                set: { isPresented in
-                    if !isPresented { model.dismissScanChoice() }
-                }
-            )
-        ) {
-            if let choice = model.pendingScanChoice {
-                Button("View Existing Result") {
-                    model.viewCachedResult(at: choice.url)
-                }
-                Button(choice.kind.rescanButtonTitle) {
-                    model.scan(choice.url)
-                }
-            }
-            Button("Cancel", role: .cancel) {
-                model.dismissScanChoice()
-            }
-        } message: {
-            if let choice = model.pendingScanChoice,
-               let cachedResult = model.cachedResult(at: choice.url) {
-                Text(
-                    "SpaceLens has a \(StorageFormatters.bytes(cachedResult.root.size)) scan of "
-                        + "\(choice.name) from this app session. View it immediately or scan it again."
-                )
-            }
-        }
     }
 
     private func brand(theme: SpaceTheme) -> some View {
@@ -121,9 +89,9 @@ struct VolumeSidebar: View {
                 Spacer()
             }
             .contentShape(Rectangle())
-            .padding(.top, 38)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 22)
+            .padding(.top, 12)
+            .padding(.horizontal, 14)
+            .padding(.bottom, 10)
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -134,51 +102,46 @@ struct VolumeSidebar: View {
 
     @ViewBuilder
     private func volumeSection(_ title: String, volumes: [VolumeInfo], theme: SpaceTheme) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(title.uppercased())
-                .font(.system(size: 10, weight: .bold))
-                .tracking(1.1)
-                .foregroundStyle(theme.tertiaryText)
-                .padding(.horizontal, 8)
-
+        Section(title) {
             if volumes.isEmpty {
                 Text(title == "External" ? "No external disks mounted" : "No disks found")
-                    .font(.system(size: 12))
+                    .font(.caption)
                     .foregroundStyle(theme.tertiaryText)
-                    .padding(.horizontal, 8)
                     .padding(.vertical, 10)
             } else {
                 ForEach(volumes) { volume in
                     VolumeRow(
                         volume: volume,
+                        showsLocation: volumes.filter { $0.name == volume.name }.count > 1,
                         isActive: model.result?.root.url.standardizedFileURL == volume.url.standardizedFileURL
                             || model.scanningURL?.standardizedFileURL == volume.url.standardizedFileURL
                             || model.selectedVolumeOverview?.url.standardizedFileURL == volume.url.standardizedFileURL
                     )
+                    .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
             }
         }
     }
 
     private func sessionFolderSection(theme: SpaceTheme) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("FOLDERS")
-                .font(.system(size: 10, weight: .bold))
-                .tracking(1.1)
-                .foregroundStyle(theme.tertiaryText)
-                .padding(.horizontal, 8)
-
+        Section("Folders") {
             ForEach(model.sessionFolders) { folder in
                 SessionFolderRow(folder: folder)
+                    .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }
         }
     }
 }
 
 private struct VolumeRow: View {
-    @EnvironmentObject private var model: AppViewModel
+    @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
     let volume: VolumeInfo
+    let showsLocation: Bool
     let isActive: Bool
 
     var body: some View {
@@ -201,7 +164,7 @@ private struct VolumeRow: View {
                             .foregroundStyle(theme.primaryText)
                             .lineLimit(1)
 
-                        Text("\(StorageFormatters.bytes(volume.usedCapacity)) of \(StorageFormatters.bytes(volume.totalCapacity))")
+                        Text(volumeSubtitle)
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(theme.tertiaryText)
                             .lineLimit(1)
@@ -272,14 +235,20 @@ private struct VolumeRow: View {
         }
         .accessibilityLabel(
             "\(volume.name), \(StorageFormatters.percent(volume.usedFraction)) used"
+                + (showsLocation ? ", mounted at \(volume.url.path)" : "")
                 + (hasCachedResult ? ", session scan available" : "")
         )
-        .accessibilityHint(hasCachedResult ? "Offers to view or rescan this disk" : "Shows this disk overview")
+        .accessibilityHint(hasCachedResult ? "Opens the saved scan immediately" : "Shows this disk overview")
+    }
+
+    private var volumeSubtitle: String {
+        let capacity = "\(StorageFormatters.bytes(volume.usedCapacity)) of \(StorageFormatters.bytes(volume.totalCapacity))"
+        return showsLocation ? "\(capacity) · \(volume.url.path)" : capacity
     }
 }
 
 private struct SessionFolderRow: View {
-    @EnvironmentObject private var model: AppViewModel
+    @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
     let folder: SessionFolder
 

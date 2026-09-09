@@ -13,28 +13,16 @@ struct SpaceTheme {
     let warning: Color
 
     init(colorScheme: ColorScheme) {
-        if colorScheme == .dark {
-            background = Color(red: 0.055, green: 0.067, blue: 0.085)
-            sidebar = Color(red: 0.075, green: 0.090, blue: 0.115)
-            surface = Color(red: 0.095, green: 0.112, blue: 0.140)
-            elevatedSurface = Color(red: 0.125, green: 0.145, blue: 0.180)
-            border = Color.white.opacity(0.10)
-            primaryText = Color(red: 0.94, green: 0.96, blue: 0.98)
-            secondaryText = Color(red: 0.66, green: 0.71, blue: 0.78)
-            tertiaryText = Color(red: 0.45, green: 0.50, blue: 0.58)
-        } else {
-            background = Color(red: 0.945, green: 0.955, blue: 0.970)
-            sidebar = Color(red: 0.975, green: 0.980, blue: 0.990)
-            surface = .white
-            elevatedSurface = Color(red: 0.925, green: 0.940, blue: 0.965)
-            border = Color.black.opacity(0.10)
-            primaryText = Color(red: 0.06, green: 0.085, blue: 0.13)
-            secondaryText = Color(red: 0.30, green: 0.35, blue: 0.43)
-            tertiaryText = Color(red: 0.48, green: 0.52, blue: 0.59)
-        }
-
-        accent = Color(red: 0.25, green: 0.88, blue: 0.70)
-        warning = Color(red: 1.00, green: 0.72, blue: 0.30)
+        background = Color(nsColor: .windowBackgroundColor)
+        sidebar = Color(nsColor: .windowBackgroundColor)
+        surface = Color(nsColor: .controlBackgroundColor)
+        elevatedSurface = Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
+        border = Color(nsColor: .separatorColor)
+        primaryText = Color(nsColor: .labelColor)
+        secondaryText = Color(nsColor: .secondaryLabelColor)
+        tertiaryText = Color(nsColor: .tertiaryLabelColor)
+        accent = Color(nsColor: .controlAccentColor)
+        warning = Color(nsColor: .systemOrange)
     }
 }
 
@@ -65,9 +53,9 @@ struct PanelModifier: ViewModifier {
         let theme = SpaceTheme(colorScheme: colorScheme)
         content
             .background(theme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(theme.border, lineWidth: 1)
             }
     }

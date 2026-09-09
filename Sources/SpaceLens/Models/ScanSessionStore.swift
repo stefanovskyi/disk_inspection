@@ -34,33 +34,3 @@ struct SessionFolder: Identifiable, Equatable, Sendable {
 
     var id: String { url.path }
 }
-
-struct PendingScanChoice: Equatable, Sendable {
-    enum Kind: Equatable, Sendable {
-        case disk
-        case folder
-
-        var rescanButtonTitle: String {
-            switch self {
-            case .disk: "Rescan Disk"
-            case .folder: "Rescan Folder"
-            }
-        }
-    }
-
-    let url: URL
-    let name: String
-    let kind: Kind
-
-    init(volume: VolumeInfo) {
-        self.url = volume.url.standardizedFileURL
-        self.name = volume.name
-        self.kind = .disk
-    }
-
-    init(folder: SessionFolder) {
-        self.url = folder.url
-        self.name = folder.name
-        self.kind = .folder
-    }
-}
