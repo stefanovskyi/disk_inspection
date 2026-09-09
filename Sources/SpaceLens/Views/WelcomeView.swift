@@ -16,10 +16,11 @@ struct WelcomeView: View {
 
             VStack(spacing: 8) {
                 Text("See where your space went")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(.title.weight(.bold))
+                    .fontDesign(.rounded)
                     .foregroundStyle(theme.primaryText)
                 Text("Choose a disk from the sidebar or inspect a specific folder.\nHover, click, and follow the storage trail.")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.callout.weight(.medium))
                     .foregroundStyle(theme.secondaryText)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
@@ -28,7 +29,7 @@ struct WelcomeView: View {
             if model.isDiscoveringVolumes {
                 VStack(spacing: 8) {
                     Label("Reading disk capacity…", systemImage: "internaldrive")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(theme.secondaryText)
                     ProgressView()
                         .progressViewStyle(.linear)
@@ -43,7 +44,7 @@ struct WelcomeView: View {
                 model.chooseFolder()
             } label: {
                 Label("Choose a Folder", systemImage: "folder.badge.plus")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
             }
@@ -57,7 +58,7 @@ struct WelcomeView: View {
                 Image(systemName: "externaldrive.badge.plus")
                 Text("External disks appear automatically when mounted")
             }
-            .font(.system(size: 10, weight: .medium))
+            .font(.caption2.weight(.medium))
             .foregroundStyle(theme.tertiaryText)
             .padding(.bottom, 22)
         }

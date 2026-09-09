@@ -38,10 +38,10 @@ struct DiskOverview: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(volume.name)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.headline)
                     .foregroundStyle(theme.primaryText)
                 Text("Capacity overview")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(theme.tertiaryText)
             }
 
@@ -49,7 +49,7 @@ struct DiskOverview: View {
 
             if previousSummary != nil {
                 Label("Previous scan", systemImage: "clock.arrow.circlepath")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(theme.secondaryText)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 6)
@@ -61,7 +61,7 @@ struct DiskOverview: View {
                 model.scan(volume.url)
             } label: {
                 Label(previousSummary == nil ? "Scan Disk" : "Update Scan", systemImage: "viewfinder")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
             }
@@ -78,10 +78,10 @@ struct DiskOverview: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(previousRoot == nil ? "Disk capacity" : "Last known storage map")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.headline)
                     .foregroundStyle(theme.primaryText)
                 Text(mapSubtitle)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.caption)
                     .foregroundStyle(theme.tertiaryText)
             }
             .padding(.horizontal, 18)
@@ -104,7 +104,7 @@ struct DiskOverview: View {
                     : "Start an update to replace this snapshot with live results",
                 systemImage: previousRoot == nil ? "sparkles" : "arrow.triangle.2.circlepath"
             )
-            .font(.system(size: 10, weight: .medium))
+            .font(.caption2.weight(.medium))
             .foregroundStyle(theme.tertiaryText)
             .padding(.horizontal, 18)
             .padding(.bottom, 14)
@@ -123,10 +123,10 @@ struct DiskOverview: View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Storage now")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.headline)
                     .foregroundStyle(theme.primaryText)
                 Text("Read directly from the mounted volume")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.caption)
                     .foregroundStyle(theme.tertiaryText)
             }
 
@@ -152,20 +152,20 @@ struct DiskOverview: View {
 
                 VStack(alignment: .leading, spacing: 7) {
                     Label("Previous scan snapshot", systemImage: "clock")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(theme.secondaryText)
                     Text(
                         "\(previousSummary.itemsScanned.formatted()) items in "
                             + StorageFormatters.duration(previousSummary.duration)
                     )
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.caption)
                     .foregroundStyle(theme.tertiaryText)
                     if previousSummary.unreadableItems > 0 {
                         Label(
                             "\(previousSummary.unreadableItems.formatted()) protected items were not measured",
                             systemImage: "lock.fill"
                         )
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.caption2.weight(.medium))
                         .foregroundStyle(theme.warning)
                     }
                 }
@@ -174,7 +174,7 @@ struct DiskOverview: View {
             Spacer(minLength: 0)
 
             Text("Capacity is current. Folder sizes require a scan and may differ from the used total because macOS can restrict access to protected data.")
-                .font(.system(size: 10))
+                .font(.caption2)
                 .foregroundStyle(theme.tertiaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -185,11 +185,13 @@ struct DiskOverview: View {
     private func capacityRow(_ label: String, value: Int64, theme: SpaceTheme) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label)
-                .font(.system(size: 11, weight: .medium))
+                .font(.caption)
                 .foregroundStyle(theme.secondaryText)
             Spacer()
             Text(StorageFormatters.bytes(value))
-                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .font(.headline.weight(.bold))
+                .fontDesign(.rounded)
+                .monospacedDigit()
                 .foregroundStyle(theme.primaryText)
         }
     }
@@ -202,7 +204,7 @@ struct DiskOverview: View {
             Text(value)
                 .foregroundStyle(theme.secondaryText)
         }
-        .font(.system(size: 11, weight: .medium))
+        .font(.caption)
     }
 }
 
@@ -258,7 +260,7 @@ private struct CapacityShellChart: View {
                         .font(.system(size: min(27, diameter * 0.06), weight: .bold, design: .rounded))
                         .foregroundStyle(theme.primaryText)
                     Text("used of \(StorageFormatters.bytes(volume.totalCapacity))")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.caption)
                         .foregroundStyle(theme.secondaryText)
                 }
                 .position(center)

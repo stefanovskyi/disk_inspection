@@ -31,8 +31,10 @@ You can also open `Package.swift` in Xcode and run the `SpaceLens` target.
 
 1. Choose a mounted disk or select a folder.
 2. Start the scan. You can cancel it at any time.
-3. Click a chart segment or list item to explore a folder.
+3. Click a folder in the chart or ranked list to open its storage map. Select an item and press Return for keyboard navigation.
 4. Use the breadcrumbs or Back button to move up the hierarchy.
+
+The sidebar and inspector can be shown or hidden from the toolbar. SpaceLens remembers their visibility and resized widths between launches. Press Option-Command-I to toggle the inspector.
 
 For very large folders, less significant entries are combined under **Smaller items**. Their size and item totals remain accurate.
 

@@ -4,8 +4,8 @@ struct ItemInspector: View {
     @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
     @State private var showsSmallItems = false
-    @State private var selectedChildID: String?
     let node: FileNode
+    @Binding var selectedItem: FileNode?
 
     private static let minimumVisibleFraction = 0.01
 
@@ -17,24 +17,25 @@ struct ItemInspector: View {
         }
         let smallItemCount = children.count - prominentChildren.count
         let visibleChildren = showsSmallItems ? children : prominentChildren
-        let selectedChild = children.first { $0.id == selectedChildID }
-        let inspectedNode = selectedChild ?? node
+        let inspectedNode = selectedItem ?? node
 
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 9) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(inspectedNode.name)
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.headline)
                             .foregroundStyle(theme.primaryText)
                             .lineLimit(1)
                         Text(inspectorSubtitle(for: inspectedNode, childCount: children.count))
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.caption)
                             .foregroundStyle(theme.tertiaryText)
                     }
                     Spacer()
                     Text(StorageFormatters.bytes(inspectedNode.size))
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .font(.headline.weight(.bold))
+                        .fontDesign(.rounded)
+                        .monospacedDigit()
                         .foregroundStyle(theme.primaryText)
                 }
 
@@ -50,7 +51,7 @@ struct ItemInspector: View {
                         Label("Terminal", systemImage: "terminal")
                     }
                 }
-                .font(.system(size: 10, weight: .semibold))
+                .font(.caption2.weight(.semibold))
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             }
@@ -66,59 +67,60 @@ struct ItemInspector: View {
                         .font(.system(size: 24))
                         .foregroundStyle(node.isReadable ? theme.tertiaryText : theme.warning)
                     Text(node.isReadable ? "This folder is empty" : "This folder is protected")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.callout.weight(.medium))
                         .foregroundStyle(theme.secondaryText)
                     if !node.isReadable {
                         Button("Open Full Disk Access Settings") {
                             model.openFullDiskAccessSettings()
                         }
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.caption.weight(.semibold))
                         .buttonStyle(.link)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 3) {
-                        ForEach(visibleChildren) { child in
-                            InspectorRow(
-                                node: child,
-                                parentSize: node.size,
-                                hue: SunburstLayout.hue(for: child.id),
-                                isSelected: child.id == selectedChildID,
-                                select: { selectedChildID = child.id }
-                            )
-                        }
-
-                        if smallItemCount > 0 {
-                            Button {
-                                showsSmallItems.toggle()
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: showsSmallItems ? "chevron.up" : "chevron.down")
-                                    Text(showsSmallItems ? "Show less" : "Show more")
-                                    if !showsSmallItems {
-                                        Text("(\(smallItemCount.formatted()))")
-                                            .foregroundStyle(theme.tertiaryText)
-                                    }
-                                }
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(theme.secondaryText)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .help(showsSmallItems ? "Hide items smaller than 1%" : "Show items smaller than 1%")
-                        }
+                List(selection: directSelection(in: children)) {
+                    ForEach(visibleChildren) { child in
+                        InspectorRow(
+                            node: child,
+                            parentSize: node.size,
+                            hue: SunburstLayout.hue(for: child.id),
+                            select: { selectedItem = child }
+                        )
+                        .tag(child.id)
+                        .listRowSeparator(.hidden)
                     }
-                    .padding(8)
+
+                    if smallItemCount > 0 {
+                        Button {
+                            showsSmallItems.toggle()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: showsSmallItems ? "chevron.up" : "chevron.down")
+                                Text(showsSmallItems ? "Show less" : "Show more")
+                                if !showsSmallItems {
+                                    Text("(\(smallItemCount.formatted()))")
+                                        .foregroundStyle(theme.tertiaryText)
+                                }
+                            }
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(theme.secondaryText)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(showsSmallItems ? "Hide items smaller than 1%" : "Show items smaller than 1%")
+                    }
                 }
+                .listStyle(.inset)
+                .focusable()
+                .onKeyPress(.return) { activateSelection() }
             }
         }
         .onChange(of: node.id) {
             showsSmallItems = false
-            selectedChildID = nil
+            selectedItem = nil
         }
         .spacePanel()
     }
@@ -129,25 +131,70 @@ struct ItemInspector: View {
         }
         return "\((node.directItemCount > 0 ? node.directItemCount : childCount).formatted()) direct items"
     }
+
+    private func directSelection(in children: [FileNode]) -> Binding<String?> {
+        Binding(
+            get: {
+                guard let selectedItem else { return nil }
+                if children.contains(where: { $0.id == selectedItem.id }) {
+                    return selectedItem.id
+                }
+                let selectedPath = selectedItem.url.standardizedFileURL.path
+                return children.first(where: { child in
+                    let childPath = child.url.standardizedFileURL.path
+                    return selectedPath.hasPrefix(childPath + "/")
+                })?.id
+            },
+            set: { id in
+                selectedItem = id.flatMap { id in
+                    children.first { $0.id == id }
+                }
+            }
+        )
+    }
+
+    private func activateSelection() -> KeyPress.Result {
+        guard let selectedItem else { return .ignored }
+        activate(selectedItem)
+        return .handled
+    }
+
+    private func activate(_ item: FileNode) {
+        if item.isAggregate {
+            model.showInFinder(item)
+        } else if item.isDirectory, !item.children.isEmpty {
+            model.navigate(into: item)
+        } else {
+            model.showInFinder(item)
+        }
+    }
 }
 
 struct SmallerItemsInspector: View {
+    @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
     let selection: SunburstSmallerItems
+    @Binding var selectedItem: FileNode?
     let dismiss: () -> Void
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
 
+        let inspectedItem = selectedItem
+
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 9) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(selection.name)
-                            .font(.system(size: 17, weight: .semibold))
+                        Text(inspectedItem?.name ?? selection.name)
+                            .font(.headline)
                             .foregroundStyle(theme.primaryText)
-                        Text("in \(selection.parent.name) · \(selection.children.count.formatted()) entries")
-                            .font(.system(size: 11, weight: .medium))
+                        Text(
+                            inspectedItem == nil
+                                ? "in \(selection.parent.name) · \(selection.children.count.formatted()) entries"
+                                : (inspectedItem?.isDirectory == true ? "Selected folder" : "Selected file")
+                        )
+                            .font(.caption)
                             .foregroundStyle(theme.tertiaryText)
                             .lineLimit(1)
                     }
@@ -161,8 +208,10 @@ struct SmallerItemsInspector: View {
                     .accessibilityLabel("Close smaller items")
                 }
 
-                Text(StorageFormatters.bytes(selection.size))
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                Text(StorageFormatters.bytes(inspectedItem?.size ?? selection.size))
+                    .font(.headline.weight(.bold))
+                    .fontDesign(.rounded)
+                    .monospacedDigit()
                     .foregroundStyle(theme.primaryText)
             }
             .padding(16)
@@ -171,24 +220,50 @@ struct SmallerItemsInspector: View {
                 .fill(theme.border)
                 .frame(height: 1)
 
-            ScrollView {
-                LazyVStack(spacing: 3) {
-                    ForEach(selection.children) { child in
-                        InspectorRow(
-                            node: child,
-                            parentSize: selection.size,
-                            hue: SunburstLayout.hue(for: child.id)
-                        )
-                    }
+            List(selection: smallerItemsSelection) {
+                ForEach(selection.children) { child in
+                    InspectorRow(
+                        node: child,
+                        parentSize: selection.size,
+                        hue: SunburstLayout.hue(for: child.id),
+                        select: { selectedItem = child }
+                    )
+                    .tag(child.id)
+                    .listRowSeparator(.hidden)
                 }
-                .padding(8)
             }
+            .listStyle(.inset)
+            .focusable()
+            .onKeyPress(.return) { activateSelection() }
         }
         .spacePanel()
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
             "Smaller items in \(selection.parent.name), \(StorageFormatters.bytes(selection.size))"
         )
+    }
+
+    private var smallerItemsSelection: Binding<String?> {
+        Binding(
+            get: { selectedItem?.id },
+            set: { id in
+                selectedItem = id.flatMap { id in
+                    selection.children.first { $0.id == id }
+                }
+            }
+        )
+    }
+
+    private func activateSelection() -> KeyPress.Result {
+        guard let selectedItem else { return .ignored }
+        if selectedItem.isAggregate {
+            model.showInFinder(selectedItem)
+        } else if selectedItem.isDirectory, !selectedItem.children.isEmpty {
+            model.navigate(into: selectedItem)
+        } else {
+            model.showInFinder(selectedItem)
+        }
+        return .handled
     }
 }
 
@@ -199,51 +274,45 @@ private struct InspectorRow: View {
     let node: FileNode
     let parentSize: Int64
     let hue: Double
-    var isSelected = false
-    var select: (() -> Void)?
+    let select: () -> Void
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
         let fraction = node.percentage(of: parentSize)
         let color = SpacePalette.color(hue: hue, depth: 0, isDark: colorScheme == .dark)
 
-        Button {
-            if let select {
-                select()
-            } else {
-                activate()
-            }
-        } label: {
-            VStack(spacing: 8) {
+        VStack(spacing: 8) {
                 HStack(spacing: 9) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(color.opacity(0.13))
                         Image(systemName: iconName)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(node.isReadable ? color : theme.warning)
                     }
                     .frame(width: 28, height: 28)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(node.name)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.callout.weight(.semibold))
                             .foregroundStyle(theme.primaryText)
                             .lineLimit(1)
                         Text(StorageFormatters.percent(fraction))
-                            .font(.system(size: 9, weight: .medium))
+                            .font(.caption2.weight(.medium))
                             .foregroundStyle(theme.tertiaryText)
                     }
 
                     Spacer(minLength: 6)
 
                     Text(StorageFormatters.bytes(node.size))
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .font(.caption.weight(.semibold))
+                        .fontDesign(.rounded)
+                        .monospacedDigit()
                         .foregroundStyle(theme.secondaryText)
 
                     if node.isDirectory, !node.children.isEmpty {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.caption2.weight(.bold))
                             .foregroundStyle(theme.tertiaryText)
                     }
                 }
@@ -258,16 +327,14 @@ private struct InspectorRow: View {
                 }
                 .frame(height: 3)
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 8)
-            .background(isSelected || isHovered ? theme.elevatedSurface : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 8)
+        .background(isHovered ? theme.elevatedSurface.opacity(0.55) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .contentShape(Rectangle())
         .simultaneousGesture(
-            TapGesture(count: 2)
-                .onEnded { activate() }
+            TapGesture()
+                .onEnded(performPrimaryAction)
         )
         .onHover { hovering in
             isHovered = hovering
@@ -287,18 +354,28 @@ private struct InspectorRow: View {
             }
         }
         .accessibilityLabel("\(node.name), \(StorageFormatters.bytes(node.size)), \(StorageFormatters.percent(fraction))")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityHint(
-            select == nil
-                ? activationHint
-                : "Selects this item. Double-click to \(activationHint.lowercased())"
-        )
+        .accessibilityHint(primaryActionHint)
+        .accessibilityAction(named: "Open", activate)
     }
 
     private var activationHint: String {
         node.isDirectory && !node.children.isEmpty
             ? "Open this folder's storage map"
             : "Show this item in Finder"
+    }
+
+    private var primaryActionHint: String {
+        node.isDirectory && !node.children.isEmpty
+            ? activationHint
+            : "Selects this item"
+    }
+
+    private func performPrimaryAction() {
+        if node.isDirectory, !node.children.isEmpty {
+            activate()
+        } else {
+            select()
+        }
     }
 
     private func activate() {

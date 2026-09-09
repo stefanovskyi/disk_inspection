@@ -15,7 +15,7 @@ struct NavigationHeader: View {
                     ForEach(Array(breadcrumbs.enumerated()), id: \.element.id) { index, breadcrumb in
                         if index > 0 {
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.caption2.weight(.bold))
                                 .foregroundStyle(theme.tertiaryText)
                                 .accessibilityHidden(true)
                         }
@@ -30,7 +30,7 @@ struct NavigationHeader: View {
                                 Text(breadcrumb.name)
                                     .lineLimit(1)
                             }
-                            .font(.system(size: 12, weight: index == breadcrumbs.count - 1 ? .semibold : .medium))
+                            .font(.callout.weight(index == breadcrumbs.count - 1 ? .semibold : .medium))
                             .foregroundStyle(index == breadcrumbs.count - 1 ? theme.primaryText : theme.secondaryText)
                             .padding(.horizontal, 9)
                             .padding(.vertical, 6)
@@ -56,7 +56,7 @@ struct NavigationHeader: View {
                             model.openFullDiskAccessSettings()
                         } label: {
                             Label("\(result.unreadableItems) protected", systemImage: "lock.fill")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.caption2.weight(.semibold))
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(theme.warning)
@@ -64,7 +64,7 @@ struct NavigationHeader: View {
                     }
 
                     Text("\(result.itemsScanned.formatted()) items · \(StorageFormatters.duration(result.duration))")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.caption2.weight(.medium))
                         .foregroundStyle(theme.tertiaryText)
                 }
             }

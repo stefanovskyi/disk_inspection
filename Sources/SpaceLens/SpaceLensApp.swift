@@ -8,7 +8,7 @@ struct SpaceLensApp: App {
         WindowGroup {
             AppRootView()
                 .environment(model)
-                .frame(minWidth: 1100, minHeight: 620)
+                .frame(minWidth: 760, minHeight: 620)
         }
         .defaultSize(width: 1320, height: 820)
         .windowToolbarStyle(.unifiedCompact)

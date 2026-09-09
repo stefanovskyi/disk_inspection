@@ -3,14 +3,23 @@ import SwiftUI
 struct AppRootView: View {
     @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("layout.sidebarVisible") private var isSidebarVisible = true
+    @AppStorage("layout.sidebarWidth") private var sidebarWidth = 248.0
+    @AppStorage("layout.inspectorVisible") private var isInspectorVisible = true
+    @AppStorage("layout.inspectorWidth") private var inspectorWidth = 340.0
     @State private var smallerItemsSelection: SunburstSmallerItems?
+    @State private var selectedItem: FileNode?
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
 
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: sidebarColumnVisibility) {
             VolumeSidebar()
-                .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 320)
+                .navigationSplitViewColumnWidth(
+                    min: 220,
+                    ideal: min(max(sidebarWidth, 220), 320),
+                    max: 320
+                )
         } detail: {
             mainContent(theme: theme)
                 .toolbar {
@@ -43,6 +52,19 @@ struct AppRootView: View {
                             .help("Scan this location again (⌘R)")
                         }
 
+                        if model.currentNode != nil {
+                            Button {
+                                isInspectorVisible.toggle()
+                            } label: {
+                                Label(
+                                    isInspectorVisible ? "Hide Inspector" : "Show Inspector",
+                                    systemImage: "sidebar.trailing"
+                                )
+                            }
+                            .keyboardShortcut("i", modifiers: [.command, .option])
+                            .help(isInspectorVisible ? "Hide inspector" : "Show inspector")
+                        }
+
                         Button {
                             model.chooseFolder()
                         } label: {
@@ -53,6 +75,7 @@ struct AppRootView: View {
                 }
         }
         .navigationSplitViewStyle(.balanced)
+        .frame(minWidth: isInspectorVisible ? 1100 : 760)
         .background(theme.background)
         .overlay(alignment: .top) {
             if let message = model.errorMessage {
@@ -83,23 +106,43 @@ struct AppRootView: View {
                 node: current,
                 volume: model.volumeForChart(node: current),
                 isProvisional: model.isScanning && model.result == nil,
+                selectedItem: chartSelection,
                 inspectSmallerItems: { smallerItemsSelection = $0 }
             )
             .frame(minWidth: 500)
             .allowsHitTesting(!model.isScanning || model.result != nil)
 
-            Group {
-                if let selection = smallerItemsSelection,
-                   selection.chartRootID == current.id {
-                    SmallerItemsInspector(selection: selection) {
-                        smallerItemsSelection = nil
+            if isInspectorVisible {
+                Group {
+                    if let selection = smallerItemsSelection,
+                       selection.chartRootID == current.id {
+                        SmallerItemsInspector(
+                            selection: selection,
+                            selectedItem: $selectedItem
+                        ) {
+                            smallerItemsSelection = nil
+                            selectedItem = nil
+                        }
+                    } else {
+                        ItemInspector(node: current, selectedItem: $selectedItem)
                     }
-                } else {
-                    ItemInspector(node: current)
                 }
+                .frame(
+                    minWidth: 300,
+                    idealWidth: min(max(inspectorWidth, 300), 440),
+                    maxWidth: 440
+                )
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear
+                            .onAppear { persistInspectorWidth(proxy.size.width) }
+                            .onChange(of: proxy.size.width) {
+                                persistInspectorWidth(proxy.size.width)
+                            }
+                    }
+                }
+                .allowsHitTesting(!model.isScanning || model.result != nil)
             }
-            .frame(minWidth: 300, idealWidth: 340, maxWidth: 440)
-            .allowsHitTesting(!model.isScanning || model.result != nil)
         }
         .padding(12)
     }
@@ -124,12 +167,39 @@ struct AppRootView: View {
         .background(theme.background)
         .onChange(of: model.currentNode?.id) {
             smallerItemsSelection = nil
+            selectedItem = nil
         }
         .onChange(of: model.isScanning) {
             if model.isScanning {
                 smallerItemsSelection = nil
+                selectedItem = nil
             }
         }
+    }
+
+    private var sidebarColumnVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { isSidebarVisible ? .all : .detailOnly },
+            set: { isSidebarVisible = $0 != .detailOnly }
+        )
+    }
+
+    private var chartSelection: Binding<FileNode?> {
+        Binding(
+            get: { selectedItem },
+            set: { item in
+                selectedItem = item
+                if item != nil {
+                    smallerItemsSelection = nil
+                }
+            }
+        )
+    }
+
+    private func persistInspectorWidth(_ width: CGFloat) {
+        let width = Double(width)
+        guard width >= 300, width <= 440, abs(inspectorWidth - width) >= 1 else { return }
+        inspectorWidth = width
     }
 }
 
@@ -148,19 +218,19 @@ private struct FullDiskAccessPrompt: View {
 
                 VStack(spacing: 7) {
                     Text("Full Disk Access recommended")
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.title3.weight(.semibold))
 
                     Text(
                         "For a complete storage map, enable SpaceLens in System Settings. "
                             + "Without Full Disk Access, macOS will hide protected folders and the totals will be incomplete."
                     )
-                    .font(.system(size: 13))
+                    .font(.callout)
                     .foregroundStyle(theme.secondaryText)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
 
                     Text("SpaceLens only reads file sizes. It never modifies your files.")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.caption)
                         .foregroundStyle(theme.tertiaryText)
                         .multilineTextAlignment(.center)
                 }
@@ -176,7 +246,7 @@ private struct FullDiskAccessPrompt: View {
                     .tint(theme.accent)
 
                     Text("After enabling SpaceLens, return here and access will be checked again. macOS may ask you to reopen the app.")
-                        .font(.system(size: 10))
+                        .font(.caption2)
                         .foregroundStyle(theme.tertiaryText)
                         .multilineTextAlignment(.center)
 
@@ -248,7 +318,7 @@ private struct ErrorBanner: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(theme.warning)
             Text(message)
-                .font(.system(size: 13, weight: .medium))
+                .font(.callout.weight(.medium))
                 .lineLimit(2)
             Spacer(minLength: 8)
             Button(action: dismiss) {

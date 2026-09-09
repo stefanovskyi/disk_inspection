@@ -6,6 +6,7 @@ struct ChartPanel: View {
     let node: FileNode
     let volume: VolumeInfo?
     let isProvisional: Bool
+    @Binding var selectedItem: FileNode?
     let inspectSmallerItems: (SunburstSmallerItems) -> Void
 
     var body: some View {
@@ -15,15 +16,15 @@ struct ChartPanel: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Storage map")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.headline)
                         .foregroundStyle(theme.primaryText)
                     Text("Each ring is one level deeper")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.caption)
                         .foregroundStyle(theme.tertiaryText)
                 }
                 Spacer()
-                Label("Click to inspect", systemImage: "cursorarrow.click.2")
-                    .font(.system(size: 10, weight: .medium))
+                Label("Click a folder to open", systemImage: "cursorarrow.click.2")
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(theme.secondaryText)
             }
             .padding(.horizontal, 18)
@@ -33,9 +34,17 @@ struct ChartPanel: View {
                 root: node,
                 volume: volume,
                 isProvisional: isProvisional,
+                selectedItemID: selectedItem?.id,
                 actions: SunburstChartActions(
-                    inspect: { model.navigate(into: $0) },
-                    inspectSmallerItems: inspectSmallerItems,
+                    select: { selectedItem = $0 },
+                    inspect: {
+                        selectedItem = nil
+                        model.navigate(into: $0)
+                    },
+                    inspectSmallerItems: {
+                        selectedItem = nil
+                        inspectSmallerItems($0)
+                    },
                     showInFinder: { model.showInFinder($0) },
                     openInTerminal: { model.openInTerminal($0) }
                 )
@@ -45,9 +54,10 @@ struct ChartPanel: View {
 
             HStack(spacing: 15) {
                 Label("Hover for details", systemImage: "cursorarrow.motionlines")
+                Label("Click to open folders", systemImage: "return")
                 Label("Right-click for actions", systemImage: "menubar.rectangle")
             }
-            .font(.system(size: 10, weight: .medium))
+            .font(.caption2.weight(.medium))
             .foregroundStyle(theme.tertiaryText)
             .padding(.horizontal, 18)
             .padding(.bottom, 14)
@@ -61,6 +71,7 @@ struct SunburstChart: View {
     let root: FileNode
     let volume: VolumeInfo?
     let isProvisional: Bool
+    let selectedItemID: String?
     private let capacity: StorageChartCapacity
     private let actions: SunburstChartActions
 
@@ -68,11 +79,13 @@ struct SunburstChart: View {
         root: FileNode,
         volume: VolumeInfo?,
         isProvisional: Bool,
+        selectedItemID: String? = nil,
         actions: SunburstChartActions = .disabled
     ) {
         self.root = root
         self.volume = volume
         self.isProvisional = isProvisional
+        self.selectedItemID = selectedItemID
         self.actions = actions
         let capacity = StorageChartCapacity(
             root: root,
@@ -103,6 +116,7 @@ struct SunburstChart: View {
                     metrics: metrics,
                     availableSize: proxy.size,
                     isProvisional: isProvisional,
+                    selectedItemID: selectedItemID,
                     actions: actions
                 )
             }
@@ -182,12 +196,14 @@ private final class SunburstSceneCache: ObservableObject {
 }
 
 struct SunburstChartActions {
+    let select: (FileNode) -> Void
     let inspect: (FileNode) -> Void
     let inspectSmallerItems: (SunburstSmallerItems) -> Void
     let showInFinder: (FileNode) -> Void
     let openInTerminal: (FileNode) -> Void
 
     static let disabled = SunburstChartActions(
+        select: { _ in },
         inspect: { _ in },
         inspectSmallerItems: { _ in },
         showInFinder: { _ in },
@@ -293,12 +309,20 @@ private struct SunburstInteractionLayer: View {
     let metrics: ChartMetrics
     let availableSize: CGSize
     let isProvisional: Bool
+    let selectedItemID: String?
     let actions: SunburstChartActions
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
 
         ZStack {
+            if let selectedSegment {
+                Canvas { context, _ in
+                    drawSelection(segment: selectedSegment, context: &context)
+                }
+                .allowsHitTesting(false)
+            }
+
             if let hoveredSegment {
                 Canvas { context, _ in
                     drawHover(segment: hoveredSegment, context: &context)
@@ -323,7 +347,7 @@ private struct SunburstInteractionLayer: View {
             SpatialTapGesture()
                 .onEnded { value in
                     guard let index = segmentIndex(at: value.location) else { return }
-                    inspect(scene.segments[index])
+                    performPrimaryAction(for: scene.segments[index])
                 }
         )
         .contextMenu { contextMenu }
@@ -350,6 +374,27 @@ private struct SunburstInteractionLayer: View {
         guard let index = hoveredSegmentIndex,
               scene.segments.indices.contains(index) else { return nil }
         return scene.segments[index]
+    }
+
+    private var selectedSegment: SunburstSegment? {
+        guard let selectedItemID else { return nil }
+        return scene.segments.first { segment in
+            guard case .node(let node) = segment.target else { return false }
+            return node.id == selectedItemID
+        }
+    }
+
+    private func performPrimaryAction(for segment: SunburstSegment) {
+        switch segment.target {
+        case .node(let node):
+            if node.isDirectory, !node.children.isEmpty {
+                actions.inspect(node)
+            } else {
+                actions.select(node)
+            }
+        case .smallerItems(let group):
+            actions.inspectSmallerItems(group)
+        }
     }
 
     private func inspect(_ segment: SunburstSegment) {
@@ -389,13 +434,32 @@ private struct SunburstInteractionLayer: View {
         )
     }
 
+    private func drawSelection(segment: SunburstSegment, context: inout GraphicsContext) {
+        let angularGap = min(0.006, segment.angularSpan * 0.14)
+        let radius = metrics.radius(forDepth: segment.depth)
+        var arc = Path()
+        arc.addArc(
+            center: metrics.center,
+            radius: radius,
+            startAngle: .radians(segment.startAngle - (.pi / 2) + angularGap),
+            endAngle: .radians(segment.endAngle - (.pi / 2) - angularGap),
+            clockwise: false
+        )
+        context.stroke(
+            arc,
+            with: .color(Color.accentColor.opacity(0.95)),
+            style: StrokeStyle(lineWidth: max(3, metrics.ringWidth + 1.5), lineCap: .butt)
+        )
+    }
+
     private func centerSummary(theme: SpaceTheme) -> some View {
+        let focusedSegment = hoveredSegment ?? selectedSegment
         let displaySize = isHoveringFreeSpace
             ? capacity.freeSpace
-            : (hoveredSegment?.size ?? (isProvisional ? root.size : capacity.usedSpace))
+            : (focusedSegment?.size ?? (isProvisional ? root.size : capacity.usedSpace))
         let displayName = isHoveringFreeSpace
             ? "Free space"
-            : (hoveredSegment?.name ?? (isProvisional ? "\(root.name) mapped" : root.name))
+            : (focusedSegment?.name ?? (isProvisional ? "\(root.name) mapped" : root.name))
         let size = max(metrics.innerRadius * 1.72, 84)
 
         return ZStack {
@@ -411,7 +475,7 @@ private struct SunburstInteractionLayer: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.65)
                 Text(displayName)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.caption)
                     .foregroundStyle(theme.secondaryText)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -435,10 +499,12 @@ private struct SunburstInteractionLayer: View {
 
             VStack(spacing: 2) {
                 Text("FREE")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.caption2.weight(.bold))
                     .tracking(1.1)
                 Text(StorageFormatters.bytes(capacity.freeSpace))
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.caption.weight(.semibold))
+                    .fontDesign(.rounded)
+                    .monospacedDigit()
             }
             .foregroundStyle(isHoveringFreeSpace ? theme.primaryText : theme.secondaryText)
             .padding(.horizontal, 9)
@@ -601,22 +667,24 @@ private struct ChartHoverCard: View {
                 Image(systemName: iconName)
                     .foregroundStyle(theme.accent)
                 Text(segment.name)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
 
             HStack {
                 Text(StorageFormatters.bytes(segment.size))
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.callout.weight(.bold))
+                    .fontDesign(.rounded)
+                    .monospacedDigit()
                 Spacer()
                 Text(StorageFormatters.percent(percentage))
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(theme.secondaryText)
             }
 
             Text(detail)
-                .font(.system(size: 9, design: .monospaced))
+                .font(.caption2.monospaced())
                 .foregroundStyle(theme.tertiaryText)
                 .lineLimit(1)
                 .truncationMode(.middle)

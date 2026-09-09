@@ -3,6 +3,7 @@ import SwiftUI
 struct VolumeSidebar: View {
     @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("layout.sidebarWidth") private var sidebarWidth = 248.0
 
     private var internalVolumes: [VolumeInfo] { model.volumes.filter { !$0.isExternal } }
     private var externalVolumes: [VolumeInfo] { model.volumes.filter(\.isExternal) }
@@ -13,7 +14,7 @@ struct VolumeSidebar: View {
         VStack(spacing: 0) {
             brand(theme: theme)
 
-            List {
+            List(selection: sidebarSelection) {
                 volumeSection("This Mac", volumes: internalVolumes, theme: theme)
 
                 if !externalVolumes.isEmpty {
@@ -26,6 +27,7 @@ struct VolumeSidebar: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
+            .onDeleteCommand(perform: removeSelectedFolder)
 
             Spacer(minLength: 0)
 
@@ -34,7 +36,7 @@ struct VolumeSidebar: View {
                     model.chooseFolder()
                 } label: {
                     Label("Scan a Folder", systemImage: "folder.badge.plus")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.callout.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                 }
@@ -45,7 +47,7 @@ struct VolumeSidebar: View {
                     model.refreshVolumes()
                 } label: {
                     Label("Refresh Disks", systemImage: "arrow.clockwise")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.callout.weight(.medium))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(theme.secondaryText)
@@ -55,6 +57,15 @@ struct VolumeSidebar: View {
             .background(.bar)
         }
         .background(theme.sidebar)
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { persistSidebarWidth(proxy.size.width) }
+                    .onChange(of: proxy.size.width) {
+                        persistSidebarWidth(proxy.size.width)
+                    }
+            }
+        }
     }
 
     private func brand(theme: SpaceTheme) -> some View {
@@ -79,10 +90,11 @@ struct VolumeSidebar: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text("SpaceLens")
-                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .font(.headline.weight(.bold))
+                        .fontDesign(.rounded)
                         .foregroundStyle(theme.primaryText)
                     Text("Storage inspector")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.caption2.weight(.medium))
                         .foregroundStyle(theme.tertiaryText)
                 }
 
@@ -112,11 +124,9 @@ struct VolumeSidebar: View {
                 ForEach(volumes) { volume in
                     VolumeRow(
                         volume: volume,
-                        showsLocation: volumes.filter { $0.name == volume.name }.count > 1,
-                        isActive: model.result?.root.url.standardizedFileURL == volume.url.standardizedFileURL
-                            || model.scanningURL?.standardizedFileURL == volume.url.standardizedFileURL
-                            || model.selectedVolumeOverview?.url.standardizedFileURL == volume.url.standardizedFileURL
+                        showsLocation: volumes.filter { $0.name == volume.name }.count > 1
                     )
+                    .tag(SidebarSelection.volume(volume.url.standardizedFileURL.path))
                     .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -129,12 +139,69 @@ struct VolumeSidebar: View {
         Section("Folders") {
             ForEach(model.sessionFolders) { folder in
                 SessionFolderRow(folder: folder)
+                    .tag(SidebarSelection.folder(folder.id))
                     .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
             }
         }
     }
+
+    private var sidebarSelection: Binding<SidebarSelection?> {
+        Binding(
+            get: {
+                guard let path = activeLocationPath else { return nil }
+                if model.sessionFolders.contains(where: { $0.id == path }) {
+                    return .folder(path)
+                }
+                if model.volumes.contains(where: {
+                    $0.url.standardizedFileURL.path == path
+                }) {
+                    return .volume(path)
+                }
+                return nil
+            },
+            set: { selection in
+                switch selection {
+                case .volume(let path):
+                    if let volume = model.volumes.first(where: {
+                        $0.url.standardizedFileURL.path == path
+                    }) {
+                        model.selectVolume(volume)
+                    }
+                case .folder(let path):
+                    if let folder = model.sessionFolders.first(where: { $0.id == path }) {
+                        model.selectSessionFolder(folder)
+                    }
+                case nil:
+                    break
+                }
+            }
+        )
+    }
+
+    private var activeLocationPath: String? {
+        model.scanningURL?.standardizedFileURL.path
+            ?? model.result?.root.url.standardizedFileURL.path
+            ?? model.selectedVolumeOverview?.url.standardizedFileURL.path
+    }
+
+    private func removeSelectedFolder() {
+        guard case .folder(let path) = sidebarSelection.wrappedValue,
+              let folder = model.sessionFolders.first(where: { $0.id == path }) else { return }
+        model.removeSessionFolder(folder)
+    }
+
+    private func persistSidebarWidth(_ width: CGFloat) {
+        let width = Double(width)
+        guard width >= 220, width <= 320, abs(sidebarWidth - width) >= 1 else { return }
+        sidebarWidth = width
+    }
+}
+
+private enum SidebarSelection: Hashable {
+    case volume(String)
+    case folder(String)
 }
 
 private struct VolumeRow: View {
@@ -142,30 +209,26 @@ private struct VolumeRow: View {
     @Environment(\.colorScheme) private var colorScheme
     let volume: VolumeInfo
     let showsLocation: Bool
-    let isActive: Bool
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
         let hasCachedResult = model.cachedResult(for: volume) != nil
 
-        Button {
-            model.selectVolume(volume)
-        } label: {
-            VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 9) {
                     Image(systemName: volume.isExternal ? "externaldrive.fill" : "internaldrive.fill")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(isActive ? theme.accent : theme.secondaryText)
+                        .foregroundStyle(theme.accent)
                         .frame(width: 22)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(volume.name)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.callout.weight(.semibold))
                             .foregroundStyle(theme.primaryText)
                             .lineLimit(1)
 
                         Text(volumeSubtitle)
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.caption2.weight(.medium))
                             .foregroundStyle(theme.tertiaryText)
                             .lineLimit(1)
                     }
@@ -177,11 +240,11 @@ private struct VolumeRow: View {
                             .controlSize(.small)
                     } else if hasCachedResult {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.callout.weight(.semibold))
                             .foregroundStyle(theme.accent)
                     } else {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.caption2.weight(.bold))
                             .foregroundStyle(theme.tertiaryText)
                     }
                 }
@@ -203,15 +266,7 @@ private struct VolumeRow: View {
                 .frame(height: 4)
             }
             .padding(11)
-            .background(isActive ? theme.elevatedSurface : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(isActive ? theme.accent.opacity(0.35) : Color.clear, lineWidth: 1)
-            }
             .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
         .contextMenu {
             if hasCachedResult {
                 Button("View Existing Result") { model.viewCachedResult(at: volume.url) }
@@ -256,21 +311,17 @@ private struct SessionFolderRow: View {
         let theme = SpaceTheme(colorScheme: colorScheme)
         let cachedResult = model.cachedResult(for: folder)
         let isScanning = model.scanningURL?.standardizedFileURL.path == folder.id
-        let isActive = model.result?.root.url.standardizedFileURL.path == folder.id || isScanning
 
         HStack(spacing: 3) {
-            Button {
-                model.selectSessionFolder(folder)
-            } label: {
-                HStack(spacing: 9) {
+            HStack(spacing: 9) {
                     Image(systemName: "folder.fill")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(isActive ? theme.accent : theme.secondaryText)
+                        .foregroundStyle(theme.accent)
                         .frame(width: 22)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(folder.name)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.callout.weight(.semibold))
                             .foregroundStyle(theme.primaryText)
                             .lineLimit(1)
 
@@ -279,7 +330,7 @@ private struct SessionFolderRow: View {
                                 "\(StorageFormatters.bytes($0.root.size)) scanned"
                             } ?? folder.url.deletingLastPathComponent().path
                         )
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.caption2.weight(.medium))
                         .foregroundStyle(theme.tertiaryText)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -292,50 +343,24 @@ private struct SessionFolderRow: View {
                             .controlSize(.small)
                     } else if cachedResult != nil {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.callout.weight(.semibold))
                             .foregroundStyle(theme.accent)
                     } else {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.caption2.weight(.bold))
                             .foregroundStyle(theme.tertiaryText)
                     }
                 }
                 .padding(.leading, 9)
                 .padding(.vertical, 10)
                 .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
-            .contextMenu {
-                if cachedResult != nil {
-                    Button("View Existing Result") { model.viewCachedResult(at: folder.url) }
-                    Button("Rescan Folder") { model.scan(folder.url) }
-                } else {
-                    Button("Scan Folder") { model.scan(folder.url) }
-                }
-                Divider()
-                Button("Show in Finder") {
-                    model.showInFinder(
-                        FileNode(
-                            url: folder.url,
-                            name: folder.name,
-                            size: cachedResult?.root.size ?? 0,
-                            isDirectory: true,
-                            isReadable: true,
-                            children: []
-                        )
-                    )
-                }
-                Button("Remove from Sidebar") {
-                    model.removeSessionFolder(folder)
-                }
-            }
 
             Button {
                 model.removeSessionFolder(folder)
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.caption2.weight(.bold))
                     .foregroundStyle(theme.tertiaryText)
                     .frame(width: 24, height: 28)
                     .contentShape(Rectangle())
@@ -345,11 +370,30 @@ private struct SessionFolderRow: View {
             .accessibilityLabel("Remove \(folder.name) from sidebar")
             .padding(.trailing, 4)
         }
-        .background(isActive ? theme.elevatedSurface : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(isActive ? theme.accent.opacity(0.35) : Color.clear, lineWidth: 1)
+        .contentShape(Rectangle())
+        .contextMenu {
+            if cachedResult != nil {
+                Button("View Existing Result") { model.viewCachedResult(at: folder.url) }
+                Button("Rescan Folder") { model.scan(folder.url) }
+            } else {
+                Button("Scan Folder") { model.scan(folder.url) }
+            }
+            Divider()
+            Button("Show in Finder") {
+                model.showInFinder(
+                    FileNode(
+                        url: folder.url,
+                        name: folder.name,
+                        size: cachedResult?.root.size ?? 0,
+                        isDirectory: true,
+                        isReadable: true,
+                        children: []
+                    )
+                )
+            }
+            Button("Remove from Sidebar") {
+                model.removeSessionFolder(folder)
+            }
         }
         .accessibilityElement(children: .contain)
     }
