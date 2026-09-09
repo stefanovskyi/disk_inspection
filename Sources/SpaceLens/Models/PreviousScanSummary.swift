@@ -27,6 +27,15 @@ struct PreviousScanSummary: Codable, Equatable, Sendable {
     func makeRoot(at volumeURL: URL) -> FileNode {
         FileNode(rootURL: volumeURL, snapshot: root.fileNodeSnapshot)
     }
+
+    func makeResult(at volumeURL: URL) -> ScanResult {
+        ScanResult(
+            root: makeRoot(at: volumeURL),
+            duration: duration,
+            itemsScanned: itemsScanned,
+            unreadableItems: unreadableItems
+        )
+    }
 }
 
 struct PreviousScanNode: Codable, Equatable, Sendable {

@@ -115,11 +115,16 @@ struct SpaceLensSelfTests {
         )
         let summary = PreviousScanSummary(result: result, volume: volume)
         let restoredRoot = summary.makeRoot(at: rootURL)
+        let restoredResult = summary.makeResult(at: rootURL)
         try expect(restoredRoot.children.count == 9, "Previous scan snapshot was not bounded")
         try expect(
             restoredRoot.children.reduce(Int64(0)) { $0 + $1.size } == total,
             "Previous scan snapshot did not preserve omitted byte totals"
         )
+        try expect(restoredResult.root.url == restoredRoot.url, "Previous scan result restored the wrong root")
+        try expect(restoredResult.root.size == restoredRoot.size, "Previous scan result lost its root size")
+        try expect(restoredResult.duration == result.duration, "Previous scan result lost its duration")
+        try expect(restoredResult.itemsScanned == result.itemsScanned, "Previous scan result lost its item count")
 
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("SpaceLensSummarySelfTest-\(UUID().uuidString)", isDirectory: true)

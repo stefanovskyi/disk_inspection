@@ -97,55 +97,76 @@ struct AppRootView: View {
         ) {
             FullDiskAccessPrompt()
         }
+        .alert(
+            "No saved scan data",
+            isPresented: Binding(
+                get: { model.isRequestingRescan },
+                set: { isPresented in
+                    if !isPresented { model.cancelPendingRescan() }
+                }
+            ),
+            presenting: model.pendingRescanVolume
+        ) { _ in
+            Button("Scan Disk") {
+                model.confirmPendingRescan()
+            }
+            Button("Cancel", role: .cancel) {
+                model.cancelPendingRescan()
+            }
+        } message: { volume in
+            Text("SpaceLens does not have a saved storage map for \(volume.name). Would you like to scan it now?")
+        }
         .animation(.easeOut(duration: 0.16), value: model.errorMessage)
     }
 
     @ViewBuilder
     private func resultContent(current: FileNode) -> some View {
-        HSplitView {
-            ChartPanel(
-                node: current,
-                volume: model.volumeForChart(node: current),
-                isProvisional: model.isScanning && model.result == nil,
-                selectedItem: chartSelection,
-                inspectSmallerItems: { smallerItemsSelection = $0 }
-            )
-            .frame(minWidth: 500)
-            .allowsHitTesting(!model.isScanning || model.result != nil)
-
+        Group {
             if isInspectorVisible {
-                Group {
-                    if let selection = smallerItemsSelection,
-                       selection.chartRootID == current.id {
-                        SmallerItemsInspector(
-                            selection: selection,
-                            selectedItem: $selectedItem
-                        ) {
-                            smallerItemsSelection = nil
-                            selectedItem = nil
-                        }
-                    } else {
-                        ItemInspector(node: current, selectedItem: $selectedItem)
-                    }
+                SpaceHorizontalSplitView(
+                    trailingWidth: $inspectorWidth,
+                    dividerAccessibilityLabel: "Resize inspector"
+                ) {
+                    chartPanel(current: current)
+                } trailing: {
+                    inspectorPanel(current: current)
                 }
-                .frame(
-                    minWidth: 300,
-                    idealWidth: min(max(inspectorWidth, 300), 440),
-                    maxWidth: 440
-                )
-                .background {
-                    GeometryReader { proxy in
-                        Color.clear
-                            .onAppear { persistInspectorWidth(proxy.size.width) }
-                            .onChange(of: proxy.size.width) {
-                                persistInspectorWidth(proxy.size.width)
-                            }
-                    }
-                }
-                .allowsHitTesting(!model.isScanning || model.result != nil)
+            } else {
+                chartPanel(current: current)
             }
         }
         .padding(12)
+    }
+
+    private func chartPanel(current: FileNode) -> some View {
+        ChartPanel(
+            node: current,
+            volume: model.volumeForChart(node: current),
+            isProvisional: model.isScanning && model.result == nil,
+            selectedItem: chartSelection,
+            inspectSmallerItems: { smallerItemsSelection = $0 }
+        )
+        .frame(minWidth: 500)
+        .allowsHitTesting(!model.isScanning || model.result != nil)
+    }
+
+    @ViewBuilder
+    private func inspectorPanel(current: FileNode) -> some View {
+        Group {
+            if let selection = smallerItemsSelection,
+               selection.chartRootID == current.id {
+                SmallerItemsInspector(
+                    selection: selection,
+                    selectedItem: $selectedItem
+                ) {
+                    smallerItemsSelection = nil
+                    selectedItem = nil
+                }
+            } else {
+                ItemInspector(node: current, selectedItem: $selectedItem)
+            }
+        }
+        .allowsHitTesting(!model.isScanning || model.result != nil)
     }
 
     @ViewBuilder
@@ -197,11 +218,6 @@ struct AppRootView: View {
         )
     }
 
-    private func persistInspectorWidth(_ width: CGFloat) {
-        let width = Double(width)
-        guard width >= 300, width <= 440, abs(inspectorWidth - width) >= 1 else { return }
-        inspectorWidth = width
-    }
 }
 
 private struct FullDiskAccessPrompt: View {

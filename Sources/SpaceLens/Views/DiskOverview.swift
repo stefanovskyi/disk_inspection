@@ -3,6 +3,7 @@ import SwiftUI
 struct DiskOverview: View {
     @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
+    @State private var detailsWidth = 340.0
 
     let volume: VolumeInfo
     let previousSummary: PreviousScanSummary?
@@ -14,12 +15,10 @@ struct DiskOverview: View {
         VStack(spacing: 0) {
             header(theme: theme)
 
-            HSplitView {
+            SpaceHorizontalSplitView(trailingWidth: $detailsWidth) {
                 mapPanel(theme: theme)
-                    .frame(minWidth: 500)
-
+            } trailing: {
                 detailsPanel(theme: theme)
-                    .frame(minWidth: 300, idealWidth: 340, maxWidth: 440)
             }
             .padding(12)
         }
@@ -47,14 +46,20 @@ struct DiskOverview: View {
 
             Spacer(minLength: 12)
 
-            if previousSummary != nil {
-                Label("Previous scan", systemImage: "clock.arrow.circlepath")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(theme.secondaryText)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 6)
-                    .background(theme.elevatedSurface)
-                    .clipShape(Capsule())
+            if previousRoot != nil {
+                Button {
+                    model.viewPreviousScan(for: volume)
+                } label: {
+                    Label("Previous scan", systemImage: "clock.arrow.circlepath")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(theme.secondaryText)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(theme.elevatedSurface)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Open the saved scan")
             }
 
             Button {
@@ -89,20 +94,41 @@ struct DiskOverview: View {
 
             Group {
                 if let previousRoot {
-                    SunburstChart(root: previousRoot, volume: volume, isProvisional: false)
+                    SunburstChart(
+                        root: previousRoot,
+                        volume: volume,
+                        isProvisional: false,
+                        actions: SunburstChartActions(
+                            select: { _ in model.viewPreviousScan(for: volume) },
+                            inspect: { node in
+                                if model.viewPreviousScan(for: volume) {
+                                    model.navigate(into: node)
+                                }
+                            },
+                            inspectSmallerItems: { _ in model.viewPreviousScan(for: volume) },
+                            showInFinder: { model.showInFinder($0) },
+                            openInTerminal: { model.openInTerminal($0) }
+                        )
+                    )
                 } else {
-                    CapacityShellChart(volume: volume)
+                    Button {
+                        model.requestRescanConfirmation(for: volume)
+                    } label: {
+                        CapacityShellChart(volume: volume)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Scan \(volume.name)")
+                    .accessibilityHint("Asks whether to scan this disk")
                 }
             }
-            .allowsHitTesting(false)
             .padding(12)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Label(
                 previousRoot == nil
                     ? "Folder sizes appear as soon as the scan starts"
-                    : "Start an update to replace this snapshot with live results",
-                systemImage: previousRoot == nil ? "sparkles" : "arrow.triangle.2.circlepath"
+                    : "Click the map to explore this saved snapshot",
+                systemImage: previousRoot == nil ? "sparkles" : "cursorarrow.click.2"
             )
             .font(.caption2.weight(.medium))
             .foregroundStyle(theme.tertiaryText)

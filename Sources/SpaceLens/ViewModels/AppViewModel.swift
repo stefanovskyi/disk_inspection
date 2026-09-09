@@ -17,6 +17,7 @@ final class AppViewModel {
     private(set) var scanningURL: URL?
     private(set) var scanStartedAt: Date?
     private(set) var pendingFullDiskScanURL: URL?
+    private(set) var pendingRescanVolume: VolumeInfo?
     private(set) var sessionFolders: [SessionFolder] = []
     var errorMessage: String?
 
@@ -55,6 +56,7 @@ final class AppViewModel {
     }
     var canNavigateBack: Bool { !isScanning && navigationPath.count > 1 }
     var isRequestingFullDiskAccess: Bool { pendingFullDiskScanURL != nil }
+    var isRequestingRescan: Bool { pendingRescanVolume != nil }
 
     var estimatedScanFraction: Double? {
         guard isScanning, let scanningURL else { return nil }
@@ -118,8 +120,11 @@ final class AppViewModel {
     func selectVolume(_ volume: VolumeInfo) {
         if cachedResult(for: volume) != nil {
             viewCachedResult(at: volume.url)
+        } else if viewPreviousScan(for: volume) {
+            return
         } else {
             showVolumeOverview(volume)
+            requestRescanConfirmation(for: volume)
         }
     }
 
@@ -164,6 +169,39 @@ final class AppViewModel {
         }
     }
 
+    @discardableResult
+    func viewPreviousScan(for volume: VolumeInfo) -> Bool {
+        guard let summary = previousSummaries[volume.persistentIdentifier] else {
+            return false
+        }
+
+        cancelScan()
+        let previousResult = summary.makeResult(at: volume.url)
+        selectedVolumeOverview = volume
+        previousScanSummary = summary
+        previousScanRoot = previousResult.root
+        result = previousResult
+        navigationPath = [previousResult.root]
+        errorMessage = nil
+        return true
+    }
+
+    func requestRescanConfirmation(for volume: VolumeInfo) {
+        selectedVolumeOverview = volume
+        updatePreviousScanPresentation()
+        pendingRescanVolume = volume
+    }
+
+    func confirmPendingRescan() {
+        guard let volume = pendingRescanVolume else { return }
+        pendingRescanVolume = nil
+        scan(volume.url)
+    }
+
+    func cancelPendingRescan() {
+        pendingRescanVolume = nil
+    }
+
     func removeSessionFolder(_ folder: SessionFolder) {
         let folderPath = folder.url.standardizedFileURL.path
         sessionFolders.removeAll { $0.id == folder.id }
@@ -181,6 +219,7 @@ final class AppViewModel {
     func showDiskList() {
         cancelScan()
         pendingFullDiskScanURL = nil
+        pendingRescanVolume = nil
         result = nil
         navigationPath = []
         progress = ScanProgress()

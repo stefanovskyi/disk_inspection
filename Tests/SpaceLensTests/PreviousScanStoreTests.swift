@@ -20,6 +20,14 @@ final class PreviousScanStoreTests: XCTestCase {
         XCTAssertEqual(restoredRoot.url, volume.url.standardizedFileURL)
         XCTAssertEqual(restoredRoot.size, result.root.size)
         XCTAssertEqual(restoredRoot.children.map(\.name), result.root.sortedChildren.map(\.name))
+
+        let restoredResult = try XCTUnwrap(store.load()[volume.persistentIdentifier]?.makeResult(at: volume.url))
+        XCTAssertEqual(restoredResult.root.url, restoredRoot.url)
+        XCTAssertEqual(restoredResult.root.size, restoredRoot.size)
+        XCTAssertEqual(restoredResult.root.children.map(\.name), restoredRoot.children.map(\.name))
+        XCTAssertEqual(restoredResult.duration, result.duration)
+        XCTAssertEqual(restoredResult.itemsScanned, result.itemsScanned)
+        XCTAssertEqual(restoredResult.unreadableItems, result.unreadableItems)
     }
 
     func testSummaryBoundsChildrenAndAggregatesOmittedTotals() throws {
