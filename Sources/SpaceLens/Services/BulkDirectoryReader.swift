@@ -14,6 +14,7 @@ struct LowLevelFileMetadata: Sendable {
     let size: Int64
     let identity: FileIdentity?
     let isReadable: Bool
+    let modificationDate: Date?
 }
 
 struct LowLevelDirectoryEntry: Sendable {
@@ -72,7 +73,16 @@ enum LowLevelMetadataReader {
                 device: UInt64(bitPattern: Int64(value.st_dev)),
                 inode: UInt64(value.st_ino)
             ),
-            isReadable: true
+            isReadable: true,
+            modificationDate: date(from: value.st_mtimespec)
+        )
+    }
+
+    private static func date(from value: timespec) -> Date? {
+        guard value.tv_sec >= 0 else { return nil }
+        return Date(
+            timeIntervalSince1970: TimeInterval(value.tv_sec)
+                + TimeInterval(value.tv_nsec) / 1_000_000_000
         )
     }
 
@@ -250,6 +260,17 @@ enum BulkDirectoryReader {
             objectType = try cursor.read(fsobj_type_t.self, default: 0)
         }
 
+        var modificationDate: Date?
+        if returned.commonattr & UInt32(ATTR_CMN_MODTIME) != 0 {
+            let value = try cursor.read(timespec.self, default: timespec())
+            if value.tv_sec >= 0 {
+                modificationDate = Date(
+                    timeIntervalSince1970: TimeInterval(value.tv_sec)
+                        + TimeInterval(value.tv_nsec) / 1_000_000_000
+                )
+            }
+        }
+
         var inode: UInt64?
         if returned.commonattr & UInt32(ATTR_CMN_FILEID) != 0 {
             inode = try cursor.read(UInt64.self, default: 0)
@@ -285,7 +306,8 @@ enum BulkDirectoryReader {
                     kind: kind,
                     size: max(Int64(reportedSize ?? 0), 0),
                     identity: identity,
-                    isReadable: entryError == 0
+                    isReadable: entryError == 0,
+                    modificationDate: modificationDate
                 )
             } else {
                 bulkMetadata = nil
@@ -303,7 +325,8 @@ enum BulkDirectoryReader {
                 kind: kind ?? .other,
                 size: 0,
                 identity: identity,
-                isReadable: false
+                isReadable: false,
+                modificationDate: modificationDate
             )
         } else if let bulkMetadata,
                   bulkMetadata.identity != nil || bulkMetadata.kind != .directory {
@@ -499,6 +522,7 @@ private final class BulkDirectoryBuffer {
             | UInt32(ATTR_CMN_NAME)
             | UInt32(ATTR_CMN_DEVID)
             | UInt32(ATTR_CMN_OBJTYPE)
+            | UInt32(ATTR_CMN_MODTIME)
             | UInt32(ATTR_CMN_FILEID)
             | UInt32(ATTR_CMN_ERROR)
         requested.fileattr = UInt32(ATTR_FILE_TOTALSIZE | ATTR_FILE_ALLOCSIZE)

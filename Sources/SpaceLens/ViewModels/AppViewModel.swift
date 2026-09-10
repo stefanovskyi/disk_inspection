@@ -5,6 +5,7 @@ import Observation
 @MainActor
 @Observable
 final class AppViewModel {
+    private(set) var selectedSection: AppSection = .storage
     private(set) var volumes: [VolumeInfo] = []
     private(set) var selectedVolumeOverview: VolumeInfo?
     private(set) var previousScanSummary: PreviousScanSummary?
@@ -19,9 +20,11 @@ final class AppViewModel {
     private(set) var pendingFullDiskScanURL: URL?
     private(set) var pendingRescanVolume: VolumeInfo?
     private(set) var sessionFolders: [SessionFolder] = []
+    let aiCodingTools: AICodingToolsStore
     var errorMessage: String?
 
     private let scanner = DiskScanner()
+    private let scanCoordinator: ScanCoordinator
     private let volumeDiscovery = VolumeDiscovery()
     private let fullDiskAccessChecker = FullDiskAccessChecker()
     private let previousScanStore = PreviousScanStore()
@@ -35,6 +38,9 @@ final class AppViewModel {
     @ObservationIgnored private var activationObserverToken: NSObjectProtocol?
 
     init() {
+        let scanCoordinator = ScanCoordinator()
+        self.scanCoordinator = scanCoordinator
+        aiCodingTools = AICodingToolsStore(scanCoordinator: scanCoordinator)
         refreshVolumes()
         observeVolumeChanges()
         observeApplicationActivation()
@@ -121,6 +127,7 @@ final class AppViewModel {
     }
 
     func selectVolume(_ volume: VolumeInfo) {
+        selectedSection = .storage
         if presentStoredResult(for: volume) {
             return
         } else {
@@ -130,6 +137,7 @@ final class AppViewModel {
     }
 
     func selectSessionFolder(_ folder: SessionFolder) {
+        selectedSection = .storage
         selectedVolumeOverview = nil
         previousScanSummary = nil
         previousScanRoot = nil
@@ -158,7 +166,9 @@ final class AppViewModel {
             return
         }
 
+        cancelAICodingToolsAnalysisPreservingReport()
         cancelScan()
+        selectedSection = .storage
         result = cachedResult
         navigationPath = [cachedResult.root]
         errorMessage = nil
@@ -176,7 +186,9 @@ final class AppViewModel {
             return false
         }
 
+        cancelAICodingToolsAnalysisPreservingReport()
         cancelScan()
+        selectedSection = .storage
         let previousResult = summary.makeResult(at: volume.url)
         selectedVolumeOverview = volume
         previousScanSummary = summary
@@ -218,7 +230,9 @@ final class AppViewModel {
     }
 
     func showDiskList() {
+        cancelAICodingToolsAnalysisPreservingReport()
         cancelScan()
+        selectedSection = .storage
         pendingFullDiskScanURL = nil
         pendingRescanVolume = nil
         result = nil
@@ -250,10 +264,13 @@ final class AppViewModel {
         selectedVolumeOverview = nil
         previousScanSummary = nil
         previousScanRoot = nil
+        selectedSection = .storage
         scan(folder.url)
     }
 
     func scan(_ url: URL) {
+        cancelAICodingToolsAnalysisPreservingReport()
+        selectedSection = .storage
         if let volume = volumes.first(where: {
             $0.url.standardizedFileURL.path == url.standardizedFileURL.path
         }) {
@@ -285,8 +302,10 @@ final class AppViewModel {
     }
 
     private func startScan(_ url: URL) {
-        scanTask?.cancel()
         let scanID = UUID()
+        scanCoordinator.begin(.storage, id: scanID) { [weak self] in
+            self?.cancelScan(expectedID: scanID)
+        }
         activeScanID = scanID
         let standardizedURL = url.standardizedFileURL
         scanFallbackResult = result?.root.url.standardizedFileURL.path == standardizedURL.path
@@ -317,14 +336,14 @@ final class AppViewModel {
         scanTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let result = try await scanner.scan(url: url) { progress in
+                let result = try await scanner.scan(url: url, onProgress: { progress in
                     Task { @MainActor [weak self] in
                         guard let self,
                               self.activeScanID == scanID,
                               self.isScanning else { return }
                         self.progress = progress
                     }
-                }
+                })
 
                 guard !Task.isCancelled, activeScanID == scanID else { return }
                 self.result = result
@@ -354,6 +373,7 @@ final class AppViewModel {
                 scanningURL = nil
                 scanStartedAt = nil
                 scanTask = nil
+                scanCoordinator.finish(.storage, id: scanID)
             } catch {
                 guard activeScanID == scanID else { return }
                 let fallbackResult = scanFallbackResult
@@ -365,6 +385,7 @@ final class AppViewModel {
                 scanTask = nil
                 result = fallbackResult
                 navigationPath = fallbackResult.map { [$0.root] } ?? []
+                scanCoordinator.finish(.storage, id: scanID)
                 if error is CancellationError { return }
                 if let failure = error as? ScanFailure, case .cancelled = failure {
                     return
@@ -375,6 +396,11 @@ final class AppViewModel {
     }
 
     func cancelScan() {
+        cancelScan(expectedID: activeScanID)
+    }
+
+    private func cancelScan(expectedID: UUID) {
+        guard activeScanID == expectedID else { return }
         let fallbackResult = scanFallbackResult
         activeScanID = UUID()
         scanTask?.cancel()
@@ -386,6 +412,7 @@ final class AppViewModel {
         scanFallbackResult = nil
         result = fallbackResult
         navigationPath = fallbackResult.map { [$0.root] } ?? []
+        scanCoordinator.finish(.storage, id: expectedID)
     }
 
     func rescan() {
@@ -394,7 +421,9 @@ final class AppViewModel {
     }
 
     func showVolumeOverview(_ volume: VolumeInfo) {
+        cancelAICodingToolsAnalysisPreservingReport()
         cancelScan()
+        selectedSection = .storage
         result = nil
         navigationPath = []
         selectedVolumeOverview = volume
@@ -424,6 +453,15 @@ final class AppViewModel {
         let target = (node.isDirectory || node.isAggregate)
             ? node.url
             : node.url.deletingLastPathComponent()
+        openInTerminal(url: target)
+    }
+
+    func showInFinder(url: URL) {
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    func openInTerminal(url: URL) {
+        let target = url
         let terminalLocations = [
             "/System/Applications/Utilities/Terminal.app",
             "/Applications/Utilities/Terminal.app"
@@ -447,6 +485,54 @@ final class AppViewModel {
                 self?.errorMessage = error.localizedDescription
             }
         }
+    }
+
+    func showAICodingTools() {
+        if isScanning {
+            cancelScan()
+        }
+        selectedSection = .aiCodingTools
+    }
+
+    func analyzeAICodingTools() {
+        selectedSection = .aiCodingTools
+        errorMessage = nil
+        aiCodingTools.analyze()
+    }
+
+    func cancelAICodingToolsAnalysis() {
+        cancelAICodingToolsAnalysisPreservingReport()
+    }
+
+    func chooseAICodingProjectRoot() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose a project root"
+        panel.prompt = "Add Project Root"
+        panel.message = "SpaceLens checks this project for AI tool worktrees. It reads file metadata only."
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        aiCodingTools.addProjectRoot(url)
+    }
+
+    func inspectAICodingNode(_ node: FileNode) {
+        guard node.isDirectory, !node.isAggregate, node.isReadable else { return }
+        addAndScanAICodingDirectory(node.url)
+    }
+
+    private func addAndScanAICodingDirectory(_ url: URL) {
+        let folder = SessionFolder(url: url)
+        if !sessionFolders.contains(folder) {
+            sessionFolders.append(folder)
+        }
+        scan(url)
+    }
+
+    private func cancelAICodingToolsAnalysisPreservingReport() {
+        aiCodingTools.cancelPreservingReport()
     }
 
     func openFullDiskAccessSettings() {

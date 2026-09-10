@@ -26,6 +26,12 @@ struct SpaceLensSelfTests {
         try await cancellationStopsTheScannerWorker()
         try await stalledProviderSubtreeIsSkipped()
         try await scannerReadsSiblingDirectoriesInParallel()
+        try await aiCodingAnalyzerClassifiesBeforeCompaction()
+        try await aiCodingAnalyzerDeduplicatesOverlappingRoots()
+        try await aiCodingAnalyzerRetainsKnownNestedRoot()
+        try aiCodingReportKeepsMeasuredDescendantOfUnavailableRoot()
+        try await aiCodingAnalyzerSkipsLinkedRoots()
+        try scanCoordinatorKeepsReplacementActive()
         try fullDiskAccessIsCheckedOnlyForWholeDiskScans()
         try elapsedTimeFormattingIsReadable()
         try scanScopeStaysInsideTheSelectedVolume()
@@ -37,7 +43,300 @@ struct SpaceLensSelfTests {
         try fileNodeEqualityUsesImmutableArenaIdentity()
         try sessionStoreRetainsAndReplacesVolumeResults()
         try previousScanSummaryIsBoundedAndPersistent()
-        print("SpaceLens self-tests passed (22/22)")
+        print("SpaceLens self-tests passed (28/28)")
+    }
+
+    @MainActor
+    private static func scanCoordinatorKeepsReplacementActive() throws {
+        let coordinator = ScanCoordinator()
+        let storageID = UUID()
+        let analysisID = UUID()
+        var storageWasCancelled = false
+
+        coordinator.begin(.storage, id: storageID) {
+            storageWasCancelled = true
+        }
+        coordinator.begin(.aiCodingTools, id: analysisID) {}
+        try expect(storageWasCancelled, "Scan coordinator did not cancel the previous activity")
+        try expect(
+            coordinator.activeActivity == .aiCodingTools,
+            "Scan coordinator did not retain the replacement activity"
+        )
+
+        coordinator.finish(.storage, id: storageID)
+        try expect(
+            coordinator.activeActivity == .aiCodingTools,
+            "A stale completion cleared the replacement activity"
+        )
+        coordinator.finish(.aiCodingTools, id: analysisID)
+        try expect(coordinator.activeActivity == nil, "Scan coordinator did not finish the active work")
+    }
+
+    private static func aiCodingAnalyzerClassifiesBeforeCompaction() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensAIClassification-\(UUID().uuidString)", isDirectory: true)
+        let sessions = root.appendingPathComponent("sessions", isDirectory: true)
+        let cache = root.appendingPathComponent("cache", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessions, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        for index in 0..<(DiskScanner.retainedChildLimit + 12) {
+            try Data(repeating: UInt8(index % 255), count: 1_024)
+                .write(to: sessions.appendingPathComponent("session-\(index).jsonl"))
+        }
+        try Data(repeating: 0x41, count: 8_192)
+            .write(to: cache.appendingPathComponent("index.bin"))
+
+        let toolID = AICodingToolID(rawValue: "self-test-agent")
+        let descriptor = AICodingRootDescriptor(
+            toolID: toolID,
+            name: "Self-test agent",
+            url: root,
+            explanation: "Self-test fixture",
+            defaultCategory: .other,
+            rules: [
+                .init("sessions", category: .conversations),
+                .init("cache", category: .caches)
+            ]
+        )
+        let request = aiCodingRequest(at: root)
+        let report = try await AICodingToolsAnalyzer(rootDescriptors: [descriptor])
+            .analyze(request: request)
+        let baseline = try await DiskScanner().scan(url: root)
+        guard let tool = report.tools.first(where: { $0.id == toolID }) else {
+            throw SelfTestFailure.failed("AI coding analyzer omitted a catalog-defined tool")
+        }
+
+        try expect(tool.size == baseline.root.size, "AI category bytes did not match scanner bytes")
+        try expect(tool.itemCount == baseline.itemsScanned, "AI category item count lost compacted items")
+        try expect(
+            tool.categories.contains(where: { $0.category == .conversations }),
+            "AI analyzer did not classify conversation storage"
+        )
+        try expect(
+            tool.categories.contains(where: { $0.category == .caches }),
+            "AI analyzer did not classify cache storage"
+        )
+        try expect(
+            baseline.diagnostics.discardedNodes > 0,
+            "AI compaction fixture did not exercise bounded child retention"
+        )
+    }
+
+    private static func aiCodingAnalyzerDeduplicatesOverlappingRoots() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensAIOverlap-\(UUID().uuidString)", isDirectory: true)
+        let nested = root.appendingPathComponent("nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(repeating: 0x41, count: 4_096)
+            .write(to: root.appendingPathComponent("outside.bin"))
+        try Data(repeating: 0x42, count: 8_192)
+            .write(to: nested.appendingPathComponent("inside.bin"))
+
+        let descriptors = [
+            AICodingRootDescriptor(
+                toolID: .cursor,
+                name: "Parent",
+                url: root,
+                explanation: "Self-test parent",
+                defaultCategory: .other,
+                rules: []
+            ),
+            AICodingRootDescriptor(
+                toolID: .cursor,
+                name: "Nested",
+                url: nested,
+                explanation: "Self-test nested root",
+                defaultCategory: .worktrees,
+                rules: []
+            ),
+            AICodingRootDescriptor(
+                toolID: .codex,
+                name: "Same physical root",
+                url: root,
+                explanation: "Self-test exact overlap",
+                defaultCategory: .artifacts,
+                rules: []
+            )
+        ]
+        let report = try await AICodingToolsAnalyzer(rootDescriptors: descriptors)
+            .analyze(request: aiCodingRequest(at: root))
+        let baseline = try await DiskScanner().scan(url: root)
+        guard let tool = report.tools.first(where: { $0.id == .cursor }) else {
+            throw SelfTestFailure.failed("AI overlap report omitted Cursor")
+        }
+
+        try expect(tool.size == baseline.root.size, "Overlapping AI roots double-counted bytes")
+        try expect(tool.itemCount == baseline.itemsScanned, "Overlapping AI roots double-counted items")
+        try expect(tool.locations.count == 1, "Nested AI roots were shown as separate locations")
+        try expect(
+            tool.locations.first?.root?.node(at: nested) != nil,
+            "Nested AI root was not retained inside its parent tree"
+        )
+        try expect(
+            report.tools.first(where: { $0.id == .codex })?.size == baseline.root.size,
+            "Shared physical root was not associated with each matching tool"
+        )
+        try expect(report.totalSize == baseline.root.size, "Cross-tool roots double-counted bytes")
+    }
+
+    private static func aiCodingAnalyzerRetainsKnownNestedRoot() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensAIPriority-\(UUID().uuidString)", isDirectory: true)
+        let nested = root.appendingPathComponent("known-tool-root", isDirectory: true)
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        for index in 0..<(DiskScanner.retainedChildLimit + 8) {
+            try Data(repeating: 0x41, count: 4_096)
+                .write(to: root.appendingPathComponent("large-\(index).bin"))
+        }
+        try Data([0x42]).write(to: nested.appendingPathComponent("small.bin"))
+
+        let descriptors = [
+            AICodingRootDescriptor(
+                toolID: .cursor,
+                name: "Parent",
+                url: root,
+                explanation: "Self-test parent",
+                defaultCategory: .other,
+                rules: []
+            ),
+            AICodingRootDescriptor(
+                toolID: .codex,
+                name: "Known nested root",
+                url: nested,
+                explanation: "Self-test nested root",
+                defaultCategory: .configuration,
+                rules: []
+            )
+        ]
+        let report = try await AICodingToolsAnalyzer(rootDescriptors: descriptors)
+            .analyze(request: aiCodingRequest(at: root))
+        let cursorRoot = report.tools.first(where: { $0.id == .cursor })?.locations.first?.root
+        let codexRoot = report.tools.first(where: { $0.id == .codex })?.locations.first?.root
+
+        try expect(
+            cursorRoot?.node(at: nested) != nil,
+            "Known nested AI root was discarded by compact tree retention"
+        )
+        try expect(
+            codexRoot?.url.standardizedFileURL == nested.standardizedFileURL,
+            "Nested tool did not receive its filesystem subtree"
+        )
+        try expect(
+            cursorRoot?.children.contains(where: { $0.isAggregate }) == true,
+            "Priority-retention fixture did not preserve a smaller-items aggregate"
+        )
+    }
+
+    private static func aiCodingReportKeepsMeasuredDescendantOfUnavailableRoot() throws {
+        let parentURL = URL(fileURLWithPath: "/self-test/unavailable-agent", isDirectory: true)
+        let childURL = parentURL.appendingPathComponent("measured", isDirectory: true)
+        let childRoot = FileNode(
+            url: childURL,
+            name: "measured",
+            size: 42,
+            isDirectory: true,
+            isReadable: true,
+            children: [],
+            itemCount: 1
+        )
+        let parent = AICodingStorageLocation(
+            toolID: .cursor,
+            name: "Unavailable parent",
+            url: parentURL,
+            explanation: "Self-test fixture",
+            status: .unreadable,
+            root: nil,
+            categories: [],
+            defaultCategory: .other,
+            rules: []
+        )
+        let child = AICodingStorageLocation(
+            toolID: .codex,
+            name: "Measured child",
+            url: childURL,
+            explanation: "Self-test fixture",
+            status: .measured,
+            root: childRoot,
+            categories: [],
+            defaultCategory: .other,
+            rules: []
+        )
+        let report = AICodingToolsReport(
+            tools: [
+                AICodingToolReport(
+                    tool: AICodingToolsCatalog.metadata(for: .cursor),
+                    locations: [parent]
+                ),
+                AICodingToolReport(
+                    tool: AICodingToolsCatalog.metadata(for: .codex),
+                    locations: [child]
+                )
+            ],
+            startedAt: Date(),
+            duration: 0
+        )
+
+        try expect(report.totalSize == 42, "Unavailable ancestor hid measured child bytes")
+        try expect(report.itemCount == 1, "Unavailable ancestor hid measured child items")
+        try expect(report.issueCount == 1, "Coverage issue paths were counted incorrectly")
+    }
+
+    private static func aiCodingAnalyzerSkipsLinkedRoots() async throws {
+        let parent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensAILink-\(UUID().uuidString)", isDirectory: true)
+        let target = parent.appendingPathComponent("target", isDirectory: true)
+        let link = parent.appendingPathComponent("tool-data")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: parent) }
+        try Data(repeating: 0x41, count: 4_096)
+            .write(to: target.appendingPathComponent("private.jsonl"))
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+
+        let descriptor = AICodingRootDescriptor(
+            toolID: .claudeCode,
+            name: "Linked data",
+            url: link,
+            explanation: "Self-test linked root",
+            defaultCategory: .conversations,
+            rules: []
+        )
+        let missingDescriptor = AICodingRootDescriptor(
+            toolID: .claudeCode,
+            name: "Missing data",
+            url: parent.appendingPathComponent("missing"),
+            explanation: "Self-test missing root",
+            defaultCategory: .other,
+            rules: []
+        )
+        let report = try await AICodingToolsAnalyzer(
+            rootDescriptors: [descriptor, missingDescriptor]
+        )
+            .analyze(request: aiCodingRequest(at: parent))
+        let locations = report.tools.first(where: { $0.id == .claudeCode })?.locations ?? []
+
+        try expect(
+            locations.contains(where: { $0.status == .linked }),
+            "AI analyzer did not report a linked root"
+        )
+        try expect(
+            locations.contains(where: { $0.status == .missing }),
+            "AI analyzer did not report a missing root"
+        )
+        try expect(report.totalSize == 0, "AI analyzer followed a linked root")
+    }
+
+    private static func aiCodingRequest(at root: URL) -> AICodingToolsRequest {
+        AICodingToolsRequest(
+            homeDirectory: root,
+            applicationSupportDirectory: root,
+            environment: [:],
+            projectRoots: []
+        )
     }
 
     private static func fileNodeEqualityUsesImmutableArenaIdentity() throws {
@@ -262,6 +561,10 @@ struct SpaceLensSelfTests {
         try expect(metadataByName["Folder"]?.kind == .directory, "Bulk reader lost directory metadata")
         try expect(metadataByName["file.bin"]?.kind == .regular, "Bulk reader lost regular-file metadata")
         try expect((metadataByName["file.bin"]?.size ?? 0) > 0, "Bulk reader lost allocated file size")
+        try expect(
+            metadataByName["file.bin"]?.modificationDate != nil,
+            "Bulk reader lost modification time"
+        )
         try expect(metadataByName["folder-link"]?.kind == .symbolicLink, "Bulk reader followed a symbolic link")
         try expect(metadataByName.values.allSatisfy { $0.identity != nil }, "Bulk reader lost device/inode identities")
     }

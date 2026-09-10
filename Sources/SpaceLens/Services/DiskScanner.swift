@@ -46,6 +46,7 @@ struct ScanScope: Sendable {
 
 struct DiskScanner {
     typealias ProgressHandler = @Sendable (ScanProgress) -> Void
+    typealias ItemHandler = @Sendable (ScannedFileItem) -> Void
     typealias SubtreeIsolationPredicate = @Sendable (URL) -> Bool
     typealias DirectoryReader = @Sendable (URL, [URLResourceKey]) throws -> [URL]
     static let retainedChildLimit = 96
@@ -77,6 +78,37 @@ struct DiskScanner {
     func scan(
         url: URL,
         onProgress: @escaping ProgressHandler = { _ in }
+    ) async throws -> ScanResult {
+        try await runScan(url: url, retaining: [], onItem: nil, onProgress: onProgress)
+    }
+
+    func scan(
+        url: URL,
+        onItem: @escaping ItemHandler,
+        onProgress: @escaping ProgressHandler = { _ in }
+    ) async throws -> ScanResult {
+        try await runScan(url: url, retaining: [], onItem: onItem, onProgress: onProgress)
+    }
+
+    func scan(
+        url: URL,
+        retaining retainedURLs: [URL],
+        onItem: @escaping ItemHandler,
+        onProgress: @escaping ProgressHandler = { _ in }
+    ) async throws -> ScanResult {
+        try await runScan(
+            url: url,
+            retaining: retainedURLs,
+            onItem: onItem,
+            onProgress: onProgress
+        )
+    }
+
+    private func runScan(
+        url: URL,
+        retaining retainedURLs: [URL],
+        onItem: ItemHandler?,
+        onProgress: @escaping ProgressHandler
     ) async throws -> ScanResult {
         let configuration = configuration
         let standardizedURL = url.standardizedFileURL
@@ -126,7 +158,9 @@ struct DiskScanner {
                     rootDevice: rootMetadata?.identity?.device,
                     excludedPaths: configuration.excludedPaths
                 ),
-                configuration: configuration
+                configuration: configuration,
+                priorityPaths: Set(retainedURLs.map { $0.standardizedFileURL.path }),
+                itemHandler: onItem
             )
             diagnosticSession = session
 
@@ -219,6 +253,10 @@ struct DiskScanner {
                 activityMonitor: activityMonitor,
                 onProgress: onProgress
             ) else { throw CancellationError() }
+            guard session.recordObservation(
+                ScannedFileItem.unreadable(at: url),
+                activityMonitor: activityMonitor
+            ) else { throw CancellationError() }
             session.recordUnreadable(at: url, unresponsive: false, onProgress: onProgress)
             return FileNodeSnapshot(
                 name: displayName(for: url),
@@ -238,6 +276,10 @@ struct DiskScanner {
                 activityMonitor: activityMonitor,
                 onProgress: onProgress
             ) else { throw CancellationError() }
+            guard session.recordObservation(
+                ScannedFileItem(url: url, metadata: metadata),
+                activityMonitor: activityMonitor
+            ) else { throw CancellationError() }
             if isDirectory {
                 session.diagnostics.recordDirectory()
             }
@@ -256,6 +298,10 @@ struct DiskScanner {
                 at: url,
                 activityMonitor: activityMonitor,
                 onProgress: onProgress
+            ) else { throw CancellationError() }
+            guard session.recordObservation(
+                ScannedFileItem(url: url, metadata: metadata),
+                activityMonitor: activityMonitor
             ) else { throw CancellationError() }
             if activityMonitor == nil {
                 session.mergeMappedBytes(
@@ -297,6 +343,10 @@ struct DiskScanner {
             activityMonitor: activityMonitor,
             onProgress: onProgress
         ) else { throw CancellationError() }
+        guard session.recordObservation(
+            ScannedFileItem(url: url, metadata: metadata),
+            activityMonitor: activityMonitor
+        ) else { throw CancellationError() }
         session.diagnostics.recordDirectory()
 
         var retainedChildren = BoundedNodeAccumulator(capacity: retainedChildLimit)
@@ -327,6 +377,10 @@ struct DiskScanner {
                     guard progressBatch.recordItem(size: 0, path: { entryURL.path }) else {
                         throw CancellationError()
                     }
+                    guard session.recordObservation(
+                        ScannedFileItem.unreadable(at: entryURL),
+                        activityMonitor: activityMonitor
+                    ) else { throw CancellationError() }
                     progressBatch.flush(path: { entryURL.path })
                     session.recordUnreadable(
                         at: entryURL,
@@ -340,7 +394,8 @@ struct DiskScanner {
                             name: entry.name,
                             size: 0,
                             isDirectory: false,
-                            isReadable: false
+                            isReadable: false,
+                            isPriority: session.shouldPrioritize(entryURL)
                         )
                     )
                     return
@@ -356,10 +411,15 @@ struct DiskScanner {
                 size: entryMetadata.isReadable ? entryMetadata.size : 0,
                 path: { entry.url(relativeTo: url).path }
             ) else { throw CancellationError() }
+            let entryURL = entry.url(relativeTo: url)
+            guard session.recordObservation(
+                ScannedFileItem(url: entryURL, metadata: entryMetadata),
+                activityMonitor: activityMonitor
+            ) else { throw CancellationError() }
             if !entryMetadata.isReadable {
-                progressBatch.flush(path: { entry.url(relativeTo: url).path })
+                progressBatch.flush(path: { entryURL.path })
                 session.recordUnreadable(
-                    path: { entry.url(relativeTo: url).path },
+                    path: { entryURL.path },
                     unresponsive: false,
                     onProgress: onProgress
                 )
@@ -373,7 +433,8 @@ struct DiskScanner {
                     name: entryMetadata.name,
                     size: size,
                     isDirectory: entryMetadata.kind == .directory,
-                    isReadable: entryMetadata.isReadable
+                    isReadable: entryMetadata.isReadable,
+                    isPriority: session.shouldPrioritize(entryURL)
                 )
             )
         }
@@ -435,7 +496,13 @@ struct DiskScanner {
                             measuredDirectItems += 1
                             total = addingWithoutOverflow(total, completedChild.size)
                             totalItems = addingWithoutOverflow(totalItems, completedChild.itemCount)
-                            retainedChildren.insert(RetainedNodeCandidate(node: completedChild))
+                            let childURL = url.appendingPathComponent(completedChild.name)
+                            retainedChildren.insert(
+                                RetainedNodeCandidate(
+                                    node: completedChild,
+                                    isPriority: session.shouldPrioritize(childURL)
+                                )
+                            )
                         }
                     }
                     acquiredPermit = session.parallelism.tryAcquire()
@@ -469,7 +536,12 @@ struct DiskScanner {
                     measuredDirectItems += 1
                     total = addingWithoutOverflow(total, child.size)
                     totalItems = addingWithoutOverflow(totalItems, child.itemCount)
-                    retainedChildren.insert(RetainedNodeCandidate(node: child))
+                    retainedChildren.insert(
+                        RetainedNodeCandidate(
+                            node: child,
+                            isPriority: session.shouldPrioritize(entryURL)
+                        )
+                    )
                 }
             }
 
@@ -480,7 +552,13 @@ struct DiskScanner {
                 measuredDirectItems += 1
                 total = addingWithoutOverflow(total, child.size)
                 totalItems = addingWithoutOverflow(totalItems, child.itemCount)
-                retainedChildren.insert(RetainedNodeCandidate(node: child))
+                let childURL = url.appendingPathComponent(child.name)
+                retainedChildren.insert(
+                    RetainedNodeCandidate(
+                        node: child,
+                        isPriority: session.shouldPrioritize(childURL)
+                    )
+                )
             }
         }
 
@@ -596,6 +674,10 @@ struct DiskScanner {
                         activityMonitor: nil,
                         onProgress: onProgress
                     )
+                    _ = session.recordObservation(
+                        ScannedFileItem.unreadable(at: url, kind: .directory),
+                        activityMonitor: nil
+                    )
                     session.diagnostics.recordDirectory()
                 }
                 session.recordUnreadable(
@@ -674,6 +756,49 @@ struct DiskScanner {
     }
 }
 
+struct ScannedFileItem: Sendable {
+    let url: URL
+    let kind: LowLevelFileKind
+    let size: Int64
+    let isReadable: Bool
+    let modificationDate: Date?
+
+    init(url: URL, metadata: LowLevelFileMetadata) {
+        self.url = url.standardizedFileURL
+        kind = metadata.kind
+        size = metadata.isReadable && metadata.kind != .directory ? metadata.size : 0
+        isReadable = metadata.isReadable
+        modificationDate = metadata.modificationDate
+    }
+
+    static func unreadable(
+        at url: URL,
+        kind: LowLevelFileKind = .other
+    ) -> Self {
+        Self(
+            url: url.standardizedFileURL,
+            kind: kind,
+            size: 0,
+            isReadable: false,
+            modificationDate: nil
+        )
+    }
+
+    private init(
+        url: URL,
+        kind: LowLevelFileKind,
+        size: Int64,
+        isReadable: Bool,
+        modificationDate: Date?
+    ) {
+        self.url = url
+        self.kind = kind
+        self.size = size
+        self.isReadable = isReadable
+        self.modificationDate = modificationDate
+    }
+}
+
 private final class ScanSession: @unchecked Sendable {
     private static let completedPreviewChildLimit = 8
     private static let progressEmissionIntervalNanoseconds: UInt64 = 200_000_000
@@ -695,6 +820,8 @@ private final class ScanSession: @unchecked Sendable {
     private let progressLock = NSLock()
     private let rootURL: URL
     private let rootName: String
+    private let priorityPaths: Set<String>
+    private let itemHandler: DiskScanner.ItemHandler?
     private var progress: ScanProgress
     private var lastProgressEmission: UInt64 = 0
     private var previewBranches: [String: PreviewBranch] = [:]
@@ -706,13 +833,17 @@ private final class ScanSession: @unchecked Sendable {
         rootURL: URL,
         rootName: String,
         scope: ScanScope,
-        configuration: ScannerConfiguration
+        configuration: ScannerConfiguration,
+        priorityPaths: Set<String>,
+        itemHandler: DiskScanner.ItemHandler?
     ) {
         self.progress = progress
         self.rootURL = rootURL
         self.rootName = rootName
         self.scope = scope
         self.configuration = configuration
+        self.priorityPaths = priorityPaths
+        self.itemHandler = itemHandler
         parallelism = ScanParallelismLimiter(
             permitCount: configuration.maximumParallelism
         )
@@ -720,6 +851,28 @@ private final class ScanSession: @unchecked Sendable {
             capacity: configuration.maximumParallelism,
             bufferSize: configuration.directoryBufferSize
         )
+    }
+
+    func shouldPrioritize(_ url: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        return priorityPaths.contains { priorityPath in
+            priorityPath == path || priorityPath.hasPrefix(path == "/" ? "/" : path + "/")
+        }
+    }
+
+    @discardableResult
+    func recordObservation(
+        _ item: ScannedFileItem,
+        activityMonitor: ScanActivityMonitor?
+    ) -> Bool {
+        guard let itemHandler else { return activityMonitor?.isActive != false }
+        if let activityMonitor {
+            return activityMonitor.performIfActive {
+                itemHandler(item)
+            }
+        }
+        itemHandler(item)
+        return true
     }
 
     func progressSnapshot(at url: URL) -> ScanProgress {
@@ -1155,6 +1308,14 @@ private final class ScanActivityMonitor: @unchecked Sendable {
         return true
     }
 
+    func performIfActive(_ body: () -> Void) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isAbandoned else { return false }
+        body()
+        return true
+    }
+
     func takePendingItems() -> Int {
         lock.lock()
         defer { lock.unlock() }
@@ -1208,12 +1369,14 @@ private struct RetainedNodeCandidate {
     let itemCount: Int
     let directItemCount: Int
     let isAggregate: Bool
+    let isPriority: Bool
 
     init(
         name: String,
         size: Int64,
         isDirectory: Bool,
-        isReadable: Bool
+        isReadable: Bool,
+        isPriority: Bool = false
     ) {
         self.name = name
         self.size = size
@@ -1223,9 +1386,10 @@ private struct RetainedNodeCandidate {
         itemCount = 1
         directItemCount = 0
         isAggregate = false
+        self.isPriority = isPriority
     }
 
-    init(node: FileNodeSnapshot) {
+    init(node: FileNodeSnapshot, isPriority: Bool = false) {
         name = node.name
         size = node.size
         isDirectory = node.isDirectory
@@ -1234,6 +1398,7 @@ private struct RetainedNodeCandidate {
         itemCount = node.itemCount
         directItemCount = node.directItemCount
         isAggregate = node.isAggregate
+        self.isPriority = isPriority
     }
 
     func makeNode() -> FileNodeSnapshot {
@@ -1250,6 +1415,7 @@ private struct RetainedNodeCandidate {
     }
 
     static func isPreferred(_ left: Self, over right: Self) -> Bool {
+        if left.isPriority != right.isPriority { return left.isPriority }
         if left.size != right.size { return left.size > right.size }
         if left.isDirectory != right.isDirectory { return left.isDirectory }
         return left.name < right.name

@@ -15,6 +15,63 @@ struct VolumeSidebar: View {
             brand(theme: theme)
 
             List {
+                Section {
+                    Button {
+                        model.showAICodingTools()
+                    } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: "wand.and.stars")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(theme.accent)
+                                .frame(width: 22)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("AI Coding Tools")
+                                    .font(.callout.weight(.semibold))
+                                    .foregroundStyle(theme.primaryText)
+                                Text(analysisSubtitle)
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(theme.tertiaryText)
+                                    .lineLimit(1)
+                            }
+
+                            Spacer(minLength: 4)
+
+                            if model.aiCodingTools.isRunning {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else if model.aiCodingTools.state.report != nil {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.callout.weight(.semibold))
+                                    .foregroundStyle(theme.accent)
+                            } else {
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(theme.tertiaryText)
+                            }
+                        }
+                        .padding(11)
+                        .contentShape(Rectangle())
+                        .background {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(model.selectedSection == .aiCodingTools ? theme.selectionSurface : Color.clear)
+                                .overlay {
+                                    if model.selectedSection == .aiCodingTools {
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .stroke(theme.selectionBorder, lineWidth: 1)
+                                    }
+                                }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .accessibilityHint("Shows storage used by supported AI coding tools")
+                } header: {
+                    sectionHeader("Analysis", theme: theme)
+                }
+
                 volumeSection("This Mac", volumes: internalVolumes, theme: theme)
 
                 if !externalVolumes.isEmpty {
@@ -168,9 +225,20 @@ struct VolumeSidebar: View {
     }
 
     private var activeLocationPath: String? {
-        model.scanningURL?.standardizedFileURL.path
+        guard model.selectedSection == .storage else { return nil }
+        return model.scanningURL?.standardizedFileURL.path
             ?? model.result?.root.url.standardizedFileURL.path
             ?? model.selectedVolumeOverview?.url.standardizedFileURL.path
+    }
+
+    private var analysisSubtitle: String {
+        if model.aiCodingTools.isRunning {
+            return StorageFormatters.bytes(model.aiCodingTools.progress.mappedBytes)
+        }
+        if let report = model.aiCodingTools.state.report {
+            return StorageFormatters.bytes(report.totalSize)
+        }
+        return "Cursor, Claude, Codex, Antigravity"
     }
 
     private func removeSelectedFolder() {

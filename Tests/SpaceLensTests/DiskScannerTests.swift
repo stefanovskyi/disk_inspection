@@ -26,6 +26,7 @@ final class DiskScannerTests: XCTestCase {
         XCTAssertEqual(metadataByName["Folder"]?.kind, .directory)
         XCTAssertEqual(metadataByName["file.bin"]?.kind, .regular)
         XCTAssertGreaterThan(metadataByName["file.bin"]?.size ?? 0, 0)
+        XCTAssertNotNil(metadataByName["file.bin"]?.modificationDate)
         XCTAssertEqual(metadataByName["folder-link"]?.kind, .symbolicLink)
         XCTAssertTrue(metadataByName.values.allSatisfy { $0.identity != nil })
     }
@@ -424,6 +425,7 @@ final class DiskScannerTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
 
         let gate = CancellationGate()
+        let itemRecorder = ScannedItemRecorder()
         let scanner = DiskScanner(
             stalledSubtreeTimeout: 0.1,
             shouldIsolateSubtree: { $0.lastPathComponent == "Blocked" },
@@ -441,9 +443,14 @@ final class DiskScannerTests: XCTestCase {
         )
 
         let start = Date()
-        let result = try await scanner.scan(url: root)
+        let result = try await scanner.scan(
+            url: root,
+            onItem: { itemRecorder.record($0) }
+        )
         let duration = Date().timeIntervalSince(start)
+        let observedCountAtTimeout = itemRecorder.items.count
         gate.release()
+        try await Task.sleep(nanoseconds: 50_000_000)
 
         XCTAssertTrue(gate.hasStarted)
         XCTAssertLessThan(duration, 1)
@@ -452,6 +459,7 @@ final class DiskScannerTests: XCTestCase {
         XCTAssertEqual(result.diagnostics.directoryCount, 2)
         XCTAssertEqual(result.diagnostics.providerTimeouts, 1)
         XCTAssertEqual(result.diagnostics.abandonedWorkers, 1)
+        XCTAssertEqual(itemRecorder.items.count, observedCountAtTimeout)
         XCTAssertEqual(
             result.root.children.first(where: { $0.name == "Blocked" })?.isReadable,
             false
@@ -486,6 +494,23 @@ final class DiskScannerTests: XCTestCase {
 
         _ = try await scanner.scan(url: root)
         XCTAssertGreaterThanOrEqual(probe.maximumConcurrentReads, 2)
+    }
+}
+
+private final class ScannedItemRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [ScannedFileItem] = []
+
+    var items: [ScannedFileItem] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
+
+    func record(_ item: ScannedFileItem) {
+        lock.lock()
+        values.append(item)
+        lock.unlock()
     }
 }
 

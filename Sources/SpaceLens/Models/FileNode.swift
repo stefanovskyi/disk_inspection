@@ -152,6 +152,27 @@ struct FileNode: Identifiable, Equatable, Sendable {
         return min(max(Double(size) / Double(total), 0), 1)
     }
 
+    func node(at targetURL: URL) -> FileNode? {
+        let targetPath = targetURL.standardizedFileURL.path
+        let currentPath = url.standardizedFileURL.path
+        guard targetPath == currentPath
+                || targetPath.hasPrefix(currentPath == "/" ? "/" : currentPath + "/") else {
+            return nil
+        }
+        if targetPath == currentPath { return self }
+
+        let targetComponents = targetURL.standardizedFileURL.pathComponents
+        let currentComponents = url.standardizedFileURL.pathComponents
+        var current = self
+        for component in targetComponents.dropFirst(currentComponents.count) {
+            guard let child = current.children.first(where: {
+                !$0.isAggregate && $0.name == component
+            }) else { return nil }
+            current = child
+        }
+        return current
+    }
+
     static func == (lhs: FileNode, rhs: FileNode) -> Bool {
         lhs.storage === rhs.storage && lhs.index == rhs.index
     }

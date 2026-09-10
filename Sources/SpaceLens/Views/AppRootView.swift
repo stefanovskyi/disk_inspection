@@ -29,54 +29,84 @@ struct AppRootView: View {
                         } label: {
                             Label("Back", systemImage: "chevron.left")
                         }
-                        .disabled(!model.canNavigateBack)
+                        .disabled(model.selectedSection != .storage || !model.canNavigateBack)
                         .help("Go back (⌘[)")
                     }
 
                     ToolbarItemGroup(placement: .primaryAction) {
-                        if model.isScanning {
-                            ScanToolbarStatus()
+                        if model.selectedSection == .aiCodingTools {
+                            if model.aiCodingTools.isRunning {
+                                AICodingToolsToolbarStatus(progress: model.aiCodingTools.progress)
+
+                                Button {
+                                    model.cancelAICodingToolsAnalysis()
+                                } label: {
+                                    Label("Cancel Analysis", systemImage: "xmark.circle")
+                                }
+                                .help("Cancel AI coding tool analysis")
+                            } else {
+                                Button {
+                                    model.analyzeAICodingTools()
+                                } label: {
+                                    Label(
+                                        model.aiCodingTools.state.report == nil ? "Analyze" : "Analyze Again",
+                                        systemImage: "arrow.clockwise"
+                                    )
+                                }
+                                .help("Measure AI coding tool storage")
+                            }
 
                             Button {
-                                model.cancelScan()
+                                model.chooseAICodingProjectRoot()
                             } label: {
-                                Label("Cancel Scan", systemImage: "xmark.circle")
+                                Label("Add Project Root", systemImage: "folder.badge.plus")
                             }
-                            .help("Cancel the current scan")
-                        } else if model.result != nil {
-                            Button {
-                                model.rescan()
-                            } label: {
-                                Label("Rescan", systemImage: "arrow.clockwise")
-                            }
-                            .help("Scan this location again (⌘R)")
-                        }
+                            .help("Include AI tool worktrees from a project")
+                        } else {
+                            if model.isScanning {
+                                ScanToolbarStatus()
 
-                        if model.currentNode != nil {
-                            Button {
-                                isInspectorVisible.toggle()
-                            } label: {
-                                Label(
-                                    isInspectorVisible ? "Hide Inspector" : "Show Inspector",
-                                    systemImage: "sidebar.trailing"
-                                )
+                                Button {
+                                    model.cancelScan()
+                                } label: {
+                                    Label("Cancel Scan", systemImage: "xmark.circle")
+                                }
+                                .help("Cancel the current scan")
+                            } else if model.result != nil {
+                                Button {
+                                    model.rescan()
+                                } label: {
+                                    Label("Rescan", systemImage: "arrow.clockwise")
+                                }
+                                .help("Scan this location again (⌘R)")
                             }
-                            .keyboardShortcut("i", modifiers: [.command, .option])
-                            .help(isInspectorVisible ? "Hide inspector" : "Show inspector")
-                        }
 
-                        Button {
-                            model.chooseFolder()
-                        } label: {
-                            Label("Scan Folder", systemImage: "folder.badge.plus")
+                            if model.currentNode != nil {
+                                Button {
+                                    isInspectorVisible.toggle()
+                                } label: {
+                                    Label(
+                                        isInspectorVisible ? "Hide Inspector" : "Show Inspector",
+                                        systemImage: "sidebar.trailing"
+                                    )
+                                }
+                                .keyboardShortcut("i", modifiers: [.command, .option])
+                                .help(isInspectorVisible ? "Hide inspector" : "Show inspector")
+                            }
+
+                            Button {
+                                model.chooseFolder()
+                            } label: {
+                                Label("Scan Folder", systemImage: "folder.badge.plus")
+                            }
+                            .help("Choose a folder to scan (⌘O)")
                         }
-                        .help("Choose a folder to scan (⌘O)")
                     }
                 }
         }
         .navigationSplitViewStyle(.balanced)
         .tint(theme.accent)
-        .frame(minWidth: isInspectorVisible ? 1100 : 760)
+        .frame(minWidth: model.selectedSection == .aiCodingTools || isInspectorVisible ? 1100 : 760)
         .background(theme.background)
         .overlay(alignment: .top) {
             if let message = model.errorMessage {
@@ -172,7 +202,17 @@ struct AppRootView: View {
     @ViewBuilder
     private func mainContent(theme: SpaceTheme) -> some View {
         VStack(spacing: 0) {
-            if let current = model.currentNode {
+            if model.selectedSection == .aiCodingTools {
+                AICodingToolsView(
+                    store: model.aiCodingTools,
+                    actions: AICodingToolsViewActions(
+                        chooseProjectRoot: { model.chooseAICodingProjectRoot() },
+                        showInFinder: { model.showInFinder(url: $0) },
+                        openInTerminal: { model.openInTerminal(url: $0) },
+                        inspect: { model.inspectAICodingNode($0) }
+                    )
+                )
+            } else if let current = model.currentNode {
                 NavigationHeader(node: current)
                 resultContent(current: current)
             } else if let volume = model.selectedVolumeOverview {
@@ -196,6 +236,10 @@ struct AppRootView: View {
                 smallerItemsSelection = nil
                 selectedItem = nil
             }
+        }
+        .onChange(of: model.selectedSection) {
+            smallerItemsSelection = nil
+            selectedItem = nil
         }
     }
 
