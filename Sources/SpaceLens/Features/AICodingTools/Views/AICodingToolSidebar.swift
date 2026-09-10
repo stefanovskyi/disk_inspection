@@ -61,7 +61,16 @@ struct AICodingToolRow: View {
 
     private var toolSubtitle: String {
         if tool.issueCount > 0 { return "\(tool.issueCount) location issues" }
-        if !tool.hasMeasuredStorage { return "Storage not found" }
-        return "\(tool.itemCount.formatted()) items"
+        let installations = tool.installations.count
+        if !tool.hasMeasuredStorage {
+            if installations == 0 { return "Storage and installation not found" }
+            return "\(installations) "
+                + (installations == 1 ? "installation" : "installations")
+                + " · Storage not found"
+        }
+        if installations == 0 { return "\(tool.itemCount.formatted()) items" }
+        return "\(installations) "
+            + (installations == 1 ? "installation" : "installations")
+            + " · \(tool.itemCount.formatted()) items"
     }
 }

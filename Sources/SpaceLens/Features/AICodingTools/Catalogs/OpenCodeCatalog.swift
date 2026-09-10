@@ -286,7 +286,11 @@ enum OpenCodeCatalog {
         let uniqueRoots = roots.filter {
             seenPaths.insert($0.url.standardizedFileURL.path).inserted
         }
-        return AICodingToolDefinition(metadata: metadata, roots: uniqueRoots)
+        return AICodingToolDefinition(
+            metadata: metadata,
+            roots: uniqueRoots,
+            installation: AICodingInstallationCatalogSupport.openCode(for: request)
+        )
     }
 
     private static func appendXDGRoots(

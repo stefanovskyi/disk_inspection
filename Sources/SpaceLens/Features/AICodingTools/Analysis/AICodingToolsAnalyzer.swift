@@ -6,6 +6,24 @@ struct AICodingToolsRequest: Sendable {
     let applicationSupportDirectory: URL
     let environment: [String: String]
     let projectRoots: [URL]
+    let applicationDirectories: [URL]
+    let homebrewPrefixes: [URL]
+
+    init(
+        homeDirectory: URL,
+        applicationSupportDirectory: URL,
+        environment: [String: String],
+        projectRoots: [URL],
+        applicationDirectories: [URL] = [],
+        homebrewPrefixes: [URL] = []
+    ) {
+        self.homeDirectory = homeDirectory.standardizedFileURL
+        self.applicationSupportDirectory = applicationSupportDirectory.standardizedFileURL
+        self.environment = environment
+        self.projectRoots = projectRoots.map(\.standardizedFileURL)
+        self.applicationDirectories = applicationDirectories.map(\.standardizedFileURL)
+        self.homebrewPrefixes = homebrewPrefixes.map(\.standardizedFileURL)
+    }
 
     static func currentUser(projectRoots: [URL] = []) -> Self {
         let fileManager = FileManager.default
@@ -18,7 +36,15 @@ struct AICodingToolsRequest: Sendable {
             homeDirectory: homeDirectory,
             applicationSupportDirectory: applicationSupportDirectory.standardizedFileURL,
             environment: ProcessInfo.processInfo.environment,
-            projectRoots: projectRoots.map(\.standardizedFileURL)
+            projectRoots: projectRoots.map(\.standardizedFileURL),
+            applicationDirectories: [
+                URL(fileURLWithPath: "/Applications", isDirectory: true),
+                homeDirectory.appendingPathComponent("Applications", isDirectory: true)
+            ],
+            homebrewPrefixes: [
+                URL(fileURLWithPath: "/opt/homebrew", isDirectory: true),
+                URL(fileURLWithPath: "/usr/local", isDirectory: true)
+            ]
         )
     }
 }
@@ -34,13 +60,16 @@ struct AICodingToolsAnalyzer: AICodingToolsAnalyzing, @unchecked Sendable {
     typealias ProgressHandler = @Sendable (AICodingToolsProgress) -> Void
 
     private let scanner: DiskScanner
+    private let installationsDetector: any AICodingInstallationsDetecting
     private let fixedRootDescriptors: [AICodingRootDescriptor]?
 
     init(
         scanner: DiskScanner = DiskScanner(),
+        installationsDetector: any AICodingInstallationsDetecting = AICodingInstallationsDetector(),
         rootDescriptors: [AICodingRootDescriptor]? = nil
     ) {
         self.scanner = scanner
+        self.installationsDetector = installationsDetector
         fixedRootDescriptors = rootDescriptors
     }
 
@@ -49,6 +78,7 @@ struct AICodingToolsAnalyzer: AICodingToolsAnalyzing, @unchecked Sendable {
         onProgress: @escaping ProgressHandler = { _ in }
     ) async throws -> AICodingToolsReport {
         let startedAt = Date()
+        async let detectedInstallations = installationsDetector.detect(request: request)
         let catalogDescriptors = Self.normalizedDescriptors(
             fixedRootDescriptors ?? AICodingToolsCatalog.rootDescriptors(for: request)
         )
@@ -150,11 +180,13 @@ struct AICodingToolsAnalyzer: AICodingToolsAnalyzing, @unchecked Sendable {
         }
 
         try Task.checkCancellation()
+        let installationsByTool = try await detectedInstallations
         let tools = Self.reportTools(
             descriptors: descriptors,
             statuses: statuses,
             aggregates: accumulator.locationSnapshots(),
-            scans: scans
+            scans: scans,
+            installationsByTool: installationsByTool
         )
         return AICodingToolsReport(
             tools: tools,
@@ -167,7 +199,8 @@ struct AICodingToolsAnalyzer: AICodingToolsAnalyzing, @unchecked Sendable {
         descriptors: [AICodingRootDescriptor],
         statuses: [String: AICodingLocationStatus],
         aggregates: [String: [AICodingStorageCategory: AICodingMutableMetrics]],
-        scans: [String: AICodingPhysicalScan]
+        scans: [String: AICodingPhysicalScan],
+        installationsByTool: [AICodingToolID: [AICodingToolInstallation]]
     ) -> [AICodingToolReport] {
         var toolOrder = AICodingToolsCatalog.supportedTools.map(\.id)
         for descriptor in descriptors where !toolOrder.contains(descriptor.toolID) {
@@ -215,7 +248,8 @@ struct AICodingToolsAnalyzer: AICodingToolsAnalyzing, @unchecked Sendable {
             }
             return AICodingToolReport(
                 tool: AICodingToolsCatalog.metadata(for: toolID),
-                locations: locations
+                locations: locations,
+                installations: installationsByTool[toolID] ?? []
             )
         }
     }

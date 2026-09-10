@@ -97,6 +97,10 @@ enum CodexCatalog {
             ],
             symlinkBoundaryURL: appSupport
         ))
-        return AICodingToolDefinition(metadata: metadata, roots: roots)
+        return AICodingToolDefinition(
+            metadata: metadata,
+            roots: roots,
+            installation: AICodingInstallationCatalogSupport.codex(for: request)
+        )
     }
 }

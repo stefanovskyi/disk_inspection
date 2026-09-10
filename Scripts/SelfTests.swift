@@ -30,6 +30,7 @@ struct SpaceLensSelfTests {
         try await aiCodingAnalyzerDeduplicatesOverlappingRoots()
         try await aiCodingAnalyzerRetainsKnownNestedRoot()
         try openCodeCatalogResolvesXDGAndCategories()
+        try await aiCodingInstallationsReadStaticMetadata()
         try aiCodingReportKeepsMeasuredDescendantOfUnavailableRoot()
         try await aiCodingAnalyzerSkipsLinkedRoots()
         try scanCoordinatorKeepsReplacementActive()
@@ -44,7 +45,7 @@ struct SpaceLensSelfTests {
         try fileNodeEqualityUsesImmutableArenaIdentity()
         try sessionStoreRetainsAndReplacesVolumeResults()
         try previousScanSummaryIsBoundedAndPersistent()
-        print("SpaceLens self-tests passed (29/29)")
+        print("SpaceLens self-tests passed (30/30)")
     }
 
     @MainActor
@@ -296,6 +297,64 @@ struct SpaceLensSelfTests {
             !roots.contains(where: { $0.url.path.contains("/.claude") }),
             "OpenCode catalog incorrectly claims Claude compatibility data"
         )
+    }
+
+    private static func aiCodingInstallationsReadStaticMetadata() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensInstallations-\(UUID().uuidString)", isDirectory: true)
+        let home = root.appendingPathComponent("home", isDirectory: true)
+        let applications = root.appendingPathComponent("Applications", isDirectory: true)
+        let app = applications.appendingPathComponent("Cursor.app", isDirectory: true)
+        let contents = app.appendingPathComponent("Contents", isDirectory: true)
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let plist = try PropertyListSerialization.data(
+            fromPropertyList: [
+                "CFBundleIdentifier": "com.todesktop.230313mzl4w4u92",
+                "CFBundleShortVersionString": "3.19.19",
+                "CFBundleVersion": "31919"
+            ],
+            format: .xml,
+            options: 0
+        )
+        try plist.write(to: contents.appendingPathComponent("Info.plist"))
+
+        let releases = home.appendingPathComponent(".local/share/claude/versions")
+        let active = releases.appendingPathComponent("2.1.223")
+        let previous = releases.appendingPathComponent("2.1.221")
+        let bin = home.appendingPathComponent(".local/bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: releases, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        try Data([0x01]).write(to: active)
+        try Data([0x01]).write(to: previous)
+        try FileManager.default.createSymbolicLink(
+            at: bin.appendingPathComponent("claude"),
+            withDestinationURL: active
+        )
+
+        let request = AICodingToolsRequest(
+            homeDirectory: home,
+            applicationSupportDirectory: home.appendingPathComponent("Library/Application Support"),
+            environment: ["PATH": bin.path],
+            projectRoots: [],
+            applicationDirectories: [applications]
+        )
+        let installations = try await AICodingInstallationsDetector().detect(request: request)
+        let cursor = installations[.cursor]?.first
+        let claude = installations[.claudeCode]?.first
+
+        try expect(cursor?.version?.value == "3.19.19", "App manifest version was not detected")
+        try expect(
+            cursor?.version?.source.kind == .appManifest,
+            "App version did not retain manifest evidence"
+        )
+        try expect(claude?.version?.value == "2.1.223", "Active native CLI version was not detected")
+        try expect(
+            claude?.retainedReleases.count == 2,
+            "Native CLI releases were counted as separate installations"
+        )
+        try expect(claude?.isOnProcessPath == true, "CLI PATH evidence was not retained")
     }
 
     private static func aiCodingReportKeepsMeasuredDescendantOfUnavailableRoot() throws {

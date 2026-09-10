@@ -3,6 +3,7 @@ import Foundation
 struct AICodingToolDefinition: Equatable, Sendable {
     let metadata: AICodingToolMetadata
     let roots: [AICodingRootDescriptor]
+    let installation: AICodingInstallationDefinition
 }
 
 enum AICodingCatalogSupport {

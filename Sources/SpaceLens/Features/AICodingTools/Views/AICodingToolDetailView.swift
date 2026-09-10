@@ -43,6 +43,11 @@ struct AICodingToolDetail: View {
                 .padding(16)
                 .spacePanel()
 
+                AICodingInstallationsSummary(
+                    installations: tool.installations,
+                    showInFinder: actions.showInFinder
+                )
+
                 if tool.size == 0 {
                     noStorage(theme: theme)
                 }
@@ -77,11 +82,21 @@ struct AICodingToolDetail: View {
     }
 
     private var detailSubtitle: String {
-        if tool.itemCount == 0 { return "No measurable storage in known locations" }
-        if let date = tool.latestModificationDate {
-            return "\(tool.itemCount.formatted()) items · Latest change \(date.formatted(date: .abbreviated, time: .shortened))"
+        let installationText: String
+        if tool.installations.isEmpty {
+            installationText = "No recognized installation"
+        } else {
+            installationText = "\(tool.installations.count) "
+                + (tool.installations.count == 1 ? "installation" : "installations")
         }
-        return "\(tool.itemCount.formatted()) items"
+        if tool.itemCount == 0 {
+            return installationText + " · No measurable storage"
+        }
+        if let date = tool.latestModificationDate {
+            return installationText + " · \(tool.itemCount.formatted()) items · Latest storage change "
+                + date.formatted(date: .abbreviated, time: .shortened)
+        }
+        return installationText + " · \(tool.itemCount.formatted()) items"
     }
 
     private func noStorage(theme: SpaceTheme) -> some View {
@@ -93,7 +108,11 @@ struct AICodingToolDetail: View {
             Text("No storage found")
                 .font(.headline)
                 .foregroundStyle(theme.primaryText)
-            Text("The known locations for this tool are absent or contain no allocated data.")
+            Text(
+                tool.hasRecognizedInstallation
+                    ? "An installation was found, but its known data locations are absent or empty."
+                    : "Known data locations are absent or empty. This does not prove the tool was never installed."
+            )
                 .font(.callout)
                 .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)

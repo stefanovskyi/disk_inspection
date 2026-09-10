@@ -15,15 +15,16 @@ flowchart LR
     Store --> Analyzer[AICodingToolsAnalyzer]
     Analyzer --> Catalogs[Per-tool catalogs]
     Analyzer --> Scanner[DiskScanner]
+    Analyzer --> Installations[AICodingInstallationsDetector]
 ```
 
 ## Ownership
 
 | Area | Owner | Responsibility |
 | --- | --- | --- |
-| Domain | AI Coding Tools | Tool identity and metadata, locations, categories, progress, and reports |
-| Catalogs | AI Coding Tools | One definition file per supported tool, plus shared catalog helpers and registry |
-| Analysis | AI Coding Tools | Root normalization, overlap removal, measurement, classification, and report assembly |
+| Domain | AI Coding Tools | Tool identity, installations and their evidence, storage locations, categories, progress, and reports |
+| Catalogs | AI Coding Tools | One definition file per supported tool, including app IDs, CLI/package layouts, filesystem roots, and shared registry helpers |
+| Analysis | AI Coding Tools | Shallow installation discovery, root normalization, overlap removal, storage measurement, classification, and report assembly |
 | State | `AICodingToolsStore` | Analysis task, cancellation, stale-result protection, progress, selected tool, and project roots |
 | UI | AI Coding Tools views | Filesystem-first result presentation and local interaction state |
 | Navigation and system actions | App shell | Section selection, open panel, Finder, Terminal, and handoff to the general storage map |
@@ -36,6 +37,11 @@ The feature autonomously starts, refreshes, cancels, and replaces its own analys
 The app shell remains responsible for decisions that affect the rest of SpaceLens. It chooses the active navigation section, presents macOS dialogs, performs Finder and Terminal actions, and converts a selected AI directory into a general storage scan. `ScanCoordinator` is the single shared seam between those two lifecycles.
 
 Analysis remains explicitly user initiated. Opening the view does not scan automatically, and the feature does not run periodically or in the background. This keeps disk I/O predictable and preserves the existing privacy model.
+
+Installation discovery runs beside the storage scan and reads only catalogued application manifests,
+package manifests, manager receipts, command links, and shallow release layouts. It is bounded and
+cancellable. It never launches a discovered binary, package manager, login shell, or network request.
+Installation presence and storage presence remain independent in `AICodingToolReport`.
 
 ## Adding another coding tool
 

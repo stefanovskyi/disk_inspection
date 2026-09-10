@@ -13,6 +13,12 @@ enum AICodingToolsCatalog {
         definitions(for: request).flatMap(\.roots)
     }
 
+    static func installationDefinitions(
+        for request: AICodingToolsRequest
+    ) -> [AICodingInstallationDefinition] {
+        definitions(for: request).map(\.installation)
+    }
+
     static var supportedTools: [AICodingToolMetadata] {
         [
             CursorCatalog.metadata,

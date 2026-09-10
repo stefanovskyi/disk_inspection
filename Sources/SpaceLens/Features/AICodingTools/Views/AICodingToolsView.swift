@@ -53,7 +53,7 @@ struct AICodingToolsView: View {
                 Text("AI Coding Tools")
                     .font(.title2.weight(.bold))
                     .foregroundStyle(theme.primaryText)
-                Text("Measure the local storage footprint left by coding agents and editors.")
+                Text("Find installed versions and measure local storage used by coding tools.")
                     .font(.callout)
                     .foregroundStyle(theme.secondaryText)
             }
@@ -66,7 +66,8 @@ struct AICodingToolsView: View {
                         .font(.title3.weight(.semibold).monospacedDigit())
                         .foregroundStyle(theme.primaryText)
                     Text(
-                        "\(report.itemCount.formatted()) items · \(StorageFormatters.duration(report.duration))"
+                        "\(report.installationCount.formatted()) installations · "
+                            + "\(report.itemCount.formatted()) items · \(StorageFormatters.duration(report.duration))"
                             + " · Updated \(report.completedAt.formatted(date: .abbreviated, time: .shortened))"
                     )
                         .font(.caption)
@@ -80,7 +81,8 @@ struct AICodingToolsView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(
                     "Total \(StorageFormatters.bytes(report.totalSize)), "
-                        + "\(report.itemCount) items, analyzed in \(StorageFormatters.duration(report.duration)), "
+                        + "\(report.installationCount) installations, \(report.itemCount) items, "
+                        + "analyzed in \(StorageFormatters.duration(report.duration)), "
                         + "\(report.issueCount) coverage issues"
                 )
             }
@@ -100,13 +102,13 @@ struct AICodingToolsView: View {
                         .foregroundStyle(theme.accent)
                         .accessibilityHidden(true)
 
-                    Text("See what your coding tools store")
+                    Text("See what coding tools are installed and stored")
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(theme.primaryText)
 
                     Text(
-                        "SpaceLens measures known storage locations for Cursor, Claude Code, Codex, "
-                            + "Google Antigravity, and OpenCode, then shows each location as an expandable folder tree."
+                        "SpaceLens identifies conventional app and CLI installations for Cursor, Claude Code, "
+                            + "Codex, Google Antigravity, and OpenCode, then measures their known storage locations."
                     )
                     .font(.body)
                     .foregroundStyle(theme.secondaryText)
@@ -116,7 +118,7 @@ struct AICodingToolsView: View {
                     Button {
                         store.analyze()
                     } label: {
-                        Label("Analyze Tool Storage", systemImage: "play.fill")
+                        Label("Analyze Coding Tools", systemImage: "play.fill")
                             .font(.headline)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
@@ -308,8 +310,8 @@ struct AICodingToolsView: View {
 
     private func metadataNotice(theme: SpaceTheme) -> some View {
         Label(
-            "Metadata only: SpaceLens measures allocated file size and modification dates. "
-                + "It does not open conversations, databases, source files, or credentials.",
+            "SpaceLens reads filesystem metadata plus app and package manifests needed to identify "
+                + "installations and versions. It does not open conversations, project files, databases, or credentials.",
             systemImage: "lock.shield"
         )
         .font(.caption)

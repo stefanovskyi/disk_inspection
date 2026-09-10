@@ -101,6 +101,10 @@ enum ClaudeCodeCatalog {
                 symlinkBoundaryURL: projectRoot
             )
         })
-        return AICodingToolDefinition(metadata: metadata, roots: roots)
+        return AICodingToolDefinition(
+            metadata: metadata,
+            roots: roots,
+            installation: AICodingInstallationCatalogSupport.claudeCode(for: request)
+        )
     }
 }

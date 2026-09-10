@@ -96,6 +96,6 @@ enum AntigravityCatalog {
                 rules: AICodingCatalogSupport.editorApplicationRules,
                 symlinkBoundaryURL: appSupport
             )
-        ])
+        ], installation: AICodingInstallationCatalogSupport.antigravity(for: request))
     }
 }

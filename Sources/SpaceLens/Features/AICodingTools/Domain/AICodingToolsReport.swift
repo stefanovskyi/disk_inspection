@@ -259,12 +259,21 @@ struct AICodingStorageLocation: Identifiable, Equatable, Sendable {
 struct AICodingToolReport: Identifiable, Equatable, Sendable {
     let tool: AICodingToolMetadata
     let locations: [AICodingStorageLocation]
+    let installations: [AICodingToolInstallation]
 
-    init(tool: AICodingToolMetadata, locations: [AICodingStorageLocation]) {
+    init(
+        tool: AICodingToolMetadata,
+        locations: [AICodingStorageLocation],
+        installations: [AICodingToolInstallation] = []
+    ) {
         self.tool = tool
         var seenPaths: Set<String> = []
         self.locations = locations.filter {
             seenPaths.insert($0.url.standardizedFileURL.path).inserted
+        }
+        var seenInstallations: Set<String> = []
+        self.installations = installations.filter {
+            seenInstallations.insert($0.id).inserted
         }
     }
 
@@ -318,6 +327,7 @@ struct AICodingToolReport: Identifiable, Equatable, Sendable {
 
     var issueCount: Int { locations.count { $0.status.isIssue } }
     var hasMeasuredStorage: Bool { size > 0 }
+    var hasRecognizedInstallation: Bool { !installations.isEmpty }
 }
 
 struct AICodingToolsReport: Equatable, Sendable {
@@ -326,6 +336,7 @@ struct AICodingToolsReport: Equatable, Sendable {
     let duration: TimeInterval
 
     var completedAt: Date { startedAt.addingTimeInterval(duration) }
+    var installationCount: Int { tools.reduce(0) { $0 + $1.installations.count } }
 
     var totalSize: Int64 {
         uniquePhysicalLocations.reduce(0) { partial, location in

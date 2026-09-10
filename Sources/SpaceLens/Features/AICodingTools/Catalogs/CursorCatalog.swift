@@ -58,6 +58,6 @@ enum CursorCatalog {
                 rules: AICodingCatalogSupport.editorApplicationRules,
                 symlinkBoundaryURL: appSupport
             )
-        ])
+        ], installation: AICodingInstallationCatalogSupport.cursor(for: request))
     }
 }
