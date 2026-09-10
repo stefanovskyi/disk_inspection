@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct AICodingToolsViewActions {
-    let chooseProjectRoot: () -> Void
     let showInFinder: (URL) -> Void
     let openInTerminal: (URL) -> Void
     let inspect: (FileNode) -> Void
@@ -107,7 +106,7 @@ struct AICodingToolsView: View {
 
                     Text(
                         "SpaceLens measures known storage locations for Cursor, Claude Code, Codex, "
-                            + "and Google Antigravity, then shows each location as an expandable folder tree."
+                            + "Google Antigravity, and OpenCode, then shows each location as an expandable folder tree."
                     )
                     .font(.body)
                     .foregroundStyle(theme.secondaryText)
@@ -283,8 +282,6 @@ struct AICodingToolsView: View {
             }
 
             Spacer(minLength: 8)
-
-            projectRoots(theme: theme)
         }
         .padding(12)
         .frame(maxHeight: .infinity, alignment: .top)
@@ -307,55 +304,6 @@ struct AICodingToolsView: View {
             }
         }
         .accessibilityElement(children: .contain)
-    }
-
-    private func projectRoots(theme: SpaceTheme) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Project roots")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(theme.secondaryText)
-                Spacer()
-                Button {
-                    actions.chooseProjectRoot()
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .buttonStyle(.borderless)
-                .help("Add a project root")
-                .accessibilityLabel("Add project root")
-            }
-
-            if store.projectRoots.isEmpty {
-                Text("Add projects to include Claude Code worktrees stored inside them.")
-                    .font(.caption2)
-                    .foregroundStyle(theme.tertiaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                ForEach(store.projectRoots) { folder in
-                    HStack(spacing: 6) {
-                        Image(systemName: "folder")
-                            .foregroundStyle(theme.accent)
-                        Text(folder.url.lastPathComponent)
-                            .lineLimit(1)
-                            .help(folder.url.path)
-                        Spacer(minLength: 2)
-                        Button {
-                            store.removeProjectRoot(folder)
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                        }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(theme.tertiaryText)
-                        .help("Remove project root")
-                        .accessibilityLabel("Remove \(folder.url.lastPathComponent)")
-                    }
-                    .font(.caption)
-                }
-            }
-        }
-        .padding(10)
-        .background(theme.elevatedSurface.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private func metadataNotice(theme: SpaceTheme) -> some View {

@@ -20,7 +20,10 @@ final class AICodingToolsAnalyzerTests: XCTestCase {
         let definitions = AICodingToolsCatalog.definitions(for: request)
         let roots = AICodingToolsCatalog.rootDescriptors(for: request)
 
-        XCTAssertEqual(definitions.map(\.metadata.id), [.cursor, .claudeCode, .codex, .antigravity])
+        XCTAssertEqual(
+            definitions.map(\.metadata.id),
+            [.cursor, .claudeCode, .codex, .antigravity, .openCode]
+        )
         XCTAssertTrue(definitions.allSatisfy { definition in
             definition.roots.allSatisfy { $0.toolID == definition.metadata.id }
         })
@@ -73,6 +76,146 @@ final class AICodingToolsAnalyzerTests: XCTestCase {
             ),
             .conversations
         )
+    }
+
+    func testOpenCodeCatalogResolvesKnownRootsAndComponentCategories() throws {
+        let home = URL(fileURLWithPath: "/Users/fixture", isDirectory: true)
+        let appSupport = home.appendingPathComponent("Library/Application Support")
+        let project = home.appendingPathComponent("Project", isDirectory: true)
+        let customData = URL(fileURLWithPath: "/Volumes/OpenCodeData", isDirectory: true)
+        let customConfig = URL(fileURLWithPath: "/Volumes/OpenCodeConfig", isDirectory: true)
+        let customCache = URL(fileURLWithPath: "/Volumes/OpenCodeCache", isDirectory: true)
+        let customState = URL(fileURLWithPath: "/Volumes/OpenCodeState", isDirectory: true)
+        let additionalConfig = URL(fileURLWithPath: "/Volumes/OpenCodeAdditional", isDirectory: true)
+        let request = AICodingToolsRequest(
+            homeDirectory: home,
+            applicationSupportDirectory: appSupport,
+            environment: [
+                "XDG_DATA_HOME": customData.path,
+                "XDG_CONFIG_HOME": customConfig.path,
+                "XDG_CACHE_HOME": customCache.path,
+                "XDG_STATE_HOME": customState.path,
+                "OPENCODE_CONFIG_DIR": additionalConfig.path
+            ],
+            projectRoots: [project]
+        )
+        let definition = OpenCodeCatalog.definition(for: request)
+        let roots = definition.roots
+        func containsRoot(_ url: URL) -> Bool {
+            roots.contains {
+                $0.url.standardizedFileURL.path == url.standardizedFileURL.path
+            }
+        }
+
+        XCTAssertEqual(definition.metadata.id, .openCode)
+        XCTAssertEqual(Set(roots.map { $0.url.standardizedFileURL.path }).count, roots.count)
+        XCTAssertTrue(containsRoot(home.appendingPathComponent(".local/share/opencode")))
+        XCTAssertTrue(containsRoot(customData.appendingPathComponent("opencode")))
+        XCTAssertTrue(containsRoot(home.appendingPathComponent(".config/opencode")))
+        XCTAssertTrue(containsRoot(customConfig.appendingPathComponent("opencode")))
+        XCTAssertTrue(containsRoot(home.appendingPathComponent(".cache/opencode")))
+        XCTAssertTrue(containsRoot(customCache.appendingPathComponent("opencode")))
+        XCTAssertTrue(containsRoot(home.appendingPathComponent(".local/state/opencode")))
+        XCTAssertTrue(containsRoot(customState.appendingPathComponent("opencode")))
+        XCTAssertTrue(containsRoot(additionalConfig))
+        XCTAssertTrue(containsRoot(home.appendingPathComponent(".opencode")))
+        XCTAssertTrue(containsRoot(appSupport.appendingPathComponent("ai.opencode.desktop")))
+        XCTAssertTrue(containsRoot(appSupport.appendingPathComponent("ai.opencode.desktop.beta")))
+        XCTAssertTrue(roots.contains {
+            $0.url.path == "/Library/Application Support/opencode"
+        })
+        XCTAssertTrue(containsRoot(project.appendingPathComponent(".opencode")))
+
+        let data = try XCTUnwrap(roots.first {
+            $0.url.standardizedFileURL.path
+                == home.appendingPathComponent(".local/share/opencode").standardizedFileURL.path
+        })
+        XCTAssertEqual(data.category(for: data.url.appendingPathComponent("opencode.db-wal")), .conversations)
+        XCTAssertEqual(
+            data.category(for: data.url.appendingPathComponent("opencode-canary.db-shm")),
+            .conversations
+        )
+        XCTAssertEqual(data.category(for: data.url.appendingPathComponent("project/session")), .conversations)
+        XCTAssertEqual(data.category(for: data.url.appendingPathComponent("storage/session")), .conversations)
+        XCTAssertEqual(data.category(for: data.url.appendingPathComponent("snapshot/repo")), .recovery)
+        XCTAssertEqual(data.category(for: data.url.appendingPathComponent("plans/task.md")), .artifacts)
+        XCTAssertEqual(data.category(for: data.url.appendingPathComponent("worktree/repo")), .worktrees)
+        XCTAssertEqual(data.category(for: data.url.appendingPathComponent("repos/reference")), .worktrees)
+        XCTAssertEqual(data.category(for: data.url.appendingPathComponent("log/latest.log")), .logs)
+        XCTAssertEqual(data.category(for: data.url.appendingPathComponent("auth.json")), .configuration)
+        XCTAssertEqual(data.category(for: data.url.appendingPathComponent("unknown.bin")), .other)
+
+        let config = try XCTUnwrap(roots.first {
+            $0.url.standardizedFileURL.path
+                == home.appendingPathComponent(".config/opencode").standardizedFileURL.path
+        })
+        XCTAssertEqual(config.category(for: config.url.appendingPathComponent("agents/reviewer.md")), .configuration)
+        XCTAssertEqual(config.category(for: config.url.appendingPathComponent("agent/legacy.md")), .configuration)
+        XCTAssertEqual(config.category(for: config.url.appendingPathComponent("plugins/tool.ts")), .extensions)
+        XCTAssertEqual(config.category(for: config.url.appendingPathComponent("node_modules/pkg")), .extensions)
+
+        let cache = try XCTUnwrap(roots.first {
+            $0.url.standardizedFileURL.path
+                == home.appendingPathComponent(".cache/opencode").standardizedFileURL.path
+        })
+        XCTAssertEqual(cache.category(for: cache.url.appendingPathComponent("bin/ripgrep")), .extensions)
+        XCTAssertEqual(cache.category(for: cache.url.appendingPathComponent("models.json")), .caches)
+
+        let state = try XCTUnwrap(roots.first {
+            $0.url.standardizedFileURL.path
+                == home.appendingPathComponent(".local/state/opencode").standardizedFileURL.path
+        })
+        XCTAssertEqual(
+            state.category(for: state.url.appendingPathComponent("prompt-history.jsonl")),
+            .conversations
+        )
+
+        let desktop = try XCTUnwrap(roots.first {
+            $0.url.standardizedFileURL.path
+                == appSupport.appendingPathComponent("ai.opencode.desktop").standardizedFileURL.path
+        })
+        XCTAssertEqual(desktop.category(for: desktop.url.appendingPathComponent("Cache/data")), .caches)
+        XCTAssertEqual(desktop.category(for: desktop.url.appendingPathComponent("logs/main.log")), .logs)
+        XCTAssertEqual(desktop.category(for: desktop.url.appendingPathComponent("cli/opencode")), .extensions)
+        XCTAssertEqual(
+            desktop.category(for: desktop.url.appendingPathComponent("opencode.global.dat")),
+            .configuration
+        )
+
+        let projectData = try XCTUnwrap(roots.first {
+            $0.url.standardizedFileURL.path
+                == project.appendingPathComponent(".opencode").standardizedFileURL.path
+        })
+        XCTAssertEqual(projectData.category(for: projectData.url.appendingPathComponent("plans/task.md")), .artifacts)
+        XCTAssertEqual(projectData.category(for: projectData.url.appendingPathComponent("plugins/tool.ts")), .extensions)
+        XCTAssertFalse(roots.contains { $0.url.path.contains("/.claude") })
+        XCTAssertFalse(roots.contains { $0.url.standardizedFileURL == project.standardizedFileURL })
+    }
+
+    func testOpenCodeCatalogIgnoresRelativeXDGValuesAndDeduplicatesDefaults() {
+        let home = URL(fileURLWithPath: "/Users/fixture", isDirectory: true)
+        let appSupport = home.appendingPathComponent("Library/Application Support")
+        let defaultDataBase = home.appendingPathComponent(".local/share")
+        let defaultStateBase = home.appendingPathComponent(".local/state")
+        let request = AICodingToolsRequest(
+            homeDirectory: home,
+            applicationSupportDirectory: appSupport,
+            environment: [
+                "XDG_DATA_HOME": defaultDataBase.path,
+                "XDG_CONFIG_HOME": "relative-config",
+                "XDG_CACHE_HOME": "",
+                "XDG_STATE_HOME": defaultStateBase.path,
+                "OPENCODE_CONFIG_DIR": "relative-additional-config"
+            ],
+            projectRoots: []
+        )
+        let roots = OpenCodeCatalog.definition(for: request).roots
+        let paths = roots.map { $0.url.standardizedFileURL.path }
+
+        XCTAssertEqual(paths.count { $0 == home.appendingPathComponent(".local/share/opencode").path }, 1)
+        XCTAssertEqual(paths.count { $0 == home.appendingPathComponent(".local/state/opencode").path }, 1)
+        XCTAssertFalse(paths.contains(home.appendingPathComponent("relative-config/opencode").path))
+        XCTAssertFalse(paths.contains(home.appendingPathComponent("relative-additional-config").path))
     }
 
     func testAnalyzerClassifiesEveryObservedItemBeforeTreeCompaction() async throws {

@@ -4,7 +4,8 @@ enum AICodingToolsCatalog {
             CursorCatalog.definition(for: request),
             ClaudeCodeCatalog.definition(for: request),
             CodexCatalog.definition(for: request),
-            AntigravityCatalog.definition(for: request)
+            AntigravityCatalog.definition(for: request),
+            OpenCodeCatalog.definition(for: request)
         ]
     }
 
@@ -17,7 +18,8 @@ enum AICodingToolsCatalog {
             CursorCatalog.metadata,
             ClaudeCodeCatalog.metadata,
             CodexCatalog.metadata,
-            AntigravityCatalog.metadata
+            AntigravityCatalog.metadata,
+            OpenCodeCatalog.metadata
         ]
     }
 

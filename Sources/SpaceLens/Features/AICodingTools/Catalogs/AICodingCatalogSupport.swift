@@ -66,4 +66,39 @@ enum AICodingCatalogSupport {
         if path.hasPrefix("/") { return URL(fileURLWithPath: path, isDirectory: true) }
         return request.homeDirectory.appendingPathComponent(path)
     }
+
+    static func absoluteConfiguredDirectory(
+        environmentKey: String,
+        request: AICodingToolsRequest
+    ) -> URL? {
+        guard let path = request.environment[environmentKey],
+              !path.isEmpty,
+              (path as NSString).isAbsolutePath else { return nil }
+        return URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+    }
+
+    static func xdgApplicationDirectories(
+        environmentKey: String,
+        defaultRelativeBase: String,
+        applicationDirectory: String,
+        request: AICodingToolsRequest
+    ) -> [URL] {
+        let defaultDirectory = request.homeDirectory
+            .appendingPathComponent(defaultRelativeBase, isDirectory: true)
+            .appendingPathComponent(applicationDirectory, isDirectory: true)
+            .standardizedFileURL
+        guard let configuredBase = absoluteConfiguredDirectory(
+            environmentKey: environmentKey,
+            request: request
+        ) else {
+            return [defaultDirectory]
+        }
+        let configuredDirectory = configuredBase
+            .appendingPathComponent(applicationDirectory, isDirectory: true)
+            .standardizedFileURL
+        guard configuredDirectory.path != defaultDirectory.path else {
+            return [defaultDirectory]
+        }
+        return [defaultDirectory, configuredDirectory]
+    }
 }

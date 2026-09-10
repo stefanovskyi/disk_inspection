@@ -238,7 +238,7 @@ struct VolumeSidebar: View {
         if let report = model.aiCodingTools.state.report {
             return StorageFormatters.bytes(report.totalSize)
         }
-        return "Cursor, Claude, Codex, Antigravity"
+        return "Cursor, Claude, Codex, Antigravity, OpenCode"
     }
 
     private func removeSelectedFolder() {

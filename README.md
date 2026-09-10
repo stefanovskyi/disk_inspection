@@ -10,7 +10,7 @@ SpaceLens is a native macOS app that helps you understand what is using your dis
 - Scans internal disks, external disks, and selected folders
 - Visualizes storage with an interactive, drill-down sunburst chart
 - Shows a ranked, accessible list alongside the chart
-- Analyzes local storage used by Cursor, Claude Code, Codex, and Google Antigravity
+- Analyzes local storage used by Cursor, Claude Code, Codex, Google Antigravity, and OpenCode
 - Keeps completed scans available until the app quits
 - Reports protected or unreadable folders without stopping the scan
 - Opens items in Finder or Terminal from the app
@@ -36,11 +36,12 @@ You can also open `Package.swift` in Xcode and run the `SpaceLens` target.
 4. Use the breadcrumbs or Back button to move up the hierarchy.
 
 Choose **AI Coding Tools** in the sidebar to measure known storage locations for Cursor,
-Claude Code, Codex, and Google Antigravity. SpaceLens ranks the tools by allocated size and
-lists each physical storage location once. Expand a location to explore its folders and files by
-allocated size; known components include short descriptions and storage-category labels. You can
-add project roots for worktrees stored inside a repository, then open any retained item in Finder
-or Terminal or inspect a directory with the regular storage map.
+Claude Code, Codex, Google Antigravity, and OpenCode. SpaceLens ranks the tools by allocated size and
+lists each physical storage location once. Click anywhere on a location or folder row to expand
+or collapse its contents. Known components include short descriptions and storage-category labels.
+The ellipsis menu opens retained items in Finder or Terminal or inspects a directory with the
+regular storage map. Use **Add Project Root** in the toolbar to include worktrees stored inside a
+repository; right-click that toolbar button to remove an added root from the analysis.
 
 AI coding tool analysis reads filesystem metadata only. It does not open conversation records,
 databases, source files, or credentials. Results and added project roots last for the current app

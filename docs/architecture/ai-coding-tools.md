@@ -39,6 +39,6 @@ Analysis remains explicitly user initiated. Opening the view does not scan autom
 
 ## Adding another coding tool
 
-Add one catalog file that returns an `AICodingToolDefinition` containing its display metadata and filesystem roots, then register that definition in `AICodingToolsCatalog`. The analyzer, store, and views consume definition records and do not need tool-specific branches.
+Cursor, Claude Code, Codex, Google Antigravity, and OpenCode each have one catalog file that returns an `AICodingToolDefinition` containing display metadata and filesystem roots. Register a new definition in `AICodingToolsCatalog`; the analyzer, store, and views consume definition records and do not need tool-specific branches.
 
 Catalog changes can be developed and tested independently from view changes. Store changes can use an `AICodingToolsAnalyzing` test double, while analyzer tests can provide fixed root descriptors backed by temporary directories.

@@ -1,4 +1,47 @@
 import SwiftUI
+
+private struct AICodingOutlineRow<Content: View, Actions: View>: View {
+    let expansion: Binding<Bool>?
+    let accessibilityLabel: String
+    let padding: EdgeInsets
+    let actionsAlignment: Alignment
+    @ViewBuilder let content: () -> Content
+    @ViewBuilder let actions: () -> Actions
+
+    var body: some View {
+        Group {
+            if let expansion {
+                Button {
+                    expansion.wrappedValue.toggle()
+                } label: {
+                    rowContent
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(accessibilityLabel)
+                .accessibilityValue(expansion.wrappedValue ? "Expanded" : "Collapsed")
+                .accessibilityHint(expansion.wrappedValue ? "Collapse this folder" : "Expand to show folders and files")
+            } else {
+                rowContent
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(accessibilityLabel)
+            }
+        }
+        .overlay(alignment: actionsAlignment) {
+            // Keep the menu separate from the expansion button so opening it never toggles the row.
+            actions()
+                .padding(padding)
+        }
+    }
+
+    private var rowContent: some View {
+        content()
+            .padding(.trailing, 28)
+            .padding(padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+    }
+}
+
 struct AICodingLocationOutline: View {
     @Environment(\.colorScheme) private var colorScheme
     let location: AICodingStorageLocation
@@ -8,49 +51,56 @@ struct AICodingLocationOutline: View {
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
 
-        Group {
-            if let root = location.root,
-               root.isDirectory,
-               !root.children.isEmpty {
-                DisclosureGroup(isExpanded: expansionBinding(for: root.id)) {
-                    VStack(spacing: 0) {
-                        Divider()
-                        ForEach(root.sortedChildren) { child in
-                            AICodingFilesystemNodeRow(
-                                node: child,
-                                location: location,
-                                rootSize: max(location.size, 1),
-                                expandedNodeIDs: $expandedNodeIDs,
-                                actions: actions
-                            )
-                            if child.id != root.sortedChildren.last?.id {
-                                Divider().padding(.leading, 28)
-                            }
-                        }
-                    }
-                    .padding(.leading, 8)
-                }
-                label: {
-                    locationHeader(theme: theme)
-                }
-                .accessibilityLabel(locationAccessibilityLabel)
-                .accessibilityHint("Expand to show the folders and files in this location")
-                .accessibilityAction(named: "Show in Finder") {
-                    actions.showInFinder(location.url)
-                }
-                .accessibilityAction(named: "Open in Terminal") {
-                    actions.openInTerminal(location.url)
-                }
-                .accessibilityAction(named: "Inspect Storage Map") {
+        VStack(spacing: 0) {
+            AICodingOutlineRow(
+                expansion: expandableRoot.map { expansionBinding(for: $0.id) },
+                accessibilityLabel: locationAccessibilityLabel,
+                padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14),
+                actionsAlignment: .topTrailing
+            ) {
+                locationHeader(theme: theme)
+            } actions: {
+                locationMenu
+            }
+            .accessibilityAction(named: "Show in Finder") {
+                if canOpen { actions.showInFinder(location.url) }
+            }
+            .accessibilityAction(named: "Open in Terminal") {
+                if canOpen { actions.openInTerminal(location.url) }
+            }
+            .accessibilityAction(named: "Inspect Storage Map") {
+                if let root = location.root, root.isDirectory, root.isReadable {
                     actions.inspect(root)
                 }
-            } else {
-                locationHeader(theme: theme)
-                    .accessibilityLabel(locationAccessibilityLabel)
+            }
+
+            if let root = expandableRoot, expandedNodeIDs.contains(root.id) {
+                VStack(spacing: 0) {
+                    Divider()
+                    ForEach(root.sortedChildren) { child in
+                        AICodingFilesystemNodeRow(
+                            node: child,
+                            location: location,
+                            rootSize: max(location.size, 1),
+                            expandedNodeIDs: $expandedNodeIDs,
+                            actions: actions
+                        )
+                        if child.id != root.sortedChildren.last?.id {
+                            Divider().padding(.leading, 28)
+                        }
+                    }
+                }
+                .padding(.leading, 22)
+                .padding(.trailing, 14)
+                .padding(.bottom, 14)
             }
         }
-        .padding(14)
         .spacePanel()
+    }
+
+    private var expandableRoot: FileNode? {
+        guard let root = location.root, root.isDirectory, !root.children.isEmpty else { return nil }
+        return root
     }
 
     private func locationHeader(theme: SpaceTheme) -> some View {
@@ -75,7 +125,6 @@ struct AICodingLocationOutline: View {
                     .font(.caption2.monospaced())
                     .foregroundStyle(theme.tertiaryText)
                     .lineLimit(1)
-                    .textSelection(.enabled)
                 Text(location.explanation)
                     .font(.caption)
                     .foregroundStyle(theme.secondaryText)
@@ -97,35 +146,38 @@ struct AICodingLocationOutline: View {
                 }
             }
             .foregroundStyle(theme.primaryText)
-
-            Menu {
-                Button {
-                    actions.showInFinder(location.url)
-                } label: {
-                    Label("Show in Finder", systemImage: "finder")
-                }
-                Button {
-                    actions.openInTerminal(location.url)
-                } label: {
-                    Label("Open in Terminal", systemImage: "terminal")
-                }
-                if let root = location.root, root.isDirectory, root.isReadable {
-                    Button {
-                        actions.inspect(root)
-                    } label: {
-                        Label("Inspect Storage Map", systemImage: "chart.pie")
-                    }
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .buttonStyle(.borderless)
-            .disabled(!canOpen)
-            .help("Location actions")
-            .accessibilityLabel("Actions for \(location.name)")
         }
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .contain)
+    }
+
+    private var locationMenu: some View {
+        Menu {
+            Button {
+                actions.showInFinder(location.url)
+            } label: {
+                Label("Show in Finder", systemImage: "finder")
+            }
+            Button {
+                actions.openInTerminal(location.url)
+            } label: {
+                Label("Open in Terminal", systemImage: "terminal")
+            }
+            if let root = location.root, root.isDirectory, root.isReadable {
+                Button {
+                    actions.inspect(root)
+                } label: {
+                    Label("Inspect Storage Map", systemImage: "chart.pie")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .frame(width: 18, height: 22)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(!canOpen)
+        .help("Location actions")
+        .accessibilityLabel("Actions for \(location.name)")
     }
 
     private var canOpen: Bool {
@@ -165,33 +217,36 @@ struct AICodingFilesystemNodeRow: View {
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
 
-        Group {
-            if node.isDirectory, !node.children.isEmpty, !node.isAggregate {
-                DisclosureGroup(isExpanded: expansionBinding) {
-                    VStack(spacing: 0) {
-                        ForEach(node.sortedChildren) { child in
-                            AICodingFilesystemNodeRow(
-                                node: child,
-                                location: location,
-                                rootSize: rootSize,
-                                expandedNodeIDs: $expandedNodeIDs,
-                                actions: actions
-                            )
-                            if child.id != node.sortedChildren.last?.id {
-                                Divider().padding(.leading, 28)
-                            }
+        VStack(spacing: 0) {
+            AICodingOutlineRow(
+                expansion: canExpand ? expansionBinding : nil,
+                accessibilityLabel: nodeAccessibilityLabel,
+                padding: EdgeInsets(top: 7, leading: 0, bottom: 7, trailing: 0),
+                actionsAlignment: .trailing
+            ) {
+                nodeContent(theme: theme)
+            } actions: {
+                nodeMenu
+            }
+
+            if canExpand, expandedNodeIDs.contains(node.id) {
+                VStack(spacing: 0) {
+                    ForEach(node.sortedChildren) { child in
+                        AICodingFilesystemNodeRow(
+                            node: child,
+                            location: location,
+                            rootSize: rootSize,
+                            expandedNodeIDs: $expandedNodeIDs,
+                            actions: actions
+                        )
+                        if child.id != node.sortedChildren.last?.id {
+                            Divider().padding(.leading, 28)
                         }
                     }
-                    .padding(.leading, 8)
-                } label: {
-                    nodeContent(theme: theme)
                 }
-            } else {
-                nodeContent(theme: theme)
-                    .padding(.leading, 18)
+                .padding(.leading, 28)
             }
         }
-        .padding(.vertical, 7)
         .contextMenu {
             if !node.isAggregate {
                 Button("Show in Finder") { actions.showInFinder(node.url) }
@@ -240,31 +295,38 @@ struct AICodingFilesystemNodeRow: View {
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(theme.tertiaryText)
             }
-
-            if !node.isAggregate {
-                Menu {
-                    Button("Show in Finder") { actions.showInFinder(node.url) }
-                    Button("Open in Terminal") { actions.openInTerminal(terminalURL(for: node)) }
-                    if node.isDirectory, node.isReadable {
-                        Button("Inspect Storage Map") { actions.inspect(node) }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .frame(width: 18)
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .help("Actions for \(node.name)")
-                .accessibilityLabel("Actions for \(node.name)")
-            }
         }
         .help(node.isAggregate ? annotation.explanation : node.url.path)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(node.name), \(node.isDirectory ? "folder" : "file"), "
-                + "\(StorageFormatters.bytes(node.size)), \(annotation.explanation)"
-        )
+    }
+
+    @ViewBuilder
+    private var nodeMenu: some View {
+        if !node.isAggregate {
+            Menu {
+                Button("Show in Finder") { actions.showInFinder(node.url) }
+                Button("Open in Terminal") { actions.openInTerminal(terminalURL(for: node)) }
+                if node.isDirectory, node.isReadable {
+                    Button("Inspect Storage Map") { actions.inspect(node) }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .frame(width: 18)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Actions for \(node.name)")
+            .accessibilityLabel("Actions for \(node.name)")
+        }
+    }
+
+    private var canExpand: Bool {
+        node.isDirectory && !node.children.isEmpty && !node.isAggregate
+    }
+
+    private var nodeAccessibilityLabel: String {
+        "\(node.name), \(node.isDirectory ? "folder" : "file"), "
+            + "\(StorageFormatters.bytes(node.size)), \(location.annotation(for: node).explanation)"
     }
 
     private var nodeMetadata: String {

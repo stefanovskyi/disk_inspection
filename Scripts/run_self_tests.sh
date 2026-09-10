@@ -30,6 +30,7 @@ swiftc \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Catalogs/ClaudeCodeCatalog.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Catalogs/CodexCatalog.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Catalogs/CursorCatalog.swift" \
+    "$project_dir/Sources/SpaceLens/Features/AICodingTools/Catalogs/OpenCodeCatalog.swift" \
     "$project_dir/Sources/SpaceLens/Services/FullDiskAccessChecker.swift" \
     "$project_dir/Sources/SpaceLens/Services/PreviousScanStore.swift" \
     "$project_dir/Sources/SpaceLens/Services/ScanCoordinator.swift" \

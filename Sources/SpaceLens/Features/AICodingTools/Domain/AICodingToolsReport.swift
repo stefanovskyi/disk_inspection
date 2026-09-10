@@ -13,7 +13,7 @@ struct AICodingToolID: Hashable, Identifiable, RawRepresentable, Sendable {
     static let claudeCode = Self(rawValue: "claude-code")
     static let codex = Self(rawValue: "codex")
     static let antigravity = Self(rawValue: "antigravity")
-
+    static let openCode = Self(rawValue: "opencode")
 }
 
 struct AICodingToolMetadata: Identifiable, Equatable, Sendable {

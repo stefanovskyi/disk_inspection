@@ -62,6 +62,14 @@ struct AppRootView: View {
                                 Label("Add Project Root", systemImage: "folder.badge.plus")
                             }
                             .help("Include AI tool worktrees from a project")
+                            .contextMenu {
+                                ForEach(model.aiCodingTools.projectRoots) { root in
+                                    Button("Remove \(root.name)") {
+                                        model.aiCodingTools.removeProjectRoot(root)
+                                    }
+                                    .help(root.url.path)
+                                }
+                            }
                         } else {
                             if model.isScanning {
                                 ScanToolbarStatus()
@@ -206,7 +214,6 @@ struct AppRootView: View {
                 AICodingToolsView(
                     store: model.aiCodingTools,
                     actions: AICodingToolsViewActions(
-                        chooseProjectRoot: { model.chooseAICodingProjectRoot() },
                         showInFinder: { model.showInFinder(url: $0) },
                         openInTerminal: { model.openInTerminal(url: $0) },
                         inspect: { model.inspectAICodingNode($0) }

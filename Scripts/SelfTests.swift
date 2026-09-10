@@ -29,6 +29,7 @@ struct SpaceLensSelfTests {
         try await aiCodingAnalyzerClassifiesBeforeCompaction()
         try await aiCodingAnalyzerDeduplicatesOverlappingRoots()
         try await aiCodingAnalyzerRetainsKnownNestedRoot()
+        try openCodeCatalogResolvesXDGAndCategories()
         try aiCodingReportKeepsMeasuredDescendantOfUnavailableRoot()
         try await aiCodingAnalyzerSkipsLinkedRoots()
         try scanCoordinatorKeepsReplacementActive()
@@ -43,7 +44,7 @@ struct SpaceLensSelfTests {
         try fileNodeEqualityUsesImmutableArenaIdentity()
         try sessionStoreRetainsAndReplacesVolumeResults()
         try previousScanSummaryIsBoundedAndPersistent()
-        print("SpaceLens self-tests passed (28/28)")
+        print("SpaceLens self-tests passed (29/29)")
     }
 
     @MainActor
@@ -229,6 +230,71 @@ struct SpaceLensSelfTests {
         try expect(
             cursorRoot?.children.contains(where: { $0.isAggregate }) == true,
             "Priority-retention fixture did not preserve a smaller-items aggregate"
+        )
+    }
+
+    private static func openCodeCatalogResolvesXDGAndCategories() throws {
+        let home = URL(fileURLWithPath: "/Users/self-test", isDirectory: true)
+        let appSupport = home.appendingPathComponent("Library/Application Support")
+        let customDataBase = URL(fileURLWithPath: "/Volumes/OpenCodeSelfTest", isDirectory: true)
+        let project = home.appendingPathComponent("Project", isDirectory: true)
+        let request = AICodingToolsRequest(
+            homeDirectory: home,
+            applicationSupportDirectory: appSupport,
+            environment: ["XDG_DATA_HOME": customDataBase.path],
+            projectRoots: [project]
+        )
+        let definitions = AICodingToolsCatalog.definitions(for: request)
+        guard let definition = definitions.first(where: { $0.metadata.id == .openCode }) else {
+            throw SelfTestFailure.failed("OpenCode is missing from the AI coding tools catalog")
+        }
+        let roots = definition.roots
+        let defaultDataURL = home.appendingPathComponent(".local/share/opencode")
+        let customDataURL = customDataBase.appendingPathComponent("opencode")
+
+        try expect(
+            definitions.map(\.metadata.id) == [.cursor, .claudeCode, .codex, .antigravity, .openCode],
+            "AI coding tool catalog order does not include OpenCode"
+        )
+        try expect(
+            roots.contains(where: {
+                $0.url.standardizedFileURL.path == defaultDataURL.standardizedFileURL.path
+            }),
+            "OpenCode default data root is missing"
+        )
+        try expect(
+            roots.contains(where: {
+                $0.url.standardizedFileURL.path == customDataURL.standardizedFileURL.path
+            }),
+            "OpenCode XDG data root is missing"
+        )
+        try expect(
+            roots.contains(where: {
+                $0.url.standardizedFileURL.path
+                    == project.appendingPathComponent(".opencode").standardizedFileURL.path
+            }),
+            "OpenCode selected-project root is missing"
+        )
+        guard let data = roots.first(where: {
+            $0.url.standardizedFileURL.path == defaultDataURL.standardizedFileURL.path
+        }) else {
+            throw SelfTestFailure.failed("OpenCode data rules could not be tested")
+        }
+        try expect(
+            data.category(for: data.url.appendingPathComponent("opencode.db-wal")) == .conversations,
+            "OpenCode database sidecar was not classified as session data"
+        )
+        try expect(
+            data.category(for: data.url.appendingPathComponent("snapshot/repo")) == .recovery,
+            "OpenCode snapshots were not classified as recovery data"
+        )
+        try expect(
+            data.category(for: data.url.appendingPathComponent("worktree/repo")) == .worktrees,
+            "OpenCode worktrees were not classified as checkouts"
+        )
+        try expect(
+            !roots.contains(where: { $0.url.path.contains("/.claude") }),
+            "OpenCode catalog incorrectly claims Claude compatibility data"
         )
     }
 
