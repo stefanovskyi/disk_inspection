@@ -495,6 +495,42 @@ final class DiskScannerTests: XCTestCase {
         _ = try await scanner.scan(url: root)
         XCTAssertGreaterThanOrEqual(probe.maximumConcurrentReads, 2)
     }
+
+    func testDirectoryDiscoveryPrunesArtifactsAndReportsBudgetLimits() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensDirectoryDiscovery-\(UUID().uuidString)", isDirectory: true)
+        let modules = root.appendingPathComponent("node_modules", isDirectory: true)
+        let source = root.appendingPathComponent("Sources/Nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: modules, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dependency = modules.appendingPathComponent("dependency.bin")
+        let nestedSource = source.appendingPathComponent("source.swift")
+        try Data(repeating: 0x41, count: 1_024).write(to: dependency)
+        try Data(repeating: 0x42, count: 1_024).write(to: nestedSource)
+
+        let artifactRecorder = ScannedItemRecorder()
+        let artifactResult = try await DiskScanner().scanForDirectories(
+            url: root,
+            pruningDirectoryNames: ["node_modules"],
+            onItem: { artifactRecorder.record($0) }
+        )
+        let artifactPaths = Set(artifactRecorder.items.map { $0.url.path })
+        XCTAssertTrue(artifactPaths.contains(modules.path))
+        XCTAssertFalse(artifactPaths.contains(dependency.path))
+        XCTAssertTrue(artifactPaths.contains(nestedSource.path))
+        XCTAssertFalse(artifactResult.wasTruncated)
+
+        let budgetRecorder = ScannedItemRecorder()
+        let budgetResult = try await DiskScanner().scanForDirectories(
+            url: root,
+            pruningDirectoryNames: [],
+            budget: DirectoryDiscoveryBudget(maximumDepth: 1, maximumDirectories: 100, maximumDuration: 5),
+            onItem: { budgetRecorder.record($0) }
+        )
+        XCTAssertTrue(budgetResult.wasTruncated)
+        XCTAssertFalse(Set(budgetRecorder.items.map { $0.url.path }).contains(nestedSource.path))
+    }
 }
 
 private final class ScannedItemRecorder: @unchecked Sendable {

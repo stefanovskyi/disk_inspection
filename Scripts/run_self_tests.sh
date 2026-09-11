@@ -15,6 +15,7 @@ swiftc \
     "$project_dir/Sources/SpaceLens/Models/FileNode.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Domain/AICodingToolInstallations.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Domain/AICodingToolsReport.swift" \
+    "$project_dir/Sources/SpaceLens/Features/DeveloperStorage/Domain/DeveloperStorageReport.swift" \
     "$project_dir/Sources/SpaceLens/Models/PreviousScanSummary.swift" \
     "$project_dir/Sources/SpaceLens/Models/VolumeInfo.swift" \
     "$project_dir/Sources/SpaceLens/Models/ScanSessionStore.swift" \
@@ -27,6 +28,9 @@ swiftc \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Analysis/AICodingRootDescriptor.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Analysis/AICodingInstallationsDetector.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Analysis/AICodingToolsAnalyzer.swift" \
+    "$project_dir/Sources/SpaceLens/Features/DeveloperStorage/Analysis/DeveloperStorageDescriptor.swift" \
+    "$project_dir/Sources/SpaceLens/Features/DeveloperStorage/Catalogs/DeveloperStorageCatalog.swift" \
+    "$project_dir/Sources/SpaceLens/Features/DeveloperStorage/Analysis/DeveloperStorageAnalyzer.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Catalogs/AICodingCatalogSupport.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Catalogs/AICodingInstallationDefinition.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Catalogs/AICodingToolsCatalog.swift" \

@@ -128,6 +128,60 @@ struct VolumeSidebar: View {
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                     .accessibilityHint("Shows storage used by local AI models and inference runtimes")
+
+                    Button {
+                        model.showDeveloperStorage()
+                    } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: "hammer.fill")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(theme.accent)
+                                .frame(width: 22)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Developer Storage")
+                                    .font(.callout.weight(.semibold))
+                                    .foregroundStyle(theme.primaryText)
+                                if let developerStorageSubtitle {
+                                    Text(developerStorageSubtitle)
+                                        .font(.caption2.weight(.medium))
+                                        .foregroundStyle(theme.tertiaryText)
+                                        .lineLimit(1)
+                                }
+                            }
+
+                            Spacer(minLength: 4)
+
+                            if model.developerStorage.isRunning {
+                                ProgressView().controlSize(.small)
+                            } else if model.developerStorage.state.report != nil {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.callout.weight(.semibold))
+                                    .foregroundStyle(theme.accent)
+                            } else {
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(theme.tertiaryText)
+                            }
+                        }
+                        .padding(11)
+                        .contentShape(Rectangle())
+                        .background {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(model.selectedSection == .developerStorage ? theme.selectionSurface : Color.clear)
+                                .overlay {
+                                    if model.selectedSection == .developerStorage {
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .stroke(theme.selectionBorder, lineWidth: 1)
+                                    }
+                                }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .accessibilityHint("Shows storage used by supported development ecosystems")
                 } header: {
                     sectionHeader("Analysis", theme: theme)
                 }
@@ -150,13 +204,15 @@ struct VolumeSidebar: View {
 
             VStack(spacing: 9) {
                 Button {
-                    if model.selectedSection == .aiModelsAndRuntimes {
+                    if model.selectedSection == .developerStorage {
+                        model.chooseDeveloperProjectsFolder()
+                    } else if model.selectedSection == .aiModelsAndRuntimes {
                         model.chooseAdditionalAIModelRoot()
                     } else {
                         model.chooseFolder()
                     }
                 } label: {
-                    Label("Scan a Folder", systemImage: "folder.badge.plus")
+                    Label(primaryFolderButtonTitle, systemImage: "folder.badge.plus")
                         .font(.callout.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -164,9 +220,7 @@ struct VolumeSidebar: View {
                 .buttonStyle(.borderedProminent)
                 .tint(theme.accent)
                 .help(
-                    model.selectedSection == .aiModelsAndRuntimes
-                        ? "Choose another folder to include in AI model analysis"
-                        : "Choose a folder to inspect"
+                    primaryFolderButtonHelp
                 )
                 .contextMenu {
                     if model.selectedSection == .aiModelsAndRuntimes {
@@ -175,6 +229,13 @@ struct VolumeSidebar: View {
                                 model.aiModelsAndRuntimes.removeRoot(root)
                             }
                             .help(root.url.path)
+                        }
+                    } else if model.selectedSection == .developerStorage {
+                        ForEach(model.developerStorage.projectContainers) { container in
+                            Button("Remove \(container.name)") {
+                                model.developerStorage.removeProjectContainer(container)
+                            }
+                            .help(container.url.path)
                         }
                     }
                 }
@@ -319,6 +380,32 @@ struct VolumeSidebar: View {
             return StorageFormatters.bytes(report.totalSize)
         }
         return nil
+    }
+
+    private var developerStorageSubtitle: String? {
+        if model.developerStorage.isRunning {
+            return StorageFormatters.bytes(model.developerStorage.progress.mappedBytes)
+        }
+        if let report = model.developerStorage.state.report {
+            return StorageFormatters.bytes(report.totalSize)
+        }
+        return nil
+    }
+
+    private var primaryFolderButtonTitle: String {
+        switch model.selectedSection {
+        case .developerStorage: "Add Projects Folder"
+        case .aiModelsAndRuntimes: "Add Model Folder"
+        default: "Scan a Folder"
+        }
+    }
+
+    private var primaryFolderButtonHelp: String {
+        switch model.selectedSection {
+        case .developerStorage: "Choose a project or parent folder to include in developer storage analysis"
+        case .aiModelsAndRuntimes: "Choose another folder to include in AI model analysis"
+        default: "Choose a folder to inspect"
+        }
     }
 
     private func removeSelectedFolder() {

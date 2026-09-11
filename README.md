@@ -12,6 +12,7 @@ SpaceLens is a native macOS app that helps you understand what is using your dis
 - Shows a ranked, accessible list alongside the chart
 - Finds installed app/CLI versions and analyzes local storage for Cursor, Claude Code, Codex, Google Antigravity, and OpenCode
 - Inventories local models and storage used by Ollama, LM Studio, llama.cpp, Hugging Face Hub, and standalone model files
+- Analyzes project artifacts and shared storage for Node.js & Web, Python, and Java & JVM development
 - Keeps completed scans available until the app quits
 - Reports protected or unreadable folders without stopping the scan
 - Opens items in Finder or Terminal from the app
@@ -64,6 +65,20 @@ storage map. SpaceLens remains read-only and does not provide model deletion; sh
 blobs require runtime-aware reference checks that are outside this release. While **AI Models** is
 selected, use the sidebar's **Scan a Folder** button to include another standalone-model search root
 for the current app session.
+
+Choose **Developer Storage** under **Analysis** to measure Node.js and web dependencies and caches,
+Python environments and tool caches, and Java/JVM build outputs, artifact repositories, and JDKs.
+Standard shared locations and project artifacts below the current user's home folder are discovered
+automatically. Use **Add Projects Folder** to include an external disk or another custom location.
+SpaceLens treats `node_modules` as direct evidence of generated project storage; ambiguous names such
+as `env`, `target`, and `build` still require ecosystem-specific marker files. Recognized artifact
+contents are skipped during the discovery pass and measured separately afterward.
+
+Developer Storage reports unique allocated bytes separately from the size referenced by each
+location, which avoids double-counting hard-linked package data. It reads filesystem metadata and a
+small bounded set of marker files only: it does not run package managers, read credential-bearing
+configuration, modify files, or claim that measured storage is safe to delete. Added project folders
+and completed reports remain available for the current app session.
 
 The navigation sidebar uses a fixed width when visible and can be toggled from the toolbar or with
 Control-Command-S. The narrower inspector remains available at every supported window size and can

@@ -35,6 +35,8 @@ struct SpaceLensSelfTests {
         try await aiCodingInstallationsReadStaticMetadata()
         try aiCodingReportKeepsMeasuredDescendantOfUnavailableRoot()
         try await aiCodingAnalyzerSkipsLinkedRoots()
+        try await developerStorageDiscoversSupportedProjectArtifacts()
+        try await developerStorageDeduplicatesHardLinkedFiles()
         try scanCoordinatorKeepsReplacementActive()
         try fullDiskAccessIsCheckedOnlyForWholeDiskScans()
         try elapsedTimeFormattingIsReadable()
@@ -48,7 +50,111 @@ struct SpaceLensSelfTests {
         try fileNodeEqualityUsesImmutableArenaIdentity()
         try sessionStoreRetainsAndReplacesVolumeResults()
         try previousScanSummaryIsBoundedAndPersistent()
-        print("SpaceLens self-tests passed (33/33)")
+        print("SpaceLens self-tests passed (35/35)")
+    }
+
+    private static func developerStorageDiscoversSupportedProjectArtifacts() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensDeveloperStorage-\(UUID().uuidString)", isDirectory: true)
+        let home = root.appendingPathComponent("home", isDirectory: true)
+        let projects = root.appendingPathComponent("projects", isDirectory: true)
+        let project = projects.appendingPathComponent("mixed-project", isDirectory: true)
+        let nodeModules = project.appendingPathComponent("node_modules", isDirectory: true)
+        let environment = project.appendingPathComponent(".venv", isDirectory: true)
+        let mavenTarget = project.appendingPathComponent("target", isDirectory: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: nodeModules, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: environment.appendingPathComponent("bin", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(at: mavenTarget, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try Data("[project]".utf8).write(to: project.appendingPathComponent("pyproject.toml"))
+        try Data("<project/>".utf8).write(to: project.appendingPathComponent("pom.xml"))
+        try Data("home = /usr/bin".utf8).write(to: environment.appendingPathComponent("pyvenv.cfg"))
+        try Data("python".utf8).write(to: environment.appendingPathComponent("bin/python"))
+        try Data(repeating: 0x31, count: 8_192).write(to: nodeModules.appendingPathComponent("package.bin"))
+        try Data(repeating: 0x32, count: 8_192).write(to: environment.appendingPathComponent("runtime.bin"))
+        try Data(repeating: 0x33, count: 8_192).write(to: mavenTarget.appendingPathComponent("classes.jar"))
+        try Data(repeating: 0x34, count: 8_192).write(to: project.appendingPathComponent("source.bin"))
+
+        let request = DeveloperStorageRequest(
+            homeDirectory: home,
+            environment: [:],
+            automaticProjectContainers: [projects],
+            projectContainers: []
+        )
+        let report = try await DeveloperStorageAnalyzer().analyze(request: request)
+
+        try expect(
+            report.ecosystems.first(where: { $0.id == .nodeAndWeb })?.projectSize ?? 0 > 0,
+            "Developer Storage did not automatically recognize node_modules without a manifest"
+        )
+        try expect(
+            report.ecosystems.first(where: { $0.id == .python })?.projectSize ?? 0 > 0,
+            "Developer Storage did not recognize a validated Python environment"
+        )
+        try expect(
+            report.ecosystems.first(where: { $0.id == .javaAndJVM })?.projectSize ?? 0 > 0,
+            "Developer Storage did not recognize a Maven target"
+        )
+        try expect(report.locationCount == 3, "Developer Storage attributed an unrecognized project path")
+
+        let boundedDiscovery = try await DiskScanner().scanForDirectories(
+            url: projects,
+            pruningDirectoryNames: [],
+            budget: DirectoryDiscoveryBudget(
+                maximumDepth: 0,
+                maximumDirectories: 100,
+                maximumDuration: 5
+            ),
+            onItem: { _ in }
+        )
+        try expect(
+            boundedDiscovery.wasTruncated,
+            "Developer Storage discovery did not report a reached depth budget"
+        )
+    }
+
+    private static func developerStorageDeduplicatesHardLinkedFiles() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensDeveloperLinks-\(UUID().uuidString)", isDirectory: true)
+        let shared = root.appendingPathComponent("shared", isDirectory: true)
+        let project = root.appendingPathComponent("project", isDirectory: true)
+        try FileManager.default.createDirectory(at: shared, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let sharedFile = shared.appendingPathComponent("package.bin")
+        let projectFile = project.appendingPathComponent("package.bin")
+        try Data(repeating: 0x41, count: 16_384).write(to: sharedFile)
+        try FileManager.default.linkItem(at: sharedFile, to: projectFile)
+        let descriptors = [
+            DeveloperArtifactDescriptor(
+                ecosystemID: .nodeAndWeb,
+                scope: .shared,
+                kind: .sharedCaches,
+                name: "Shared store",
+                url: shared
+            ),
+            DeveloperArtifactDescriptor(
+                ecosystemID: .nodeAndWeb,
+                scope: .project,
+                kind: .projectDependencies,
+                name: "Project dependencies",
+                url: project,
+                projectURL: project
+            )
+        ]
+        let request = DeveloperStorageRequest(homeDirectory: root, environment: [:], projectContainers: [])
+        let report = try await DeveloperStorageAnalyzer(descriptors: descriptors).analyze(request: request)
+        let ecosystem = report.ecosystems.first { $0.id == .nodeAndWeb }
+
+        try expect(report.referencedSize > report.totalSize, "Hard-linked package bytes were counted twice as unique")
+        try expect(ecosystem?.sharedSize ?? 0 > 0, "Shared package store did not receive primary attribution")
+        try expect(ecosystem?.projectSize == 0, "Project hard link retained duplicate unique bytes")
     }
 
     private static func layoutPolicyUsesFixedCompactColumnWidths() throws {

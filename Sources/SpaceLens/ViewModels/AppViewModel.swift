@@ -22,6 +22,7 @@ final class AppViewModel {
     private(set) var sessionFolders: [SessionFolder] = []
     let aiCodingTools: AICodingToolsStore
     let aiModelsAndRuntimes: AIModelsAndRuntimesStore
+    let developerStorage: DeveloperStorageStore
     var errorMessage: String?
 
     private let scanner = DiskScanner()
@@ -43,6 +44,7 @@ final class AppViewModel {
         self.scanCoordinator = scanCoordinator
         aiCodingTools = AICodingToolsStore(scanCoordinator: scanCoordinator)
         aiModelsAndRuntimes = AIModelsAndRuntimesStore(scanCoordinator: scanCoordinator)
+        developerStorage = DeveloperStorageStore(scanCoordinator: scanCoordinator)
         refreshVolumes()
         observeVolumeChanges()
         observeApplicationActivation()
@@ -430,6 +432,8 @@ final class AppViewModel {
             !aiCodingTools.isRunning
         case .aiModelsAndRuntimes:
             !aiModelsAndRuntimes.isRunning
+        case .developerStorage:
+            !developerStorage.isRunning
         }
     }
 
@@ -441,6 +445,8 @@ final class AppViewModel {
             analyzeAICodingTools()
         case .aiModelsAndRuntimes:
             analyzeAIModelsAndRuntimes()
+        case .developerStorage:
+            analyzeDeveloperStorage()
         }
     }
 
@@ -516,6 +522,7 @@ final class AppViewModel {
             cancelScan()
         }
         aiModelsAndRuntimes.cancelPreservingReport()
+        developerStorage.cancelPreservingReport()
         selectedSection = .aiCodingTools
     }
 
@@ -561,6 +568,7 @@ final class AppViewModel {
             cancelScan()
         }
         aiCodingTools.cancelPreservingReport()
+        developerStorage.cancelPreservingReport()
         selectedSection = .aiModelsAndRuntimes
     }
 
@@ -599,9 +607,50 @@ final class AppViewModel {
         scan(url)
     }
 
+    func showDeveloperStorage() {
+        if isScanning { cancelScan() }
+        aiCodingTools.cancelPreservingReport()
+        aiModelsAndRuntimes.cancelPreservingReport()
+        selectedSection = .developerStorage
+    }
+
+    func analyzeDeveloperStorage() {
+        selectedSection = .developerStorage
+        errorMessage = nil
+        developerStorage.analyze()
+    }
+
+    func cancelDeveloperStorageAnalysis() {
+        developerStorage.cancelPreservingReport()
+    }
+
+    func chooseDeveloperProjectsFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose a projects folder"
+        panel.prompt = "Add Projects Folder"
+        panel.message = "Add an external or custom location beyond SpaceLens’s automatic home-folder discovery. Analysis is read-only."
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        developerStorage.addProjectContainer(url)
+    }
+
+    func inspectDeveloperStorageDirectory(_ url: URL) {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return }
+        let folder = SessionFolder(url: url)
+        if !sessionFolders.contains(folder) { sessionFolders.append(folder) }
+        scan(url)
+    }
+
     private func cancelAnalysesPreservingReports() {
         aiCodingTools.cancelPreservingReport()
         aiModelsAndRuntimes.cancelPreservingReport()
+        developerStorage.cancelPreservingReport()
     }
 
     func openFullDiskAccessSettings() {

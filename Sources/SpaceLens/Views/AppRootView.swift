@@ -105,6 +105,43 @@ struct AppRootView: View {
                         .help("Measure AI model and runtime storage")
                     }
 
+                } else if model.selectedSection == .developerStorage {
+                    if model.developerStorage.isRunning {
+                        DeveloperStorageToolbarStatus(progress: model.developerStorage.progress)
+
+                        Button {
+                            model.cancelDeveloperStorageAnalysis()
+                        } label: {
+                            Label("Cancel Analysis", systemImage: "xmark.circle")
+                        }
+                        .help("Cancel developer storage analysis")
+                    } else {
+                        Button {
+                            model.analyzeDeveloperStorage()
+                        } label: {
+                            Label(
+                                model.developerStorage.state.report == nil ? "Analyze" : "Analyze Again",
+                                systemImage: "arrow.clockwise"
+                            )
+                        }
+                        .help("Measure developer storage")
+                    }
+
+                    Button {
+                        model.chooseDeveloperProjectsFolder()
+                    } label: {
+                        Label("Add Projects Folder", systemImage: "folder.badge.plus")
+                    }
+                    .help("Find generated artifacts below a projects folder")
+                    .contextMenu {
+                        ForEach(model.developerStorage.projectContainers) { container in
+                            Button("Remove \(container.name)") {
+                                model.developerStorage.removeProjectContainer(container)
+                            }
+                            .help(container.url.path)
+                        }
+                    }
+
                 } else {
                     if model.isScanning {
                         ScanToolbarStatus()
@@ -258,6 +295,15 @@ struct AppRootView: View {
                         showInFinder: { model.showInFinder(url: $0) },
                         openInTerminal: { model.openInTerminal(url: $0) },
                         inspectDirectory: { model.inspectAIModelsDirectory($0) }
+                    )
+                )
+            } else if model.selectedSection == .developerStorage {
+                DeveloperStorageView(
+                    store: model.developerStorage,
+                    actions: DeveloperStorageViewActions(
+                        showInFinder: { model.showInFinder(url: $0) },
+                        openInTerminal: { model.openInTerminal(url: $0) },
+                        inspectDirectory: { model.inspectDeveloperStorageDirectory($0) }
                     )
                 )
             } else if let current = model.currentNode {

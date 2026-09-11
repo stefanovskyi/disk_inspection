@@ -44,6 +44,30 @@ struct ScanScope: Sendable {
     }
 }
 
+struct DirectoryDiscoveryBudget: Equatable, Sendable {
+    let maximumDepth: Int
+    let maximumDirectories: Int
+    let maximumDuration: TimeInterval
+
+    init(
+        maximumDepth: Int = 18,
+        maximumDirectories: Int = 100_000,
+        maximumDuration: TimeInterval = 60
+    ) {
+        precondition(maximumDepth >= 0)
+        precondition(maximumDirectories > 0)
+        precondition(maximumDuration > 0)
+        self.maximumDepth = maximumDepth
+        self.maximumDirectories = maximumDirectories
+        self.maximumDuration = maximumDuration
+    }
+}
+
+struct DirectoryDiscoveryScanResult: Sendable {
+    let scan: ScanResult
+    let wasTruncated: Bool
+}
+
 struct DiskScanner {
     typealias ProgressHandler = @Sendable (ScanProgress) -> Void
     typealias ItemHandler = @Sendable (ScannedFileItem) -> Void
@@ -104,9 +128,34 @@ struct DiskScanner {
         )
     }
 
+    /// Traverses a directory with the normal scanner safety guarantees while
+    /// treating matching child directories as opaque discovery candidates.
+    /// The candidate directory itself is emitted through `onItem`, but its
+    /// descendants are not visited.
+    func scanForDirectories(
+        url: URL,
+        pruningDirectoryNames: Set<String>,
+        budget: DirectoryDiscoveryBudget = DirectoryDiscoveryBudget(),
+        onItem: @escaping ItemHandler,
+        onProgress: @escaping ProgressHandler = { _ in }
+    ) async throws -> DirectoryDiscoveryScanResult {
+        let limiter = DirectoryDiscoveryLimiter(rootURL: url, budget: budget)
+        let result = try await runScan(
+            url: url,
+            retaining: [],
+            pruningDirectoryNames: pruningDirectoryNames,
+            discoveryLimiter: limiter,
+            onItem: onItem,
+            onProgress: onProgress
+        )
+        return DirectoryDiscoveryScanResult(scan: result, wasTruncated: limiter.wasTruncated)
+    }
+
     private func runScan(
         url: URL,
         retaining retainedURLs: [URL],
+        pruningDirectoryNames: Set<String> = [],
+        discoveryLimiter: DirectoryDiscoveryLimiter? = nil,
         onItem: ItemHandler?,
         onProgress: @escaping ProgressHandler
     ) async throws -> ScanResult {
@@ -160,6 +209,8 @@ struct DiskScanner {
                 ),
                 configuration: configuration,
                 priorityPaths: Set(retainedURLs.map { $0.standardizedFileURL.path }),
+                pruningDirectoryNames: pruningDirectoryNames,
+                discoveryLimiter: discoveryLimiter,
                 itemHandler: onItem
             )
             diagnosticSession = session
@@ -348,6 +399,16 @@ struct DiskScanner {
             activityMonitor: activityMonitor
         ) else { throw CancellationError() }
         session.diagnostics.recordDirectory()
+
+        if session.shouldPruneDirectory(at: url) {
+            return FileNodeSnapshot(
+                name: name,
+                size: 0,
+                isDirectory: true,
+                isReadable: true,
+                children: []
+            )
+        }
 
         var retainedChildren = BoundedNodeAccumulator(capacity: retainedChildLimit)
         var total: Int64 = 0
@@ -804,6 +865,41 @@ struct ScannedFileItem: Sendable {
     }
 }
 
+private final class DirectoryDiscoveryLimiter: @unchecked Sendable {
+    private let lock = NSLock()
+    private let rootDepth: Int
+    private let budget: DirectoryDiscoveryBudget
+    private let deadline: Date
+    private var observedDirectories = 0
+    private var reachedLimit = false
+
+    init(rootURL: URL, budget: DirectoryDiscoveryBudget) {
+        rootDepth = rootURL.standardizedFileURL.pathComponents.count
+        self.budget = budget
+        deadline = Date().addingTimeInterval(budget.maximumDuration)
+    }
+
+    func shouldPrune(_ url: URL) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        observedDirectories += 1
+        let depth = max(url.standardizedFileURL.pathComponents.count - rootDepth, 0)
+        if depth > budget.maximumDepth
+            || observedDirectories > budget.maximumDirectories
+            || Date() >= deadline {
+            reachedLimit = true
+            return true
+        }
+        return false
+    }
+
+    var wasTruncated: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return reachedLimit
+    }
+}
+
 private final class ScanSession: @unchecked Sendable {
     private static let completedPreviewChildLimit = 8
     private static let progressEmissionIntervalNanoseconds: UInt64 = 200_000_000
@@ -826,6 +922,8 @@ private final class ScanSession: @unchecked Sendable {
     private let rootURL: URL
     private let rootName: String
     private let priorityPaths: Set<String>
+    private let pruningDirectoryNames: Set<String>
+    private let discoveryLimiter: DirectoryDiscoveryLimiter?
     private let itemHandler: DiskScanner.ItemHandler?
     private var progress: ScanProgress
     private var lastProgressEmission: UInt64 = 0
@@ -840,6 +938,8 @@ private final class ScanSession: @unchecked Sendable {
         scope: ScanScope,
         configuration: ScannerConfiguration,
         priorityPaths: Set<String>,
+        pruningDirectoryNames: Set<String>,
+        discoveryLimiter: DirectoryDiscoveryLimiter?,
         itemHandler: DiskScanner.ItemHandler?
     ) {
         self.progress = progress
@@ -848,6 +948,8 @@ private final class ScanSession: @unchecked Sendable {
         self.scope = scope
         self.configuration = configuration
         self.priorityPaths = priorityPaths
+        self.pruningDirectoryNames = pruningDirectoryNames
+        self.discoveryLimiter = discoveryLimiter
         self.itemHandler = itemHandler
         parallelism = ScanParallelismLimiter(
             permitCount: configuration.maximumParallelism
@@ -863,6 +965,12 @@ private final class ScanSession: @unchecked Sendable {
         return priorityPaths.contains { priorityPath in
             priorityPath == path || priorityPath.hasPrefix(path == "/" ? "/" : path + "/")
         }
+    }
+
+    func shouldPruneDirectory(at url: URL) -> Bool {
+        if discoveryLimiter?.shouldPrune(url) == true { return true }
+        return url.standardizedFileURL.path != rootURL.path
+            && pruningDirectoryNames.contains(url.lastPathComponent)
     }
 
     @discardableResult
