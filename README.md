@@ -11,6 +11,7 @@ SpaceLens is a native macOS app that helps you understand what is using your dis
 - Visualizes storage with an interactive, drill-down sunburst chart
 - Shows a ranked, accessible list alongside the chart
 - Finds installed app/CLI versions and analyzes local storage for Cursor, Claude Code, Codex, Google Antigravity, and OpenCode
+- Inventories local models and storage used by Ollama, LM Studio, llama.cpp, Hugging Face Hub, and standalone model files
 - Keeps completed scans available until the app quits
 - Reports protected or unreadable folders without stopping the scan
 - Opens items in Finder or Terminal from the app
@@ -48,6 +49,20 @@ repository; right-click that toolbar button to remove an added root from the ana
 AI coding tool analysis reads filesystem metadata plus app and package manifests needed to identify
 installations and versions. It does not open conversations, project files, databases, or credentials.
 Results and added project roots last for the current app session.
+
+Choose **AI Models** under **Analysis** to inventory Ollama and LM Studio model
+stores, llama.cpp installations, Hugging Face Hub model caches, and validated GGUF or
+SafeTensors files in Downloads, Desktop, or folders you add. The middle column ranks runtimes
+and stores by allocated size. The detail pane shows detected installations, storage composition,
+and individual models; switch **Models / Raw Folders** to inspect the underlying locations.
+
+Model analysis reads filesystem metadata, Ollama manifests, small configuration files, and bounded
+GGUF or SafeTensors headers. It does not launch a runtime or load model weights. Model actions can
+reveal files in Finder, open their folder in Terminal, or hand a folder to the regular SpaceLens
+storage map. SpaceLens remains read-only and does not provide model deletion; shared content-addressed
+blobs require runtime-aware reference checks that are outside this release. While **AI Models** is
+selected, use the sidebar's **Scan a Folder** button to include another standalone-model search root
+for the current app session.
 
 The sidebar and inspector can be shown or hidden from the toolbar. SpaceLens remembers their visibility and resized widths between launches. Press Option-Command-I to toggle the inspector.
 

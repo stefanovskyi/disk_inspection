@@ -16,9 +16,11 @@ struct SpaceLensApp: App {
             CommandGroup(after: .newItem) {
                 Button("Scan Folder…") { model.chooseFolder() }
                     .keyboardShortcut("o", modifiers: [.command])
-                Button("Rescan") { model.rescan() }
+                Button(model.selectedSection == .storage ? "Rescan" : "Analyze Again") {
+                    model.refreshCurrentSection()
+                }
                     .keyboardShortcut("r", modifiers: [.command])
-                    .disabled(model.result == nil || model.isScanning)
+                    .disabled(!model.canRefreshCurrentSection)
             }
 
             CommandMenu("Navigate") {

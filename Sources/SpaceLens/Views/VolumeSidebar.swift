@@ -68,6 +68,63 @@ struct VolumeSidebar: View {
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                     .accessibilityHint("Shows storage used by supported AI coding tools")
+
+                    Button {
+                        model.showAIModelsAndRuntimes()
+                    } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: "cpu")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(theme.accent)
+                                .frame(width: 22)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("AI Models")
+                                    .font(.callout.weight(.semibold))
+                                    .foregroundStyle(theme.primaryText)
+                                Text(aiModelsAnalysisSubtitle)
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(theme.tertiaryText)
+                                    .lineLimit(1)
+                            }
+
+                            Spacer(minLength: 4)
+
+                            if model.aiModelsAndRuntimes.isRunning {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else if model.aiModelsAndRuntimes.state.report != nil {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.callout.weight(.semibold))
+                                    .foregroundStyle(theme.accent)
+                            } else {
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(theme.tertiaryText)
+                            }
+                        }
+                        .padding(11)
+                        .contentShape(Rectangle())
+                        .background {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(
+                                    model.selectedSection == .aiModelsAndRuntimes
+                                        ? theme.selectionSurface
+                                        : Color.clear
+                                )
+                                .overlay {
+                                    if model.selectedSection == .aiModelsAndRuntimes {
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .stroke(theme.selectionBorder, lineWidth: 1)
+                                    }
+                                }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .accessibilityHint("Shows storage used by local AI models and inference runtimes")
                 } header: {
                     sectionHeader("Analysis", theme: theme)
                 }
@@ -90,7 +147,11 @@ struct VolumeSidebar: View {
 
             VStack(spacing: 9) {
                 Button {
-                    model.chooseFolder()
+                    if model.selectedSection == .aiModelsAndRuntimes {
+                        model.chooseAdditionalAIModelRoot()
+                    } else {
+                        model.chooseFolder()
+                    }
                 } label: {
                     Label("Scan a Folder", systemImage: "folder.badge.plus")
                         .font(.callout.weight(.semibold))
@@ -99,6 +160,21 @@ struct VolumeSidebar: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(theme.accent)
+                .help(
+                    model.selectedSection == .aiModelsAndRuntimes
+                        ? "Choose another folder to include in AI model analysis"
+                        : "Choose a folder to inspect"
+                )
+                .contextMenu {
+                    if model.selectedSection == .aiModelsAndRuntimes {
+                        ForEach(model.aiModelsAndRuntimes.additionalRoots) { root in
+                            Button("Remove \(root.name)") {
+                                model.aiModelsAndRuntimes.removeRoot(root)
+                            }
+                            .help(root.url.path)
+                        }
+                    }
+                }
 
                 Button {
                     model.refreshVolumes()
@@ -239,6 +315,16 @@ struct VolumeSidebar: View {
             return StorageFormatters.bytes(report.totalSize)
         }
         return "Cursor, Claude, Codex, Antigravity, OpenCode"
+    }
+
+    private var aiModelsAnalysisSubtitle: String {
+        if model.aiModelsAndRuntimes.isRunning {
+            return StorageFormatters.bytes(model.aiModelsAndRuntimes.progress.mappedBytes)
+        }
+        if let report = model.aiModelsAndRuntimes.state.report {
+            return "\(report.modelCount.formatted()) models · \(StorageFormatters.bytes(report.totalSize))"
+        }
+        return "Ollama, LM Studio, Hugging Face, GGUF"
     }
 
     private func removeSelectedFolder() {

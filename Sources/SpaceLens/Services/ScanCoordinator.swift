@@ -5,6 +5,7 @@ final class ScanCoordinator {
     enum Activity: Equatable, Sendable {
         case storage
         case aiCodingTools
+        case aiModelsAndRuntimes
     }
 
     private struct Registration {

@@ -70,6 +70,28 @@ struct AppRootView: View {
                                     .help(root.url.path)
                                 }
                             }
+                        } else if model.selectedSection == .aiModelsAndRuntimes {
+                            if model.aiModelsAndRuntimes.isRunning {
+                                AIModelsToolbarStatus(progress: model.aiModelsAndRuntimes.progress)
+
+                                Button {
+                                    model.cancelAIModelsAndRuntimesAnalysis()
+                                } label: {
+                                    Label("Cancel Analysis", systemImage: "xmark.circle")
+                                }
+                                .help("Cancel AI model and runtime analysis")
+                            } else {
+                                Button {
+                                    model.analyzeAIModelsAndRuntimes()
+                                } label: {
+                                    Label(
+                                        model.aiModelsAndRuntimes.state.report == nil ? "Analyze" : "Analyze Again",
+                                        systemImage: "arrow.clockwise"
+                                    )
+                                }
+                                .help("Measure AI model and runtime storage")
+                            }
+
                         } else {
                             if model.isScanning {
                                 ScanToolbarStatus()
@@ -114,7 +136,9 @@ struct AppRootView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .tint(theme.accent)
-        .frame(minWidth: model.selectedSection == .aiCodingTools || isInspectorVisible ? 1100 : 760)
+        .frame(
+            minWidth: model.selectedSection != .storage || isInspectorVisible ? 1100 : 760
+        )
         .background(theme.background)
         .overlay(alignment: .top) {
             if let message = model.errorMessage {
@@ -217,6 +241,15 @@ struct AppRootView: View {
                         showInFinder: { model.showInFinder(url: $0) },
                         openInTerminal: { model.openInTerminal(url: $0) },
                         inspect: { model.inspectAICodingNode($0) }
+                    )
+                )
+            } else if model.selectedSection == .aiModelsAndRuntimes {
+                AIModelsAndRuntimesView(
+                    store: model.aiModelsAndRuntimes,
+                    actions: AIModelsViewActions(
+                        showInFinder: { model.showInFinder(url: $0) },
+                        openInTerminal: { model.openInTerminal(url: $0) },
+                        inspectDirectory: { model.inspectAIModelsDirectory($0) }
                     )
                 )
             } else if let current = model.currentNode {

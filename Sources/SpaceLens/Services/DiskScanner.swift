@@ -760,6 +760,7 @@ struct ScannedFileItem: Sendable {
     let url: URL
     let kind: LowLevelFileKind
     let size: Int64
+    let identity: FileIdentity?
     let isReadable: Bool
     let modificationDate: Date?
 
@@ -767,6 +768,7 @@ struct ScannedFileItem: Sendable {
         self.url = url.standardizedFileURL
         kind = metadata.kind
         size = metadata.isReadable && metadata.kind != .directory ? metadata.size : 0
+        identity = metadata.identity
         isReadable = metadata.isReadable
         modificationDate = metadata.modificationDate
     }
@@ -779,6 +781,7 @@ struct ScannedFileItem: Sendable {
             url: url.standardizedFileURL,
             kind: kind,
             size: 0,
+            identity: nil,
             isReadable: false,
             modificationDate: nil
         )
@@ -788,12 +791,14 @@ struct ScannedFileItem: Sendable {
         url: URL,
         kind: LowLevelFileKind,
         size: Int64,
+        identity: FileIdentity?,
         isReadable: Bool,
         modificationDate: Date?
     ) {
         self.url = url
         self.kind = kind
         self.size = size
+        self.identity = identity
         self.isReadable = isReadable
         self.modificationDate = modificationDate
     }

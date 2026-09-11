@@ -21,6 +21,7 @@ final class AppViewModel {
     private(set) var pendingRescanVolume: VolumeInfo?
     private(set) var sessionFolders: [SessionFolder] = []
     let aiCodingTools: AICodingToolsStore
+    let aiModelsAndRuntimes: AIModelsAndRuntimesStore
     var errorMessage: String?
 
     private let scanner = DiskScanner()
@@ -41,6 +42,7 @@ final class AppViewModel {
         let scanCoordinator = ScanCoordinator()
         self.scanCoordinator = scanCoordinator
         aiCodingTools = AICodingToolsStore(scanCoordinator: scanCoordinator)
+        aiModelsAndRuntimes = AIModelsAndRuntimesStore(scanCoordinator: scanCoordinator)
         refreshVolumes()
         observeVolumeChanges()
         observeApplicationActivation()
@@ -166,7 +168,7 @@ final class AppViewModel {
             return
         }
 
-        cancelAICodingToolsAnalysisPreservingReport()
+        cancelAnalysesPreservingReports()
         cancelScan()
         selectedSection = .storage
         result = cachedResult
@@ -186,7 +188,7 @@ final class AppViewModel {
             return false
         }
 
-        cancelAICodingToolsAnalysisPreservingReport()
+        cancelAnalysesPreservingReports()
         cancelScan()
         selectedSection = .storage
         let previousResult = summary.makeResult(at: volume.url)
@@ -230,7 +232,7 @@ final class AppViewModel {
     }
 
     func showDiskList() {
-        cancelAICodingToolsAnalysisPreservingReport()
+        cancelAnalysesPreservingReports()
         cancelScan()
         selectedSection = .storage
         pendingFullDiskScanURL = nil
@@ -269,7 +271,7 @@ final class AppViewModel {
     }
 
     func scan(_ url: URL) {
-        cancelAICodingToolsAnalysisPreservingReport()
+        cancelAnalysesPreservingReports()
         selectedSection = .storage
         if let volume = volumes.first(where: {
             $0.url.standardizedFileURL.path == url.standardizedFileURL.path
@@ -420,8 +422,30 @@ final class AppViewModel {
         scan(rootURL)
     }
 
+    var canRefreshCurrentSection: Bool {
+        switch selectedSection {
+        case .storage:
+            result != nil && !isScanning
+        case .aiCodingTools:
+            !aiCodingTools.isRunning
+        case .aiModelsAndRuntimes:
+            !aiModelsAndRuntimes.isRunning
+        }
+    }
+
+    func refreshCurrentSection() {
+        switch selectedSection {
+        case .storage:
+            rescan()
+        case .aiCodingTools:
+            analyzeAICodingTools()
+        case .aiModelsAndRuntimes:
+            analyzeAIModelsAndRuntimes()
+        }
+    }
+
     func showVolumeOverview(_ volume: VolumeInfo) {
-        cancelAICodingToolsAnalysisPreservingReport()
+        cancelAnalysesPreservingReports()
         cancelScan()
         selectedSection = .storage
         result = nil
@@ -491,6 +515,7 @@ final class AppViewModel {
         if isScanning {
             cancelScan()
         }
+        aiModelsAndRuntimes.cancelPreservingReport()
         selectedSection = .aiCodingTools
     }
 
@@ -501,7 +526,7 @@ final class AppViewModel {
     }
 
     func cancelAICodingToolsAnalysis() {
-        cancelAICodingToolsAnalysisPreservingReport()
+        aiCodingTools.cancelPreservingReport()
     }
 
     func chooseAICodingProjectRoot() {
@@ -531,8 +556,52 @@ final class AppViewModel {
         scan(url)
     }
 
-    private func cancelAICodingToolsAnalysisPreservingReport() {
+    func showAIModelsAndRuntimes() {
+        if isScanning {
+            cancelScan()
+        }
         aiCodingTools.cancelPreservingReport()
+        selectedSection = .aiModelsAndRuntimes
+    }
+
+    func analyzeAIModelsAndRuntimes() {
+        selectedSection = .aiModelsAndRuntimes
+        errorMessage = nil
+        aiModelsAndRuntimes.analyze()
+    }
+
+    func cancelAIModelsAndRuntimesAnalysis() {
+        aiModelsAndRuntimes.cancelPreservingReport()
+    }
+
+    func chooseAdditionalAIModelRoot() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose a folder containing local AI models"
+        panel.prompt = "Add Model Folder"
+        panel.message = "SpaceLens looks for GGUF and SafeTensors model data. Analysis is read-only."
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        aiModelsAndRuntimes.addRoot(url)
+    }
+
+    func inspectAIModelsDirectory(_ url: URL) {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return }
+        let folder = SessionFolder(url: url)
+        if !sessionFolders.contains(folder) {
+            sessionFolders.append(folder)
+        }
+        scan(url)
+    }
+
+    private func cancelAnalysesPreservingReports() {
+        aiCodingTools.cancelPreservingReport()
+        aiModelsAndRuntimes.cancelPreservingReport()
     }
 
     func openFullDiskAccessSettings() {
