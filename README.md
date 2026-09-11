@@ -47,8 +47,9 @@ regular storage map. Use **Add Project Root** in the toolbar to include worktree
 repository; right-click that toolbar button to remove an added root from the analysis.
 
 AI coding tool analysis reads filesystem metadata plus app and package manifests needed to identify
-installations and versions. It does not open conversations, project files, databases, or credentials.
-Results and added project roots last for the current app session.
+installations and versions. For Claude Code, it reads only the project-path keys in `~/.claude.json`
+to give encoded storage folders readable names. It does not open conversations, project files,
+databases, or credentials. Results and added project roots last for the current app session.
 
 Choose **AI Models** under **Analysis** to inventory Ollama and LM Studio model
 stores, llama.cpp installations, Hugging Face Hub model caches, and validated GGUF or
@@ -64,7 +65,10 @@ blobs require runtime-aware reference checks that are outside this release. Whil
 selected, use the sidebar's **Scan a Folder** button to include another standalone-model search root
 for the current app session.
 
-The sidebar and inspector can be shown or hidden from the toolbar. SpaceLens remembers their visibility and resized widths between launches. Press Option-Command-I to toggle the inspector.
+The navigation sidebar uses a fixed width when visible and can be toggled from the toolbar or with
+Control-Command-S. The narrower inspector remains available at every supported window size and can
+be resized or toggled with Option-Command-I. SpaceLens remembers panel visibility and inspector width
+between launches.
 
 For very large folders, less significant entries are combined under **Smaller items**. Their size and item totals remain accurate.
 

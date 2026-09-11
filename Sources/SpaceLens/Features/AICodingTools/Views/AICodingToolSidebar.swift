@@ -10,26 +10,27 @@ struct AICodingToolRow: View {
         let fraction = totalSize > 0 ? Double(tool.size) / Double(totalSize) : 0
 
         VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 9) {
+            HStack(spacing: 7) {
                 Image(systemName: tool.systemImage)
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(theme.accent)
-                    .frame(width: 24)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(tool.displayName)
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(theme.primaryText)
-                        .lineLimit(1)
-                    Text(toolSubtitle)
-                        .font(.caption2)
-                        .foregroundStyle(theme.tertiaryText)
-                        .lineLimit(1)
-                }
+                    .frame(width: 22)
+                Text(tool.displayName)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(theme.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.9)
                 Spacer(minLength: 4)
                 Text(StorageFormatters.bytes(tool.size))
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(theme.primaryText)
             }
+
+            Text(toolSubtitle)
+                .font(.caption2)
+                .foregroundStyle(theme.tertiaryText)
+                .lineLimit(1)
+                .padding(.leading, 29)
 
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {

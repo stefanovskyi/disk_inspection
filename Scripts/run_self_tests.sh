@@ -19,6 +19,7 @@ swiftc \
     "$project_dir/Sources/SpaceLens/Models/VolumeInfo.swift" \
     "$project_dir/Sources/SpaceLens/Models/ScanSessionStore.swift" \
     "$project_dir/Sources/SpaceLens/Models/SunburstLayout.swift" \
+    "$project_dir/Sources/SpaceLens/Support/AppLayoutMetrics.swift" \
     "$project_dir/Sources/SpaceLens/Support/Formatters.swift" \
     "$project_dir/Sources/SpaceLens/Support/PerformanceSignposts.swift" \
     "$project_dir/Sources/SpaceLens/Services/BulkDirectoryReader.swift" \
@@ -30,6 +31,7 @@ swiftc \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Catalogs/AICodingInstallationDefinition.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Catalogs/AICodingToolsCatalog.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Catalogs/AntigravityCatalog.swift" \
+    "$project_dir/Sources/SpaceLens/Features/AICodingTools/Catalogs/ClaudeProjectDisplayNames.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Catalogs/ClaudeCodeCatalog.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Catalogs/CodexCatalog.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Catalogs/CursorCatalog.swift" \

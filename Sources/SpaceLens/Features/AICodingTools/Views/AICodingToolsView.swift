@@ -237,7 +237,7 @@ struct AICodingToolsView: View {
 
             HStack(spacing: 12) {
                 toolRanking(report: report, theme: theme)
-                    .frame(width: 300)
+                    .frame(width: AppLayoutMetrics.toolsColumnWidth)
 
                 Divider()
 
@@ -311,7 +311,8 @@ struct AICodingToolsView: View {
     private func metadataNotice(theme: SpaceTheme) -> some View {
         Label(
             "SpaceLens reads filesystem metadata plus app and package manifests needed to identify "
-                + "installations and versions. It does not open conversations, project files, databases, or credentials.",
+                + "installations and versions. It reads Claude's project registry only to label encoded folders, "
+                + "and does not open conversations, project files, databases, or credentials.",
             systemImage: "lock.shield"
         )
         .font(.caption)

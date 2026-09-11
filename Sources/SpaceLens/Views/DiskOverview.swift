@@ -3,7 +3,7 @@ import SwiftUI
 struct DiskOverview: View {
     @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
-    @State private var detailsWidth = 340.0
+    @State private var detailsWidth = Double(AppLayoutMetrics.preferredInspectorWidth)
 
     let volume: VolumeInfo
     let previousSummary: PreviousScanSummary?

@@ -269,20 +269,24 @@ struct AICodingFilesystemNodeRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 7) {
-                    Text(node.name)
+                    Text(annotation.displayName)
                         .font(.callout.weight(.medium))
                         .foregroundStyle(theme.primaryText)
                         .lineLimit(1)
-                    Label(annotation.category.displayName, systemImage: annotation.category.systemImage)
-                        .labelStyle(.titleOnly)
+                    if let category = annotation.visibleCategory {
+                        Label(category.displayName, systemImage: category.systemImage)
+                            .labelStyle(.titleOnly)
+                            .font(.caption2)
+                            .foregroundStyle(categoryColor(category, colorScheme: colorScheme))
+                            .lineLimit(1)
+                    }
+                }
+                if let explanation = annotation.visibleExplanation {
+                    Text(explanation)
                         .font(.caption2)
-                        .foregroundStyle(categoryColor(annotation.category, colorScheme: colorScheme))
+                        .foregroundStyle(theme.tertiaryText)
                         .lineLimit(1)
                 }
-                Text(annotation.explanation)
-                    .font(.caption2)
-                    .foregroundStyle(theme.tertiaryText)
-                    .lineLimit(1)
             }
 
             Spacer(minLength: 8)
@@ -315,8 +319,8 @@ struct AICodingFilesystemNodeRow: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
-            .help("Actions for \(node.name)")
-            .accessibilityLabel("Actions for \(node.name)")
+            .help("Actions for \(nodeDisplayName)")
+            .accessibilityLabel("Actions for \(nodeDisplayName)")
         }
     }
 
@@ -325,8 +329,21 @@ struct AICodingFilesystemNodeRow: View {
     }
 
     private var nodeAccessibilityLabel: String {
-        "\(node.name), \(node.isDirectory ? "folder" : "file"), "
-            + "\(StorageFormatters.bytes(node.size)), \(location.annotation(for: node).explanation)"
+        let annotation = location.annotation(for: node)
+        var parts = [
+            annotation.displayName,
+            node.isDirectory ? "folder" : "file",
+            StorageFormatters.bytes(node.size),
+            annotation.category.displayName
+        ]
+        if annotation.isComponentRoot {
+            parts.append(annotation.explanation)
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private var nodeDisplayName: String {
+        location.annotation(for: node).displayName
     }
 
     private var nodeMetadata: String {

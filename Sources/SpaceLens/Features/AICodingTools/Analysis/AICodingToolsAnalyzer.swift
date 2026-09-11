@@ -239,7 +239,8 @@ struct AICodingToolsAnalyzer: AICodingToolsAnalyzing, @unchecked Sendable {
                     root: scanRoot,
                     categories: categories,
                     defaultCategory: descriptor.defaultCategory,
-                    rules: descriptor.rules
+                    rules: descriptor.rules,
+                    nodeDisplayNames: descriptor.nodeDisplayNames
                 )
             }
             .sorted {
@@ -311,6 +312,9 @@ struct AICodingToolsAnalyzer: AICodingToolsAnalyzing, @unchecked Sendable {
             if let index = indicesByID[descriptor.id] {
                 let existing = result[index]
                 let rules = existing.rules + descriptor.rules.filter { !existing.rules.contains($0) }
+                let nodeDisplayNames = existing.nodeDisplayNames.merging(
+                    descriptor.nodeDisplayNames
+                ) { current, _ in current }
                 result[index] = AICodingRootDescriptor(
                     toolID: existing.toolID,
                     name: existing.name,
@@ -318,6 +322,7 @@ struct AICodingToolsAnalyzer: AICodingToolsAnalyzing, @unchecked Sendable {
                     explanation: existing.explanation,
                     defaultCategory: existing.defaultCategory,
                     rules: rules,
+                    nodeDisplayNames: nodeDisplayNames,
                     symlinkBoundaryURL: existing.symlinkBoundaryURL
                 )
             } else {

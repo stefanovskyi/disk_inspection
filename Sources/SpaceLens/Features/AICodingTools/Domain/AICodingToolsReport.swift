@@ -156,10 +156,19 @@ struct AICodingPathRule: Equatable, Sendable {
 }
 
 struct AICodingNodeAnnotation: Equatable, Sendable {
+    let displayName: String
     let category: AICodingStorageCategory
     let title: String
     let explanation: String
     let isComponentRoot: Bool
+
+    var visibleCategory: AICodingStorageCategory? {
+        isComponentRoot ? category : nil
+    }
+
+    var visibleExplanation: String? {
+        isComponentRoot ? explanation : nil
+    }
 }
 
 struct AICodingStorageLocation: Identifiable, Equatable, Sendable {
@@ -172,6 +181,36 @@ struct AICodingStorageLocation: Identifiable, Equatable, Sendable {
     let categories: [AICodingCategoryBreakdown]
     let defaultCategory: AICodingStorageCategory
     let rules: [AICodingPathRule]
+    let nodeDisplayNames: [String: String]
+
+    init(
+        toolID: AICodingToolID,
+        name: String,
+        url: URL,
+        explanation: String,
+        status: AICodingLocationStatus,
+        root: FileNode?,
+        categories: [AICodingCategoryBreakdown],
+        defaultCategory: AICodingStorageCategory,
+        rules: [AICodingPathRule],
+        nodeDisplayNames: [String: String] = [:]
+    ) {
+        self.toolID = toolID
+        self.name = name
+        self.url = url.standardizedFileURL
+        self.explanation = explanation
+        self.status = status
+        self.root = root
+        self.categories = categories
+        self.defaultCategory = defaultCategory
+        self.rules = rules
+        self.nodeDisplayNames = nodeDisplayNames.reduce(into: [:]) { result, entry in
+            let path = URL(fileURLWithPath: entry.key).standardizedFileURL.path
+            if result[path] == nil {
+                result[path] = entry.value
+            }
+        }
+    }
 
     var id: String { url.standardizedFileURL.path }
 
@@ -200,6 +239,7 @@ struct AICodingStorageLocation: Identifiable, Equatable, Sendable {
     func annotation(for node: FileNode) -> AICodingNodeAnnotation {
         if node.isAggregate {
             return AICodingNodeAnnotation(
+                displayName: node.name,
                 category: .other,
                 title: "Smaller items",
                 explanation: "Combines \(node.itemCount.formatted()) smaller direct entries omitted from this compact view.",
@@ -208,6 +248,7 @@ struct AICodingStorageLocation: Identifiable, Equatable, Sendable {
         }
         if node.url.standardizedFileURL.path == url.standardizedFileURL.path {
             return AICodingNodeAnnotation(
+                displayName: displayName(for: node),
                 category: defaultCategory,
                 title: name,
                 explanation: explanation,
@@ -235,6 +276,7 @@ struct AICodingStorageLocation: Identifiable, Equatable, Sendable {
 
         let isComponentRoot = relativeComponents.count == rule.components.count
         return AICodingNodeAnnotation(
+            displayName: displayName(for: node),
             category: rule.category,
             title: rule.title,
             explanation: isComponentRoot
@@ -246,6 +288,7 @@ struct AICodingStorageLocation: Identifiable, Equatable, Sendable {
 
     private func fallbackAnnotation(for node: FileNode) -> AICodingNodeAnnotation {
         AICodingNodeAnnotation(
+            displayName: displayName(for: node),
             category: defaultCategory,
             title: defaultCategory.displayName,
             explanation: node.isDirectory
@@ -253,6 +296,10 @@ struct AICodingStorageLocation: Identifiable, Equatable, Sendable {
                 : "File within \(name).",
             isComponentRoot: false
         )
+    }
+
+    private func displayName(for node: FileNode) -> String {
+        nodeDisplayNames[node.url.standardizedFileURL.path] ?? node.name
     }
 }
 

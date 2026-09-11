@@ -4,141 +4,149 @@ struct AppRootView: View {
     @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("layout.sidebarVisible") private var isSidebarVisible = true
-    @AppStorage("layout.sidebarWidth") private var sidebarWidth = 248.0
     @AppStorage("layout.inspectorVisible") private var isInspectorVisible = true
-    @AppStorage("layout.inspectorWidth") private var inspectorWidth = 340.0
+    @AppStorage("layout.inspectorWidth.v2") private var inspectorWidth = Double(
+        AppLayoutMetrics.preferredInspectorWidth
+    )
     @State private var smallerItemsSelection: SunburstSmallerItems?
     @State private var selectedItem: FileNode?
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
 
-        NavigationSplitView(columnVisibility: sidebarColumnVisibility) {
-            VolumeSidebar()
-                .navigationSplitViewColumnWidth(
-                    min: 220,
-                    ideal: min(max(sidebarWidth, 220), 320),
-                    max: 320
-                )
-        } detail: {
+        HStack(spacing: 0) {
+            if isSidebarVisible {
+                VolumeSidebar()
+                    .frame(width: AppLayoutMetrics.sidebarWidth)
+
+                Divider()
+            }
+
             mainContent(theme: theme)
-                .toolbar {
-                    ToolbarItem(placement: .navigation) {
-                        Button {
-                            model.navigateBack()
-                        } label: {
-                            Label("Back", systemImage: "chevron.left")
-                        }
-                        .disabled(model.selectedSection != .storage || !model.canNavigateBack)
-                        .help("Go back (⌘[)")
-                    }
-
-                    ToolbarItemGroup(placement: .primaryAction) {
-                        if model.selectedSection == .aiCodingTools {
-                            if model.aiCodingTools.isRunning {
-                                AICodingToolsToolbarStatus(progress: model.aiCodingTools.progress)
-
-                                Button {
-                                    model.cancelAICodingToolsAnalysis()
-                                } label: {
-                                    Label("Cancel Analysis", systemImage: "xmark.circle")
-                                }
-                                .help("Cancel AI coding tool analysis")
-                            } else {
-                                Button {
-                                    model.analyzeAICodingTools()
-                                } label: {
-                                    Label(
-                                        model.aiCodingTools.state.report == nil ? "Analyze" : "Analyze Again",
-                                        systemImage: "arrow.clockwise"
-                                    )
-                                }
-                                .help("Measure AI coding tool storage")
-                            }
-
-                            Button {
-                                model.chooseAICodingProjectRoot()
-                            } label: {
-                                Label("Add Project Root", systemImage: "folder.badge.plus")
-                            }
-                            .help("Include AI tool worktrees from a project")
-                            .contextMenu {
-                                ForEach(model.aiCodingTools.projectRoots) { root in
-                                    Button("Remove \(root.name)") {
-                                        model.aiCodingTools.removeProjectRoot(root)
-                                    }
-                                    .help(root.url.path)
-                                }
-                            }
-                        } else if model.selectedSection == .aiModelsAndRuntimes {
-                            if model.aiModelsAndRuntimes.isRunning {
-                                AIModelsToolbarStatus(progress: model.aiModelsAndRuntimes.progress)
-
-                                Button {
-                                    model.cancelAIModelsAndRuntimesAnalysis()
-                                } label: {
-                                    Label("Cancel Analysis", systemImage: "xmark.circle")
-                                }
-                                .help("Cancel AI model and runtime analysis")
-                            } else {
-                                Button {
-                                    model.analyzeAIModelsAndRuntimes()
-                                } label: {
-                                    Label(
-                                        model.aiModelsAndRuntimes.state.report == nil ? "Analyze" : "Analyze Again",
-                                        systemImage: "arrow.clockwise"
-                                    )
-                                }
-                                .help("Measure AI model and runtime storage")
-                            }
-
-                        } else {
-                            if model.isScanning {
-                                ScanToolbarStatus()
-
-                                Button {
-                                    model.cancelScan()
-                                } label: {
-                                    Label("Cancel Scan", systemImage: "xmark.circle")
-                                }
-                                .help("Cancel the current scan")
-                            } else if model.result != nil {
-                                Button {
-                                    model.rescan()
-                                } label: {
-                                    Label("Rescan", systemImage: "arrow.clockwise")
-                                }
-                                .help("Scan this location again (⌘R)")
-                            }
-
-                            if model.currentNode != nil {
-                                Button {
-                                    isInspectorVisible.toggle()
-                                } label: {
-                                    Label(
-                                        isInspectorVisible ? "Hide Inspector" : "Show Inspector",
-                                        systemImage: "sidebar.trailing"
-                                    )
-                                }
-                                .keyboardShortcut("i", modifiers: [.command, .option])
-                                .help(isInspectorVisible ? "Hide inspector" : "Show inspector")
-                            }
-
-                            Button {
-                                model.chooseFolder()
-                            } label: {
-                                Label("Scan Folder", systemImage: "folder.badge.plus")
-                            }
-                            .help("Choose a folder to scan (⌘O)")
-                        }
-                    }
-                }
         }
-        .navigationSplitViewStyle(.balanced)
+        .toolbar {
+            ToolbarItemGroup(placement: .navigation) {
+                Button {
+                    isSidebarVisible.toggle()
+                } label: {
+                    Label(
+                        isSidebarVisible ? "Hide Sidebar" : "Show Sidebar",
+                        systemImage: "sidebar.leading"
+                    )
+                }
+                .keyboardShortcut("s", modifiers: [.command, .control])
+                .help(isSidebarVisible ? "Hide sidebar" : "Show sidebar")
+
+                Button {
+                    model.navigateBack()
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                }
+                .disabled(model.selectedSection != .storage || !model.canNavigateBack)
+                .help("Go back (⌘[)")
+            }
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                if model.selectedSection == .aiCodingTools {
+                    if model.aiCodingTools.isRunning {
+                        AICodingToolsToolbarStatus(progress: model.aiCodingTools.progress)
+
+                        Button {
+                            model.cancelAICodingToolsAnalysis()
+                        } label: {
+                            Label("Cancel Analysis", systemImage: "xmark.circle")
+                        }
+                        .help("Cancel AI coding tool analysis")
+                    } else {
+                        Button {
+                            model.analyzeAICodingTools()
+                        } label: {
+                            Label(
+                                model.aiCodingTools.state.report == nil ? "Analyze" : "Analyze Again",
+                                systemImage: "arrow.clockwise"
+                            )
+                        }
+                        .help("Measure AI coding tool storage")
+                    }
+
+                    Button {
+                        model.chooseAICodingProjectRoot()
+                    } label: {
+                        Label("Add Project Root", systemImage: "folder.badge.plus")
+                    }
+                    .help("Include AI tool worktrees from a project")
+                    .contextMenu {
+                        ForEach(model.aiCodingTools.projectRoots) { root in
+                            Button("Remove \(root.name)") {
+                                model.aiCodingTools.removeProjectRoot(root)
+                            }
+                            .help(root.url.path)
+                        }
+                    }
+                } else if model.selectedSection == .aiModelsAndRuntimes {
+                    if model.aiModelsAndRuntimes.isRunning {
+                        AIModelsToolbarStatus(progress: model.aiModelsAndRuntimes.progress)
+
+                        Button {
+                            model.cancelAIModelsAndRuntimesAnalysis()
+                        } label: {
+                            Label("Cancel Analysis", systemImage: "xmark.circle")
+                        }
+                        .help("Cancel AI model and runtime analysis")
+                    } else {
+                        Button {
+                            model.analyzeAIModelsAndRuntimes()
+                        } label: {
+                            Label(
+                                model.aiModelsAndRuntimes.state.report == nil ? "Analyze" : "Analyze Again",
+                                systemImage: "arrow.clockwise"
+                            )
+                        }
+                        .help("Measure AI model and runtime storage")
+                    }
+
+                } else {
+                    if model.isScanning {
+                        ScanToolbarStatus()
+
+                        Button {
+                            model.cancelScan()
+                        } label: {
+                            Label("Cancel Scan", systemImage: "xmark.circle")
+                        }
+                        .help("Cancel the current scan")
+                    } else if model.result != nil {
+                        Button {
+                            model.rescan()
+                        } label: {
+                            Label("Rescan", systemImage: "arrow.clockwise")
+                        }
+                        .help("Scan this location again (⌘R)")
+                    }
+
+                    if model.currentNode != nil {
+                        Button {
+                            isInspectorVisible.toggle()
+                        } label: {
+                            Label(
+                                isInspectorVisible ? "Hide Inspector" : "Show Inspector",
+                                systemImage: "sidebar.trailing"
+                            )
+                        }
+                        .keyboardShortcut("i", modifiers: [.command, .option])
+                        .help(isInspectorVisible ? "Hide inspector" : "Show inspector")
+                    }
+
+                    Button {
+                        model.chooseFolder()
+                    } label: {
+                        Label("Scan Folder", systemImage: "folder.badge.plus")
+                    }
+                    .help("Choose a folder to scan (⌘O)")
+                }
+            }
+        }
         .tint(theme.accent)
-        .frame(
-            minWidth: model.selectedSection != .storage || isInspectorVisible ? 1100 : 760
-        )
         .background(theme.background)
         .overlay(alignment: .top) {
             if let message = model.errorMessage {
@@ -182,9 +190,9 @@ struct AppRootView: View {
     }
 
     @ViewBuilder
-    private func resultContent(current: FileNode) -> some View {
+    private func resultContent(current: FileNode, showsInspector: Bool) -> some View {
         Group {
-            if isInspectorVisible {
+            if showsInspector {
                 SpaceHorizontalSplitView(
                     trailingWidth: $inspectorWidth,
                     dividerAccessibilityLabel: "Resize inspector"
@@ -254,7 +262,10 @@ struct AppRootView: View {
                 )
             } else if let current = model.currentNode {
                 NavigationHeader(node: current)
-                resultContent(current: current)
+                resultContent(
+                    current: current,
+                    showsInspector: isInspectorVisible
+                )
             } else if let volume = model.selectedVolumeOverview {
                 DiskOverview(
                     volume: volume,
@@ -281,13 +292,6 @@ struct AppRootView: View {
             smallerItemsSelection = nil
             selectedItem = nil
         }
-    }
-
-    private var sidebarColumnVisibility: Binding<NavigationSplitViewVisibility> {
-        Binding(
-            get: { isSidebarVisible ? .all : .detailOnly },
-            set: { isSidebarVisible = $0 != .detailOnly }
-        )
     }
 
     private var chartSelection: Binding<FileNode?> {

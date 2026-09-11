@@ -515,6 +515,73 @@ final class AICodingToolsAnalyzerTests: XCTestCase {
         XCTAssertTrue(annotation.isComponentRoot)
     }
 
+    func testOnlyComponentRootsExposeVisibleCategoryContext() {
+        let root = URL(fileURLWithPath: "/tmp/claude", isDirectory: true)
+        let projectsURL = root.appendingPathComponent("projects", isDirectory: true)
+        let projectURL = projectsURL.appendingPathComponent("-Users-fixture-Project", isDirectory: true)
+        let location = AICodingStorageLocation(
+            toolID: .claudeCode,
+            name: "Claude Code data",
+            url: root,
+            explanation: "Claude Code data.",
+            status: .measured,
+            root: nil,
+            categories: [],
+            defaultCategory: .other,
+            rules: [
+                .init(
+                    "projects",
+                    category: .conversations,
+                    title: "Claude projects",
+                    explanation: "Project-specific Claude Code sessions and metadata."
+                ),
+                .init("projects/*/memory", category: .configuration)
+            ],
+            nodeDisplayNames: [projectURL.path: "Project (-Users-fixture-Project)"]
+        )
+
+        let projects = FileNode(
+            url: projectsURL,
+            name: "projects",
+            size: 1,
+            isDirectory: true,
+            isReadable: true,
+            children: []
+        )
+        let project = FileNode(
+            url: projectURL,
+            name: "-Users-fixture-Project",
+            size: 1,
+            isDirectory: true,
+            isReadable: true,
+            children: []
+        )
+        let memory = FileNode(
+            url: projectURL.appendingPathComponent("memory", isDirectory: true),
+            name: "memory",
+            size: 1,
+            isDirectory: true,
+            isReadable: true,
+            children: []
+        )
+
+        let projectsAnnotation = location.annotation(for: projects)
+        XCTAssertEqual(projectsAnnotation.visibleCategory, .conversations)
+        XCTAssertEqual(
+            projectsAnnotation.visibleExplanation,
+            "Project-specific Claude Code sessions and metadata."
+        )
+
+        let projectAnnotation = location.annotation(for: project)
+        XCTAssertEqual(projectAnnotation.displayName, "Project (-Users-fixture-Project)")
+        XCTAssertNil(projectAnnotation.visibleCategory)
+        XCTAssertNil(projectAnnotation.visibleExplanation)
+
+        let memoryAnnotation = location.annotation(for: memory)
+        XCTAssertEqual(memoryAnnotation.visibleCategory, .configuration)
+        XCTAssertNotNil(memoryAnnotation.visibleExplanation)
+    }
+
     func testCancellationStopsAnalyzerWorker() async throws {
         let root = temporaryDirectory(named: "Cancellation")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

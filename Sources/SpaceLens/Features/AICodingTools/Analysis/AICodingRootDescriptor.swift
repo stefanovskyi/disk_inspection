@@ -7,6 +7,7 @@ struct AICodingRootDescriptor: Equatable, Sendable {
     let explanation: String
     let defaultCategory: AICodingStorageCategory
     let rules: [AICodingPathRule]
+    let nodeDisplayNames: [String: String]
     let symlinkBoundaryURL: URL?
 
     init(
@@ -16,6 +17,7 @@ struct AICodingRootDescriptor: Equatable, Sendable {
         explanation: String,
         defaultCategory: AICodingStorageCategory,
         rules: [AICodingPathRule],
+        nodeDisplayNames: [String: String] = [:],
         symlinkBoundaryURL: URL? = nil
     ) {
         self.toolID = toolID
@@ -24,6 +26,7 @@ struct AICodingRootDescriptor: Equatable, Sendable {
         self.explanation = explanation
         self.defaultCategory = defaultCategory
         self.rules = rules
+        self.nodeDisplayNames = Self.standardizedDisplayNames(nodeDisplayNames)
         self.symlinkBoundaryURL = symlinkBoundaryURL
     }
 
@@ -54,6 +57,7 @@ struct AICodingRootDescriptor: Equatable, Sendable {
             explanation: explanation,
             defaultCategory: defaultCategory,
             rules: rules,
+            nodeDisplayNames: nodeDisplayNames,
             symlinkBoundaryURL: symlinkBoundaryURL?.standardizedFileURL
         )
     }
@@ -76,6 +80,9 @@ struct AICodingRootDescriptor: Equatable, Sendable {
         let rebasedRules = nested.rules.map { $0.prefixing(prefix) }
         let additions = [nestedRootRule] + rebasedRules
         let mergedRules = rules + additions.filter { !rules.contains($0) }
+        let mergedDisplayNames = nodeDisplayNames.merging(nested.nodeDisplayNames) { current, _ in
+            current
+        }
         return Self(
             toolID: toolID,
             name: name,
@@ -83,7 +90,17 @@ struct AICodingRootDescriptor: Equatable, Sendable {
             explanation: explanation,
             defaultCategory: defaultCategory,
             rules: mergedRules,
+            nodeDisplayNames: mergedDisplayNames,
             symlinkBoundaryURL: symlinkBoundaryURL
         )
+    }
+
+    private static func standardizedDisplayNames(_ displayNames: [String: String]) -> [String: String] {
+        displayNames.reduce(into: [:]) { result, entry in
+            let path = URL(fileURLWithPath: entry.key).standardizedFileURL.path
+            if result[path] == nil {
+                result[path] = entry.value
+            }
+        }
     }
 }

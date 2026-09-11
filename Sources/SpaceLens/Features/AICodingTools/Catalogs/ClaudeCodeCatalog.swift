@@ -60,6 +60,10 @@ enum ClaudeCodeCatalog {
         ]
         let home = request.homeDirectory
         let defaultHome = home.appendingPathComponent(".claude")
+        let defaultProjectDisplayNames = ClaudeProjectDisplayNames.load(
+            homeDirectory: home,
+            claudeDirectory: defaultHome
+        )
         var roots = [
             AICodingCatalogSupport.root(
                 metadata.id,
@@ -67,6 +71,7 @@ enum ClaudeCodeCatalog {
                 defaultHome,
                 "Claude Code sessions, recovery history, plugins, settings, and generated data.",
                 rules: rules,
+                nodeDisplayNames: defaultProjectDisplayNames,
                 symlinkBoundaryURL: home
             )
         ]
@@ -74,12 +79,17 @@ enum ClaudeCodeCatalog {
             environmentKey: "CLAUDE_CONFIG_DIR",
             request: request
         ), configuredHome.standardizedFileURL.path != defaultHome.standardizedFileURL.path {
+            let customProjectDisplayNames = ClaudeProjectDisplayNames.load(
+                homeDirectory: home,
+                claudeDirectory: configuredHome
+            )
             roots.append(AICodingCatalogSupport.root(
                 metadata.id,
                 "Claude Code custom data",
                 configuredHome,
                 "Claude Code data selected through CLAUDE_CONFIG_DIR.",
                 rules: rules,
+                nodeDisplayNames: customProjectDisplayNames,
                 symlinkBoundaryURL: configuredHome.deletingLastPathComponent()
             ))
         }

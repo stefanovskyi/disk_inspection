@@ -16,8 +16,8 @@ struct SpaceHorizontalSplitView<Leading: View, Trailing: View>: View {
     init(
         trailingWidth: Binding<Double>,
         minimumLeadingWidth: CGFloat = 500,
-        minimumTrailingWidth: CGFloat = 300,
-        maximumTrailingWidth: CGFloat = 440,
+        minimumTrailingWidth: CGFloat = AppLayoutMetrics.minimumInspectorWidth,
+        maximumTrailingWidth: CGFloat = AppLayoutMetrics.maximumInspectorWidth,
         spacing: CGFloat = 12,
         dividerAccessibilityLabel: String = "Resize details panel",
         @ViewBuilder leading: () -> Leading,

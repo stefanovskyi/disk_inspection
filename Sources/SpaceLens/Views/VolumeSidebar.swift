@@ -3,7 +3,6 @@ import SwiftUI
 struct VolumeSidebar: View {
     @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage("layout.sidebarWidth") private var sidebarWidth = 248.0
 
     private var internalVolumes: [VolumeInfo] { model.volumes.filter { !$0.isExternal } }
     private var externalVolumes: [VolumeInfo] { model.volumes.filter(\.isExternal) }
@@ -29,10 +28,12 @@ struct VolumeSidebar: View {
                                 Text("AI Coding Tools")
                                     .font(.callout.weight(.semibold))
                                     .foregroundStyle(theme.primaryText)
-                                Text(analysisSubtitle)
-                                    .font(.caption2.weight(.medium))
-                                    .foregroundStyle(theme.tertiaryText)
-                                    .lineLimit(1)
+                                if let analysisSubtitle {
+                                    Text(analysisSubtitle)
+                                        .font(.caption2.weight(.medium))
+                                        .foregroundStyle(theme.tertiaryText)
+                                        .lineLimit(1)
+                                }
                             }
 
                             Spacer(minLength: 4)
@@ -82,10 +83,12 @@ struct VolumeSidebar: View {
                                 Text("AI Models")
                                     .font(.callout.weight(.semibold))
                                     .foregroundStyle(theme.primaryText)
-                                Text(aiModelsAnalysisSubtitle)
-                                    .font(.caption2.weight(.medium))
-                                    .foregroundStyle(theme.tertiaryText)
-                                    .lineLimit(1)
+                                if let aiModelsAnalysisSubtitle {
+                                    Text(aiModelsAnalysisSubtitle)
+                                        .font(.caption2.weight(.medium))
+                                        .foregroundStyle(theme.tertiaryText)
+                                        .lineLimit(1)
+                                }
                             }
 
                             Spacer(minLength: 4)
@@ -190,15 +193,6 @@ struct VolumeSidebar: View {
             .background(theme.surface)
         }
         .background(theme.sidebar)
-        .background {
-            GeometryReader { proxy in
-                Color.clear
-                    .onAppear { persistSidebarWidth(proxy.size.width) }
-                    .onChange(of: proxy.size.width) {
-                        persistSidebarWidth(proxy.size.width)
-                    }
-            }
-        }
     }
 
     private func brand(theme: SpaceTheme) -> some View {
@@ -307,36 +301,30 @@ struct VolumeSidebar: View {
             ?? model.selectedVolumeOverview?.url.standardizedFileURL.path
     }
 
-    private var analysisSubtitle: String {
+    private var analysisSubtitle: String? {
         if model.aiCodingTools.isRunning {
             return StorageFormatters.bytes(model.aiCodingTools.progress.mappedBytes)
         }
         if let report = model.aiCodingTools.state.report {
             return StorageFormatters.bytes(report.totalSize)
         }
-        return "Cursor, Claude, Codex, Antigravity, OpenCode"
+        return nil
     }
 
-    private var aiModelsAnalysisSubtitle: String {
+    private var aiModelsAnalysisSubtitle: String? {
         if model.aiModelsAndRuntimes.isRunning {
             return StorageFormatters.bytes(model.aiModelsAndRuntimes.progress.mappedBytes)
         }
         if let report = model.aiModelsAndRuntimes.state.report {
-            return "\(report.modelCount.formatted()) models · \(StorageFormatters.bytes(report.totalSize))"
+            return StorageFormatters.bytes(report.totalSize)
         }
-        return "Ollama, LM Studio, Hugging Face, GGUF"
+        return nil
     }
 
     private func removeSelectedFolder() {
         guard let path = activeLocationPath,
               let folder = model.sessionFolders.first(where: { $0.id == path }) else { return }
         model.removeSessionFolder(folder)
-    }
-
-    private func persistSidebarWidth(_ width: CGFloat) {
-        let width = Double(width)
-        guard width >= 220, width <= 320, abs(sidebarWidth - width) >= 1 else { return }
-        sidebarWidth = width
     }
 }
 

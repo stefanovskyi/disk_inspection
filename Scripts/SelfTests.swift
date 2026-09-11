@@ -29,6 +29,8 @@ struct SpaceLensSelfTests {
         try await aiCodingAnalyzerClassifiesBeforeCompaction()
         try await aiCodingAnalyzerDeduplicatesOverlappingRoots()
         try await aiCodingAnalyzerRetainsKnownNestedRoot()
+        try aiCodingAnnotationsHideInheritedContext()
+        try claudeProjectDisplayNamesAreReadable()
         try openCodeCatalogResolvesXDGAndCategories()
         try await aiCodingInstallationsReadStaticMetadata()
         try aiCodingReportKeepsMeasuredDescendantOfUnavailableRoot()
@@ -42,10 +44,20 @@ struct SpaceLensSelfTests {
         try layoutRespectsDepthLimit()
         try sceneReusesLayoutForHitTesting()
         try interactiveSceneGroupsSmallItemsAndHonorsItsBudget()
+        try layoutPolicyUsesFixedCompactColumnWidths()
         try fileNodeEqualityUsesImmutableArenaIdentity()
         try sessionStoreRetainsAndReplacesVolumeResults()
         try previousScanSummaryIsBoundedAndPersistent()
-        print("SpaceLens self-tests passed (30/30)")
+        print("SpaceLens self-tests passed (33/33)")
+    }
+
+    private static func layoutPolicyUsesFixedCompactColumnWidths() throws {
+        try expect(AppLayoutMetrics.sidebarWidth == 248, "Sidebar width should remain fixed")
+        try expect(
+            AppLayoutMetrics.preferredInspectorWidth == 240,
+            "Inspector should be approximately 30% narrower than its previous 340-point width"
+        )
+        try expect(AppLayoutMetrics.toolsColumnWidth == 250, "Tools column should use less empty space")
     }
 
     @MainActor
@@ -123,6 +135,80 @@ struct SpaceLensSelfTests {
         try expect(
             baseline.diagnostics.discardedNodes > 0,
             "AI compaction fixture did not exercise bounded child retention"
+        )
+    }
+
+    private static func aiCodingAnnotationsHideInheritedContext() throws {
+        let root = URL(fileURLWithPath: "/tmp/claude", isDirectory: true)
+        let projectsURL = root.appendingPathComponent("projects", isDirectory: true)
+        let projectURL = projectsURL.appendingPathComponent("-Users-fixture-Project", isDirectory: true)
+        let location = AICodingStorageLocation(
+            toolID: .claudeCode,
+            name: "Claude Code data",
+            url: root,
+            explanation: "Claude Code data.",
+            status: .measured,
+            root: nil,
+            categories: [],
+            defaultCategory: .other,
+            rules: [
+                .init(
+                    "projects",
+                    category: .conversations,
+                    title: "Claude projects",
+                    explanation: "Project-specific Claude Code sessions and metadata."
+                )
+            ],
+            nodeDisplayNames: [projectURL.path: "Project (-Users-fixture-Project)"]
+        )
+        let projects = FileNode(
+            url: projectsURL,
+            name: "projects",
+            size: 1,
+            isDirectory: true,
+            isReadable: true,
+            children: []
+        )
+        let project = FileNode(
+            url: projectURL,
+            name: "-Users-fixture-Project",
+            size: 1,
+            isDirectory: true,
+            isReadable: true,
+            children: []
+        )
+
+        try expect(
+            location.annotation(for: projects).visibleCategory == .conversations,
+            "AI component root lost its visible category"
+        )
+        let projectAnnotation = location.annotation(for: project)
+        try expect(projectAnnotation.visibleCategory == nil, "Inherited AI category remained visible")
+        try expect(projectAnnotation.visibleExplanation == nil, "Inherited AI explanation remained visible")
+        try expect(
+            projectAnnotation.displayName == "Project (-Users-fixture-Project)",
+            "AI node display-name override was not applied"
+        )
+    }
+
+    private static func claudeProjectDisplayNamesAreReadable() throws {
+        let home = URL(fileURLWithPath: "/Users/fixture", isDirectory: true)
+        let projectsDirectory = home.appendingPathComponent(".claude/projects", isDirectory: true)
+        let projectPath = "/Users/fixture/Documents/projects/event-omnitool"
+        let encodedName = ClaudeProjectDisplayNames.encodedDirectoryName(for: projectPath)
+        let displayNames = ClaudeProjectDisplayNames.overrides(
+            projectDirectory: projectsDirectory,
+            directoryNames: [encodedName],
+            registeredProjectPaths: [projectPath],
+            homeDirectory: home
+        )
+        let encodedPath = projectsDirectory
+            .appendingPathComponent(encodedName, isDirectory: true)
+            .standardizedFileURL.path
+
+        try expect(
+            displayNames[encodedPath] == "event-omnitool (\(encodedName))",
+            "Claude project directory did not use its registered project basename"
         )
     }
 
