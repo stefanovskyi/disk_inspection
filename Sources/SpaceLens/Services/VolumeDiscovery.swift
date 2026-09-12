@@ -1,3 +1,4 @@
+import DiskArbitration
 import Foundation
 
 struct VolumeDiscovery: Sendable {
@@ -27,6 +28,7 @@ struct VolumeDiscovery: Sendable {
 
         return urls.compactMap(volumeInfo)
             .sorted {
+                if $0.isStartupVolume != $1.isStartupVolume { return $0.isStartupVolume }
                 if $0.isExternal != $1.isExternal { return !$0.isExternal }
                 return $0.name.localizedStandardCompare($1.name) == .orderedAscending
             }
@@ -51,7 +53,28 @@ struct VolumeDiscovery: Sendable {
             uuid: values.volumeUUIDString,
             fileSystemType: values.volumeTypeName,
             isEncrypted: values.volumeIsEncrypted,
-            isLocal: values.volumeIsLocal ?? true
+            isLocal: values.volumeIsLocal ?? true,
+            physicalDeviceIdentifier: physicalDeviceIdentifier(for: url)
         )
+    }
+
+    /// Returns the whole-media identity used only to keep sibling filesystems
+    /// from scanning concurrently. Failure deliberately falls back to the
+    /// conservative grouping in `VolumeInfo`.
+    private func physicalDeviceIdentifier(for url: URL) -> String? {
+        guard let session = DASessionCreate(kCFAllocatorDefault),
+              let disk = DADiskCreateFromVolumePath(
+                  kCFAllocatorDefault,
+                  session,
+                  url.standardizedFileURL as CFURL
+              ) else { return nil }
+
+        let wholeDisk = DADiskCopyWholeDisk(disk) ?? disk
+        if let description = DADiskCopyDescription(wholeDisk) as NSDictionary?,
+           let mediaUUID = description[kDADiskDescriptionMediaUUIDKey] as? UUID {
+            return "uuid:\(mediaUUID.uuidString.lowercased())"
+        }
+        guard let name = DADiskGetBSDName(wholeDisk) else { return nil }
+        return "bsd:\(String(cString: name))"
     }
 }

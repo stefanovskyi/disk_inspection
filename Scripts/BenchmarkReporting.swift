@@ -14,6 +14,7 @@ private struct BenchmarkConfigurationReport: Codable {
     let iterations: Int
     let selectedFixtures: [String]
     let scannerParallelism: Int
+    let volumeScanLimit: Int
     let directoryBufferSizeBytes: Int
     let flatFileCount: Int
     let deepDirectoryCount: Int
@@ -49,6 +50,8 @@ private struct BenchmarkIterationReport: Codable {
     let arenaConstructionDurationMilliseconds: Double
     let rssBeforeArenaConstructionBytes: UInt64
     let rssAfterArenaConstructionBytes: UInt64
+    let maximumDirectoryReaders: Int?
+    let cancellationLatencyMilliseconds: Double?
 }
 
 private struct BenchmarkSummaryReport: Codable {
@@ -63,6 +66,8 @@ private struct BenchmarkSummaryReport: Codable {
     let medianCachedHoverLookup120Milliseconds: Double
     let medianSegmentCount: Int
     let maximumUnreadableItems: Int
+    let maximumDirectoryReaders: Int?
+    let medianCancellationLatencyMilliseconds: Double?
 }
 
 private struct BenchmarkFixtureReport: Codable {
@@ -136,7 +141,7 @@ enum BenchmarkReportWriter {
     ) -> BenchmarkReport {
         let processInfo = ProcessInfo.processInfo
         return BenchmarkReport(
-            schemaVersion: 4,
+            schemaVersion: 5,
             runID: configuration.runID,
             startedAt: startedAt,
             finishedAt: finishedAt,
@@ -158,6 +163,7 @@ enum BenchmarkReportWriter {
                 iterations: configuration.iterations,
                 selectedFixtures: configuration.selectedFixtures.sorted(),
                 scannerParallelism: configuration.scannerParallelism,
+                volumeScanLimit: configuration.volumeScanLimit,
                 directoryBufferSizeBytes: configuration.directoryBufferSize,
                 flatFileCount: configuration.flatFileCount,
                 deepDirectoryCount: configuration.deepDirectoryCount,
@@ -205,7 +211,11 @@ enum BenchmarkReportWriter {
                 retainedArenaNodeCount: diagnostics.retainedArenaNodeCount,
                 arenaConstructionDurationMilliseconds: diagnostics.arenaConstructionDurationSeconds * 1_000,
                 rssBeforeArenaConstructionBytes: diagnostics.rssBeforeArenaConstructionBytes,
-                rssAfterArenaConstructionBytes: diagnostics.rssAfterArenaConstructionBytes
+                rssAfterArenaConstructionBytes: diagnostics.rssAfterArenaConstructionBytes,
+                maximumDirectoryReaders: measurement.maximumDirectoryReaderCounts[index],
+                cancellationLatencyMilliseconds: measurement.cancellationLatencies[index].map {
+                    $0 * 1_000
+                }
             )
         }
 
@@ -222,7 +232,11 @@ enum BenchmarkReportWriter {
                 medianLayoutDurationMilliseconds: measurement.medianLayoutDuration * 1_000,
                 medianCachedHoverLookup120Milliseconds: measurement.medianCachedHoverDuration * 1_000,
                 medianSegmentCount: measurement.medianSegmentCount,
-                maximumUnreadableItems: measurement.maximumUnreadableCount
+                maximumUnreadableItems: measurement.maximumUnreadableCount,
+                maximumDirectoryReaders: measurement.maximumDirectoryReaderCount,
+                medianCancellationLatencyMilliseconds: measurement.medianCancellationLatency.map {
+                    $0 * 1_000
+                }
             ),
             iterations: iterationReports
         )
@@ -233,6 +247,7 @@ enum BenchmarkReportWriter {
             "schema_version", "run_id", "started_at", "git_revision", "git_dirty",
             "operating_system", "hardware_model", "active_processor_count",
             "physical_memory_bytes", "peak_resident_memory_bytes", "scanner_parallelism",
+            "volume_scan_limit",
             "directory_buffer_size_bytes", "fixture", "iteration", "scan_seconds",
             "items_scanned", "directory_count", "items_per_second",
             "unreadable_items", "layout_milliseconds",
@@ -242,7 +257,8 @@ enum BenchmarkReportWriter {
             "progress_merges", "progress_emissions", "provider_timeouts",
             "abandoned_workers", "retained_arena_node_count",
             "arena_construction_milliseconds", "rss_before_arena_construction_bytes",
-            "rss_after_arena_construction_bytes"
+            "rss_after_arena_construction_bytes", "maximum_directory_readers",
+            "cancellation_latency_milliseconds"
         ]
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -262,6 +278,7 @@ enum BenchmarkReportWriter {
                     String(report.system.physicalMemoryBytes),
                     String(report.peakResidentMemoryBytes),
                     String(report.configuration.scannerParallelism),
+                    String(report.configuration.volumeScanLimit),
                     String(report.configuration.directoryBufferSizeBytes),
                     fixture.name,
                     String(iteration.iteration),
@@ -274,7 +291,7 @@ enum BenchmarkReportWriter {
                     String(format: "%.6f", iteration.cachedHoverLookup120Milliseconds),
                     String(iteration.segmentCount)
                 ]
-                values.append(contentsOf: [
+                let diagnosticValues = [
                     String(iteration.syscallBatches),
                     String(iteration.fallbackLstatCalls),
                     String(iteration.bufferAllocations),
@@ -289,7 +306,14 @@ enum BenchmarkReportWriter {
                     String(format: "%.6f", iteration.arenaConstructionDurationMilliseconds),
                     String(iteration.rssBeforeArenaConstructionBytes),
                     String(iteration.rssAfterArenaConstructionBytes)
-                ])
+                ]
+                values.append(contentsOf: diagnosticValues)
+                values.append(iteration.maximumDirectoryReaders.map(String.init) ?? "")
+                values.append(
+                    iteration.cancellationLatencyMilliseconds.map {
+                        String(format: "%.6f", $0)
+                    } ?? ""
+                )
                 rows.append(values.map(csvField).joined(separator: ","))
             }
         }

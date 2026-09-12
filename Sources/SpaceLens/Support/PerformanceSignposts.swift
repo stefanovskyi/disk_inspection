@@ -22,4 +22,8 @@ enum SpaceLensSignposts {
         subsystem: "local.spacelens.app",
         category: "Benchmark"
     )
+    static let scanEverything = OSSignposter(
+        subsystem: "local.spacelens.app",
+        category: "ScanEverything"
+    )
 }

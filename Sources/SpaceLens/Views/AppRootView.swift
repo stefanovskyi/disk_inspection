@@ -67,6 +67,7 @@ struct AppRootView: View {
                             )
                         }
                         .help("Measure AI coding tool storage")
+                        .disabled(model.isScanningEverything)
                     }
 
                     Button {
@@ -75,6 +76,7 @@ struct AppRootView: View {
                         Label("Add Project Root", systemImage: "folder.badge.plus")
                     }
                     .help("Include AI tool worktrees from a project")
+                    .disabled(model.isScanningEverything)
                     .contextMenu {
                         ForEach(model.aiCodingTools.projectRoots) { root in
                             Button("Remove \(root.name)") {
@@ -103,6 +105,7 @@ struct AppRootView: View {
                             )
                         }
                         .help("Measure AI model and runtime storage")
+                        .disabled(model.isScanningEverything)
                     }
 
                 } else if model.selectedSection == .developerStorage {
@@ -125,6 +128,7 @@ struct AppRootView: View {
                             )
                         }
                         .help("Measure developer storage")
+                        .disabled(model.isScanningEverything)
                     }
 
                     Button {
@@ -133,6 +137,7 @@ struct AppRootView: View {
                         Label("Add Projects Folder", systemImage: "folder.badge.plus")
                     }
                     .help("Find generated artifacts below a projects folder")
+                    .disabled(model.isScanningEverything)
                     .contextMenu {
                         ForEach(model.developerStorage.projectContainers) { container in
                             Button("Remove \(container.name)") {
@@ -159,6 +164,7 @@ struct AppRootView: View {
                             Label("Rescan", systemImage: "arrow.clockwise")
                         }
                         .help("Scan this location again (⌘R)")
+                        .disabled(model.isScanningEverything)
                     }
 
                     if model.currentNode != nil {
@@ -180,6 +186,7 @@ struct AppRootView: View {
                         Label("Scan Folder", systemImage: "folder.badge.plus")
                     }
                     .help("Choose a folder to scan (⌘O)")
+                    .disabled(model.isScanningEverything)
                 }
             }
         }
@@ -203,6 +210,30 @@ struct AppRootView: View {
             )
         ) {
             FullDiskAccessPrompt()
+        }
+        .alert(
+            "Scan Everything?",
+            isPresented: Binding(
+                get: { model.isRequestingScanEverything },
+                set: { isPresented in
+                    if !isPresented { model.cancelScanEverythingConfirmation() }
+                }
+            ),
+            presenting: model.pendingScanEverythingPlan
+        ) { _ in
+            Button("Scan Everything") {
+                model.confirmScanEverything()
+            }
+            Button("Cancel", role: .cancel) {
+                model.cancelScanEverythingConfirmation()
+            }
+        } message: { plan in
+            Text(
+                "SpaceLens will scan \(plan.volumes.count) mounted local "
+                    + (plan.volumes.count == 1 ? "disk" : "disks")
+                    + " and run \(plan.analyses.count) storage analyses. "
+                    + "The operation is read-only and may take several minutes."
+            )
         }
         .alert(
             "No saved scan data",

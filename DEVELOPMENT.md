@@ -67,7 +67,7 @@ Run the optimized synthetic scanner and chart-layout fixtures:
 make benchmark
 ```
 
-Reports are written as timestamped JSON and CSV files in `BenchmarkResults/`. They record the Git state, toolchain, hardware, fixture configuration, timings, memory use, and scanner diagnostics.
+Reports are written as timestamped JSON and CSV files in `BenchmarkResults/`. They record the Git state, toolchain, hardware, fixture configuration, timings, memory use, and scanner diagnostics. The default fixtures include sequential and bounded-parallel synthetic multi-volume runs; those entries also record global directory-reader concurrency and cancel-all latency.
 
 Run three read-only startup-disk scans with:
 
@@ -83,13 +83,17 @@ SPACELENS_BENCHMARK_EXTERNAL_PATH="/Volumes/TestDisk/SpaceLensFixture" \
 make benchmark
 ```
 
-Run the standard scanner-parallelism sweep (1, 2, 4, 8, and 16):
+Run the standard multi-volume policy matrix (sequential 1/8, conservative 2/8,
+higher-reader 2/12, and higher-operation 3/8):
 
 ```bash
 make benchmark-parallelism
 ```
 
-Override the matrix with a comma-separated `SPACELENS_BENCHMARK_PARALLELISMS` value. Keep fixtures and iteration counts identical when comparing scheduler changes.
+Override the matrix with comma-separated `name:active-scans:directory-readers` entries in
+`SPACELENS_BENCHMARK_VOLUME_POLICY_MATRIX`. Set
+`SPACELENS_BENCHMARK_INCLUDE_UNRESTRICTED=1` to append the diagnostic-only unrestricted policy.
+Keep fixtures and iteration counts identical when comparing scheduler changes.
 
 Compare compatible reports with:
 
@@ -109,6 +113,8 @@ Common benchmark controls include:
 
 - `SPACELENS_BENCHMARK_ITERATIONS`
 - `SPACELENS_BENCHMARK_PARALLELISM`
+- `SPACELENS_BENCHMARK_VOLUME_SCAN_LIMIT`
+- `SPACELENS_BENCHMARK_VOLUME_POLICY_MATRIX`
 - `SPACELENS_BENCHMARK_DIRECTORY_BUFFER_KB`
 - `SPACELENS_BENCHMARK_OUTPUT_DIR`
 - `SPACELENS_BENCHMARK_FIXTURES`

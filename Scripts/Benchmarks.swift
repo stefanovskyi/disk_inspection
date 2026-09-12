@@ -33,6 +33,7 @@ struct BenchmarkConfiguration {
     let providerTimeout: TimeInterval
     let externalPath: String?
     let scannerParallelism: Int
+    let volumeScanLimit: Int
     let directoryBufferSize: Int
     let outputDirectory: URL
     let runID: String
@@ -45,8 +46,10 @@ struct BenchmarkConfiguration {
     let fullDiskAccessGranted: Bool?
 
     static func load(environment: [String: String] = ProcessInfo.processInfo.environment) throws -> Self {
-        let knownFixtures = Set(["flat", "deep", "mixed", "provider", "external", "full-disk"])
-        let defaultFixtures = Set(["flat", "deep", "mixed", "provider"])
+        let knownFixtures = Set([
+            "flat", "deep", "mixed", "provider", "multi-volume", "external", "full-disk"
+        ])
+        let defaultFixtures = Set(["flat", "deep", "mixed", "provider", "multi-volume"])
         let requestedFixtures = environment["SPACELENS_BENCHMARK_FIXTURES"]
             .map {
                 Set(
@@ -110,6 +113,11 @@ struct BenchmarkConfiguration {
                 default: suggestedParallelism,
                 environment: environment
             ),
+            volumeScanLimit: try positiveInteger(
+                "SPACELENS_BENCHMARK_VOLUME_SCAN_LIMIT",
+                default: 2,
+                environment: environment
+            ),
             directoryBufferSize: directoryBufferKilobytes * 1024,
             outputDirectory: URL(
                 fileURLWithPath: environment["SPACELENS_BENCHMARK_OUTPUT_DIR"]
@@ -151,6 +159,8 @@ struct BenchmarkMeasurement {
     let segmentCounts: [Int]
     let unreadableCounts: [Int]
     let diagnostics: [ScanDiagnosticSnapshot]
+    let maximumDirectoryReaderCounts: [Int?]
+    let cancellationLatencies: [TimeInterval?]
 
     var medianScanDuration: TimeInterval { median(scanDurations) }
     var fastestScanDuration: TimeInterval { scanDurations.min() ?? 0 }
@@ -176,9 +186,35 @@ struct BenchmarkMeasurement {
     var medianItemCount: Int { Int(median(itemCounts.map(Double.init))) }
     var medianSegmentCount: Int { Int(median(segmentCounts.map(Double.init))) }
     var maximumUnreadableCount: Int { unreadableCounts.max() ?? 0 }
+    var maximumDirectoryReaderCount: Int? {
+        maximumDirectoryReaderCounts.compactMap { $0 }.max()
+    }
+    var medianCancellationLatency: TimeInterval? {
+        let values = cancellationLatencies.compactMap { $0 }
+        return values.isEmpty ? nil : median(values)
+    }
     var itemsPerSecond: Double {
         guard medianScanDuration > 0 else { return 0 }
         return Double(medianItemCount) / medianScanDuration
+    }
+}
+
+private struct BenchmarkOperationMeasurement {
+    let result: ScanResult
+    let maximumDirectoryReaders: Int?
+    let cancellationLatency: TimeInterval?
+    let scanDuration: TimeInterval?
+
+    init(
+        result: ScanResult,
+        maximumDirectoryReaders: Int? = nil,
+        cancellationLatency: TimeInterval? = nil,
+        scanDuration: TimeInterval? = nil
+    ) {
+        self.result = result
+        self.maximumDirectoryReaders = maximumDirectoryReaders
+        self.cancellationLatency = cancellationLatency
+        self.scanDuration = scanDuration
     }
 }
 
@@ -250,6 +286,49 @@ struct SpaceLensBenchmarks {
                         maximumParallelism: configuration.scannerParallelism,
                         directoryBufferSize: configuration.directoryBufferSize
                     ).scan(url: root)
+                }
+            )
+        }
+
+        if configuration.selectedFixtures.contains("multi-volume") {
+            let roots = (1...3).map {
+                fixtureRoot.appendingPathComponent("Volume\($0)", isDirectory: true)
+            }
+            print("Preparing three disjoint synthetic volume roots...")
+            for root in roots {
+                try createMixedFixture(
+                    at: root,
+                    depth: max(configuration.mixedDepth - 1, 1),
+                    fanout: configuration.mixedFanout,
+                    filesPerDirectory: configuration.mixedFilesPerDirectory
+                )
+            }
+            measurements.append(
+                try await measureDetailed(
+                    name: "multi-volume-sequential",
+                    iterations: configuration.iterations
+                ) {
+                    try await measureVolumeBatch(
+                        roots: roots,
+                        maximumConcurrentScans: 1,
+                        directoryReaders: configuration.scannerParallelism,
+                        directoryBufferSize: configuration.directoryBufferSize,
+                        fixtureRoot: fixtureRoot
+                    )
+                }
+            )
+            measurements.append(
+                try await measureDetailed(
+                    name: "multi-volume-parallel",
+                    iterations: configuration.iterations
+                ) {
+                    try await measureVolumeBatch(
+                        roots: roots,
+                        maximumConcurrentScans: configuration.volumeScanLimit,
+                        directoryReaders: configuration.scannerParallelism,
+                        directoryBufferSize: configuration.directoryBufferSize,
+                        fixtureRoot: fixtureRoot
+                    )
                 }
             )
         }
@@ -351,6 +430,16 @@ struct SpaceLensBenchmarks {
         iterations: Int,
         operation: () async throws -> ScanResult
     ) async throws -> BenchmarkMeasurement {
+        try await measureDetailed(name: name, iterations: iterations) {
+            BenchmarkOperationMeasurement(result: try await operation())
+        }
+    }
+
+    private static func measureDetailed(
+        name: String,
+        iterations: Int,
+        operation: () async throws -> BenchmarkOperationMeasurement
+    ) async throws -> BenchmarkMeasurement {
         var scanDurations: [TimeInterval] = []
         var layoutDurations: [TimeInterval] = []
         var cachedHoverDurations: [TimeInterval] = []
@@ -358,6 +447,8 @@ struct SpaceLensBenchmarks {
         var segmentCounts: [Int] = []
         var unreadableCounts: [Int] = []
         var diagnostics: [ScanDiagnosticSnapshot] = []
+        var maximumDirectoryReaderCounts: [Int?] = []
+        var cancellationLatencies: [TimeInterval?] = []
 
         for iteration in 1...iterations {
             let signposter = SpaceLensSignposts.benchmark
@@ -366,14 +457,15 @@ struct SpaceLensBenchmarks {
                 "fixture=\(name, privacy: .public) iteration=\(iteration)"
             )
             let scanStart = DispatchTime.now().uptimeNanoseconds
-            let result: ScanResult
+            let operationMeasurement: BenchmarkOperationMeasurement
             do {
-                result = try await operation()
+                operationMeasurement = try await operation()
             } catch {
                 signposter.endInterval("BenchmarkIteration", signpostState, "failed=true")
                 throw error
             }
             let scanEnd = DispatchTime.now().uptimeNanoseconds
+            let result = operationMeasurement.result
 
             let layoutStart = DispatchTime.now().uptimeNanoseconds
             let scene = SunburstScene(
@@ -403,7 +495,8 @@ struct SpaceLensBenchmarks {
                 "items=\(result.itemsScanned) segments=\(scene.segments.count)"
             )
 
-            let scanDuration = seconds(from: scanStart, to: scanEnd)
+            let scanDuration = operationMeasurement.scanDuration
+                ?? seconds(from: scanStart, to: scanEnd)
             let layoutDuration = seconds(from: layoutStart, to: layoutEnd)
             let cachedHoverDuration = seconds(from: cachedHoverStart, to: cachedHoverEnd)
             scanDurations.append(scanDuration)
@@ -413,6 +506,8 @@ struct SpaceLensBenchmarks {
             segmentCounts.append(scene.segments.count)
             unreadableCounts.append(result.unreadableItems)
             diagnostics.append(result.diagnostics)
+            maximumDirectoryReaderCounts.append(operationMeasurement.maximumDirectoryReaders)
+            cancellationLatencies.append(operationMeasurement.cancellationLatency)
 
             print(
                 String(
@@ -426,6 +521,16 @@ struct SpaceLensBenchmarks {
                     scene.segments.count
                 )
             )
+            if let maximumDirectoryReaders = operationMeasurement.maximumDirectoryReaders,
+               let cancellationLatency = operationMeasurement.cancellationLatency {
+                print(
+                    String(
+                        format: "    batch: maximum-readers=%d cancellation-latency=%.3f ms",
+                        maximumDirectoryReaders,
+                        cancellationLatency * 1_000
+                    )
+                )
+            }
             let diagnostics = result.diagnostics
             print(
                 "    counters: batches=\(diagnostics.syscallBatches) "
@@ -459,6 +564,185 @@ struct SpaceLensBenchmarks {
             itemCounts: itemCounts,
             segmentCounts: segmentCounts,
             unreadableCounts: unreadableCounts,
+            diagnostics: diagnostics,
+            maximumDirectoryReaderCounts: maximumDirectoryReaderCounts,
+            cancellationLatencies: cancellationLatencies
+        )
+    }
+
+    private static func measureVolumeBatch(
+        roots: [URL],
+        maximumConcurrentScans: Int,
+        directoryReaders: Int,
+        directoryBufferSize: Int,
+        fixtureRoot: URL
+    ) async throws -> BenchmarkOperationMeasurement {
+        let budget = ScanTraversalBudget(permitCount: directoryReaders)
+        let startedAt = DispatchTime.now().uptimeNanoseconds
+        var results: [ScanResult] = []
+
+        try await withThrowingTaskGroup(of: ScanResult.self) { group in
+            var nextRoot = 0
+            var activeScans = 0
+            while nextRoot < roots.count || activeScans > 0 {
+                while activeScans < maximumConcurrentScans, nextRoot < roots.count {
+                    let root = roots[nextRoot]
+                    nextRoot += 1
+                    activeScans += 1
+                    group.addTask {
+                        try await DiskScanner(
+                            maximumParallelism: directoryReaders,
+                            directoryBufferSize: directoryBufferSize,
+                            traversalBudget: budget
+                        ).scan(url: root)
+                    }
+                }
+                if let result = try await group.next() {
+                    activeScans -= 1
+                    results.append(result)
+                }
+            }
+        }
+
+        let finishedAt = DispatchTime.now().uptimeNanoseconds
+        let scanDuration = seconds(from: startedAt, to: finishedAt)
+        let cancellationLatency = try await measureBatchCancellationLatency(
+            maximumConcurrentScans: maximumConcurrentScans,
+            directoryReaders: directoryReaders,
+            directoryBufferSize: directoryBufferSize,
+            fixtureRoot: fixtureRoot
+        )
+        return BenchmarkOperationMeasurement(
+            result: aggregateVolumeResults(results, at: fixtureRoot, duration: scanDuration),
+            maximumDirectoryReaders: budget.snapshot.maximumObservedReaders,
+            cancellationLatency: cancellationLatency,
+            scanDuration: scanDuration
+        )
+    }
+
+    private static func measureBatchCancellationLatency(
+        maximumConcurrentScans: Int,
+        directoryReaders: Int,
+        directoryBufferSize: Int,
+        fixtureRoot: URL
+    ) async throws -> TimeInterval {
+        let cancellationRoot = fixtureRoot.appendingPathComponent(
+            "Cancellation-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let rootCount = min(maximumConcurrentScans, 2)
+        let roots = (0..<rootCount).map {
+            cancellationRoot.appendingPathComponent("Root\($0)", isDirectory: true)
+        }
+        for root in roots {
+            try FileManager.default.createDirectory(
+                at: root.appendingPathComponent("Blocked", isDirectory: true),
+                withIntermediateDirectories: true
+            )
+        }
+        defer { try? FileManager.default.removeItem(at: cancellationRoot) }
+
+        let gate = BenchmarkCancellationGate()
+        let budget = ScanTraversalBudget(permitCount: directoryReaders)
+        let task = Task {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for root in roots {
+                    group.addTask {
+                        let scanner = DiskScanner(
+                            maximumParallelism: directoryReaders,
+                            directoryBufferSize: directoryBufferSize,
+                            stalledSubtreeTimeout: 30,
+                            shouldIsolateSubtree: { $0.lastPathComponent == "Blocked" },
+                            directoryReader: { url, keys in
+                                if url.lastPathComponent == "Blocked" {
+                                    gate.markStartedAndWait()
+                                    return []
+                                }
+                                return try FileManager.default.contentsOfDirectory(
+                                    at: url,
+                                    includingPropertiesForKeys: keys,
+                                    options: []
+                                )
+                            },
+                            traversalBudget: budget
+                        )
+                        _ = try await scanner.scan(url: root)
+                    }
+                }
+                try await group.waitForAll()
+            }
+        }
+
+        for _ in 0..<1_000 where gate.startedCount < rootCount {
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        guard gate.startedCount == rootCount else {
+            task.cancel()
+            gate.releaseAll()
+            throw BenchmarkFailure.fixtureCreation("Cancellation benchmark workers did not start")
+        }
+
+        let cancellationStartedAt = DispatchTime.now().uptimeNanoseconds
+        task.cancel()
+        do {
+            try await task.value
+        } catch {
+            // Cancellation is the expected terminal state.
+        }
+        let cancellationFinishedAt = DispatchTime.now().uptimeNanoseconds
+        gate.releaseAll()
+        try await Task.sleep(nanoseconds: 60_000_000)
+        return seconds(from: cancellationStartedAt, to: cancellationFinishedAt)
+    }
+
+    private static func aggregateVolumeResults(
+        _ results: [ScanResult],
+        at fixtureRoot: URL,
+        duration: TimeInterval
+    ) -> ScanResult {
+        let sortedResults = results.sorted { $0.root.url.path < $1.root.url.path }
+        let totalSize = sortedResults.reduce(Int64(0)) { $0 + $1.root.size }
+        let itemCount = sortedResults.reduce(0) { $0 + $1.itemsScanned }
+        let unreadableItems = sortedResults.reduce(0) { $0 + $1.unreadableItems }
+        var diagnostics = ScanDiagnosticSnapshot()
+        for result in sortedResults {
+            let value = result.diagnostics
+            diagnostics.syscallBatches += value.syscallBatches
+            diagnostics.fallbackLstatCalls += value.fallbackLstatCalls
+            diagnostics.bufferAllocations += value.bufferAllocations
+            diagnostics.directoryTasks += value.directoryTasks
+            diagnostics.directoryCount += value.directoryCount
+            diagnostics.retainedNodes += value.retainedNodes
+            diagnostics.discardedNodes += value.discardedNodes
+            diagnostics.progressMerges += value.progressMerges
+            diagnostics.progressEmissions += value.progressEmissions
+            diagnostics.providerTimeouts += value.providerTimeouts
+            diagnostics.abandonedWorkers += value.abandonedWorkers
+            diagnostics.retainedArenaNodeCount += value.retainedArenaNodeCount
+            diagnostics.arenaConstructionDurationSeconds += value.arenaConstructionDurationSeconds
+            diagnostics.rssBeforeArenaConstructionBytes = max(
+                diagnostics.rssBeforeArenaConstructionBytes,
+                value.rssBeforeArenaConstructionBytes
+            )
+            diagnostics.rssAfterArenaConstructionBytes = max(
+                diagnostics.rssAfterArenaConstructionBytes,
+                value.rssAfterArenaConstructionBytes
+            )
+        }
+        return ScanResult(
+            root: FileNode(
+                url: fixtureRoot,
+                name: "Synthetic Volumes",
+                size: totalSize,
+                isDirectory: true,
+                isReadable: true,
+                children: sortedResults.map(\.root),
+                itemCount: max(itemCount, 1),
+                directItemCount: sortedResults.count
+            ),
+            duration: duration,
+            itemsScanned: itemCount,
+            unreadableItems: unreadableItems,
             diagnostics: diagnostics
         )
     }
@@ -546,5 +830,29 @@ struct SpaceLensBenchmarks {
                 )
             )
         }
+    }
+}
+
+private final class BenchmarkCancellationGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private let semaphore = DispatchSemaphore(value: 0)
+    private var starts = 0
+
+    var startedCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return starts
+    }
+
+    func markStartedAndWait() {
+        lock.lock()
+        starts += 1
+        lock.unlock()
+        semaphore.wait()
+    }
+
+    func releaseAll() {
+        let count = max(startedCount, 1)
+        for _ in 0..<count { semaphore.signal() }
     }
 }

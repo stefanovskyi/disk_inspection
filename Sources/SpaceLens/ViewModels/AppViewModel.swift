@@ -18,6 +18,8 @@ final class AppViewModel {
     private(set) var scanningURL: URL?
     private(set) var scanStartedAt: Date?
     private(set) var pendingFullDiskScanURL: URL?
+    private(set) var pendingScanEverythingPlan: ScanEverythingPlan?
+    private(set) var scanEverythingState: ScanEverythingState = .idle
     private(set) var pendingRescanVolume: VolumeInfo?
     private(set) var sessionFolders: [SessionFolder] = []
     let aiCodingTools: AICodingToolsStore
@@ -26,16 +28,22 @@ final class AppViewModel {
     var errorMessage: String?
 
     private let scanner = DiskScanner()
+    private let scanEverythingRunner = ScanEverythingRunner()
     private let scanCoordinator: ScanCoordinator
     private let volumeDiscovery = VolumeDiscovery()
     private let fullDiskAccessChecker = FullDiskAccessChecker()
     private let previousScanStore = PreviousScanStore()
+    private let scanResultFinalizer = ScanResultFinalizer()
     private var scanSessionStore = ScanSessionStore()
     private var previousSummaries: [String: PreviousScanSummary] = [:]
     @ObservationIgnored private var scanTask: Task<Void, Never>?
+    @ObservationIgnored private var scanEverythingTask: Task<Void, Never>?
     @ObservationIgnored private var volumeRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var volumeFinalizationTasks: [UUID: Task<Void, Never>] = [:]
     private var scanFallbackResult: ScanResult?
     private var activeScanID = UUID()
+    private var activeScanEverythingID: UUID?
+    private var pendingFullDiskScanEverythingPlan: ScanEverythingPlan?
     @ObservationIgnored private var volumeObserverTokens: [NSObjectProtocol] = []
     @ObservationIgnored private var activationObserverToken: NSObjectProtocol?
 
@@ -52,7 +60,9 @@ final class AppViewModel {
 
     deinit {
         scanTask?.cancel()
+        scanEverythingTask?.cancel()
         volumeRefreshTask?.cancel()
+        volumeFinalizationTasks.values.forEach { $0.cancel() }
         for token in volumeObserverTokens {
             NSWorkspace.shared.notificationCenter.removeObserver(token)
         }
@@ -65,8 +75,42 @@ final class AppViewModel {
         navigationPath.last ?? (isScanning ? progress.previewRoot : nil)
     }
     var canNavigateBack: Bool { !isScanning && navigationPath.count > 1 }
-    var isRequestingFullDiskAccess: Bool { pendingFullDiskScanURL != nil }
+    var isRequestingFullDiskAccess: Bool {
+        pendingFullDiskScanURL != nil || pendingFullDiskScanEverythingPlan != nil
+    }
+    var isRequestingScanEverything: Bool { pendingScanEverythingPlan != nil }
     var isRequestingRescan: Bool { pendingRescanVolume != nil }
+    var isScanningEverything: Bool { scanEverythingState.isRunning }
+
+    var scanEverythingProgress: ScanEverythingProgress? {
+        scanEverythingState.progress
+    }
+
+    var scanEverythingStartedAt: Date? {
+        scanEverythingState.startedAt
+    }
+
+    var scanEverythingSummary: ScanEverythingSummary? {
+        scanEverythingState.summary
+    }
+
+    func isScanEverythingRunning(_ analysis: ScanEverythingAnalysis) -> Bool {
+        scanEverythingProgress?.operation(for: .analysis(analysis)) != nil
+    }
+
+    func isScanEverythingScanning(_ volume: VolumeInfo) -> Bool {
+        scanEverythingProgress?.operation(for: .volume(volume)) != nil
+    }
+
+    func scanEverythingOperation(
+        for analysis: ScanEverythingAnalysis
+    ) -> ScanEverythingOperationProgress? {
+        scanEverythingProgress?.operation(for: .analysis(analysis))
+    }
+
+    func scanEverythingOperation(for volume: VolumeInfo) -> ScanEverythingOperationProgress? {
+        scanEverythingProgress?.operation(for: .volume(volume))
+    }
 
     var estimatedScanFraction: Double? {
         guard isScanning, let scanningURL else { return nil }
@@ -130,10 +174,150 @@ final class AppViewModel {
         }
     }
 
+    func requestScanEverything() {
+        guard !isScanningEverything else { return }
+        let plan = ScanEverythingPlan(volumes: volumes)
+        guard !plan.steps.isEmpty else {
+            errorMessage = "SpaceLens did not find any work to scan."
+            return
+        }
+        pendingScanEverythingPlan = plan
+    }
+
+    func confirmScanEverything() {
+        guard let plan = pendingScanEverythingPlan else { return }
+        pendingScanEverythingPlan = nil
+        if plan.includesStartupVolume,
+           fullDiskAccessChecker.status(for: URL(fileURLWithPath: "/")) == .needsUserApproval {
+            pendingFullDiskScanEverythingPlan = plan
+            return
+        }
+        startScanEverything(plan)
+    }
+
+    func cancelScanEverythingConfirmation() {
+        pendingScanEverythingPlan = nil
+    }
+
+    func cancelScanEverything() {
+        guard let activeScanEverythingID else { return }
+        cancelScanEverything(expectedID: activeScanEverythingID)
+    }
+
+    private func startScanEverything(_ plan: ScanEverythingPlan) {
+        guard !plan.steps.isEmpty else { return }
+        let runID = UUID()
+        scanCoordinator.begin(.scanEverything, id: runID) { [weak self] in
+            self?.cancelScanEverything(expectedID: runID)
+        }
+        activeScanEverythingID = runID
+        pendingFullDiskScanEverythingPlan = nil
+        errorMessage = nil
+
+        let startedAt = Date()
+        scanEverythingState = .running(
+            startedAt: startedAt,
+            progress: ScanEverythingProgress(
+                totalSteps: plan.steps.count
+            )
+        )
+
+        let runner = scanEverythingRunner
+        let requests = ScanEverythingRequests(
+            aiCodingTools: .currentUser(projectRoots: aiCodingTools.projectRoots.map(\.url)),
+            aiModelsAndRuntimes: .currentUser(
+                additionalModelRoots: aiModelsAndRuntimes.additionalRoots.map(\.url)
+            ),
+            developerStorage: .currentUser(
+                projectContainers: developerStorage.projectContainers.map(\.url)
+            )
+        )
+
+        scanEverythingTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let summary = try await runner.run(
+                    plan: plan,
+                    requests: requests,
+                    onEvent: { [weak self] event in
+                        await self?.receiveScanEverythingEvent(event, runID: runID)
+                    }
+                )
+                guard !Task.isCancelled, activeScanEverythingID == runID else { return }
+                scanEverythingTask = nil
+                activeScanEverythingID = nil
+                scanEverythingState = .completed(summary)
+                scanCoordinator.finish(.scanEverything, id: runID)
+                if let firstFailure = summary.outcomes.first(where: {
+                    if case .failed = $0.status { return true }
+                    return false
+                }), case .failed(let message) = firstFailure.status {
+                    if summary.failureCount == 1 {
+                        errorMessage = "\(firstFailure.step.title) failed: \(message)"
+                    } else {
+                        errorMessage = "Scan Everything completed with \(summary.failureCount) problems. "
+                            + "First: \(firstFailure.step.title) failed: \(message)"
+                    }
+                }
+            } catch {
+                guard activeScanEverythingID == runID else { return }
+                scanEverythingTask = nil
+                activeScanEverythingID = nil
+                scanCoordinator.finish(.scanEverything, id: runID)
+                if error is CancellationError {
+                    scanEverythingState = .cancelled
+                } else {
+                    scanEverythingState = .cancelled
+                    errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func cancelScanEverything(expectedID: UUID) {
+        guard activeScanEverythingID == expectedID else { return }
+        activeScanEverythingID = nil
+        scanEverythingTask?.cancel()
+        scanEverythingTask = nil
+        scanEverythingState = .cancelled
+        scanCoordinator.finish(.scanEverything, id: expectedID)
+    }
+
+    private func receiveScanEverythingEvent(
+        _ event: ScanEverythingEvent,
+        runID: UUID
+    ) async {
+        guard activeScanEverythingID == runID,
+              case .running(let startedAt, let currentProgress) = scanEverythingState else { return }
+
+        switch event {
+        case .progress(let progress):
+            guard progress.overallFraction >= currentProgress.overallFraction else { return }
+            scanEverythingState = .running(startedAt: startedAt, progress: progress)
+
+        case .volumeCompleted(let volume, let result):
+            storeCompletedVolumeScan(result, for: volume, presentWhenSelected: true)
+
+        case .aiCodingToolsCompleted(let report):
+            aiCodingTools.installReport(report)
+
+        case .aiModelsAndRuntimesCompleted(let report):
+            aiModelsAndRuntimes.installReport(report)
+
+        case .developerStorageCompleted(let report):
+            developerStorage.installReport(report)
+
+        case .stepFailed:
+            break
+        }
+    }
+
     func selectVolume(_ volume: VolumeInfo) {
         selectedSection = .storage
         if presentStoredResult(for: volume) {
             return
+        } else if isScanningEverything {
+            showVolumeOverview(volume)
         } else {
             showVolumeOverview(volume)
             requestRescanConfirmation(for: volume)
@@ -147,6 +331,8 @@ final class AppViewModel {
         previousScanRoot = nil
         if cachedResult(for: folder) != nil {
             viewCachedResult(at: folder.url)
+        } else if isScanningEverything {
+            errorMessage = "Cancel Scan Everything before starting a folder scan."
         } else {
             scan(folder.url)
         }
@@ -238,6 +424,8 @@ final class AppViewModel {
         cancelScan()
         selectedSection = .storage
         pendingFullDiskScanURL = nil
+        pendingFullDiskScanEverythingPlan = nil
+        pendingScanEverythingPlan = nil
         pendingRescanVolume = nil
         result = nil
         navigationPath = []
@@ -289,6 +477,11 @@ final class AppViewModel {
     }
 
     func scanPendingDiskWithCurrentAccess() {
+        if let plan = pendingFullDiskScanEverythingPlan {
+            pendingFullDiskScanEverythingPlan = nil
+            startScanEverything(plan)
+            return
+        }
         guard let url = pendingFullDiskScanURL else { return }
         pendingFullDiskScanURL = nil
         startScan(url)
@@ -296,9 +489,16 @@ final class AppViewModel {
 
     func cancelPendingDiskScan() {
         pendingFullDiskScanURL = nil
+        pendingFullDiskScanEverythingPlan = nil
     }
 
     func resumePendingDiskScanIfAuthorized() {
+        if let plan = pendingFullDiskScanEverythingPlan,
+           fullDiskAccessChecker.status(for: URL(fileURLWithPath: "/")) == .granted {
+            pendingFullDiskScanEverythingPlan = nil
+            startScanEverything(plan)
+            return
+        }
         guard let url = pendingFullDiskScanURL,
               fullDiskAccessChecker.status(for: url) == .granted else { return }
         pendingFullDiskScanURL = nil
@@ -353,24 +553,14 @@ final class AppViewModel {
                 self.result = result
                 progress.previewRoot = nil
                 scanFallbackResult = nil
-                if volumes.contains(where: {
-                    $0.url.standardizedFileURL.path == url.standardizedFileURL.path
-                }) || sessionFolders.contains(where: {
-                    $0.url.standardizedFileURL.path == url.standardizedFileURL.path
-                }) {
-                    scanSessionStore.store(result, for: url)
-                }
                 if let volume = volumes.first(where: {
                     $0.url.standardizedFileURL.path == url.standardizedFileURL.path
                 }) {
-                    let summary = PreviousScanSummary(result: result, volume: volume)
-                    previousSummaries[summary.volumeIdentifier] = summary
-                    previousScanSummary = summary
-                    previousScanRoot = summary.makeRoot(at: volume.url)
-                    let store = previousScanStore
-                    Task.detached(priority: .utility) {
-                        try? store.store(summary)
-                    }
+                    storeCompletedVolumeScan(result, for: volume, presentWhenSelected: false)
+                } else if sessionFolders.contains(where: {
+                    $0.url.standardizedFileURL.path == url.standardizedFileURL.path
+                }) {
+                    scanSessionStore.store(result, for: url)
                 }
                 navigationPath = [result.root]
                 isScanning = false
@@ -396,6 +586,35 @@ final class AppViewModel {
                 }
                 errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    private func storeCompletedVolumeScan(
+        _ result: ScanResult,
+        for volume: VolumeInfo,
+        presentWhenSelected: Bool
+    ) {
+        scanSessionStore.store(result, for: volume.url)
+
+        let selectedPath = selectedVolumeOverview?.url.standardizedFileURL.path
+        if selectedPath == volume.url.standardizedFileURL.path,
+           presentWhenSelected, selectedSection == .storage, !isScanning {
+            self.result = result
+            navigationPath = [result.root]
+        }
+
+        let finalizationID = UUID()
+        let finalizer = scanResultFinalizer
+        volumeFinalizationTasks[finalizationID] = Task { [weak self] in
+            let summary = await finalizer.finalize(result, for: volume)
+            guard let self else { return }
+            previousSummaries[summary.volumeIdentifier] = summary
+            if selectedVolumeOverview?.url.standardizedFileURL.path
+                == volume.url.standardizedFileURL.path {
+                previousScanSummary = summary
+                previousScanRoot = summary.makeRoot(at: volume.url)
+            }
+            volumeFinalizationTasks[finalizationID] = nil
         }
     }
 
@@ -425,7 +644,8 @@ final class AppViewModel {
     }
 
     var canRefreshCurrentSection: Bool {
-        switch selectedSection {
+        guard !isScanningEverything else { return false }
+        return switch selectedSection {
         case .storage:
             result != nil && !isScanning
         case .aiCodingTools:
@@ -693,7 +913,7 @@ final class AppViewModel {
     }
 
     private func preferredStartupVolume(in volumes: [VolumeInfo]) -> VolumeInfo? {
-        volumes.first { $0.url.standardizedFileURL.path == "/" }
+        volumes.first(where: \.isStartupVolume)
             ?? volumes.first { !$0.isExternal && $0.isLocal }
             ?? volumes.first
     }

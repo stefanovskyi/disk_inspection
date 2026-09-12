@@ -49,6 +49,17 @@ final class AICodingToolsStore {
         selectedToolID = id
     }
 
+    func installReport(_ report: AICodingToolsReport) {
+        if activeAnalysisID != nil { cancelPreservingReport() }
+        state = .completed(report)
+        progress = AICodingToolsProgress()
+        startedAt = nil
+        if selectedToolID == nil
+            || !report.tools.contains(where: { $0.id == selectedToolID }) {
+            selectedToolID = report.rankedTools.first?.id
+        }
+    }
+
     func addProjectRoot(_ url: URL) {
         let root = AICodingProjectRoot(url: url)
         if !projectRoots.contains(root) {

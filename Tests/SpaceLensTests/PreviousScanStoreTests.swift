@@ -96,6 +96,24 @@ final class PreviousScanStoreTests: XCTestCase {
         XCTAssertTrue(PreviousScanStore(fileURL: archiveURL).load().isEmpty)
     }
 
+    func testFinalizerSerializesSimultaneousSummaryPersistence() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensFinalizer-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = PreviousScanStore(fileURL: directory.appendingPathComponent("summary.json"))
+        let finalizer = ScanResultFinalizer(store: store)
+        let firstVolume = makeVolume(uuid: "FIRST")
+        let secondVolume = makeVolume(uuid: "SECOND")
+        let result = makeResult(childCount: 12)
+
+        async let first = finalizer.finalize(result, for: firstVolume)
+        async let second = finalizer.finalize(result, for: secondVolume)
+        let summaries = await [first, second]
+        let restored = store.load()
+
+        XCTAssertEqual(Set(restored.keys), Set(summaries.map(\.volumeIdentifier)))
+    }
+
     private func makeVolume(uuid: String?) -> VolumeInfo {
         VolumeInfo(
             url: URL(fileURLWithPath: "/Volumes/Test", isDirectory: true),

@@ -26,6 +26,7 @@ struct SpaceLensSelfTests {
         try await cancellationStopsTheScannerWorker()
         try await stalledProviderSubtreeIsSkipped()
         try await scannerReadsSiblingDirectoriesInParallel()
+        try await multipleScannersShareTraversalBudget()
         try await aiCodingAnalyzerClassifiesBeforeCompaction()
         try await aiCodingAnalyzerDeduplicatesOverlappingRoots()
         try await aiCodingAnalyzerRetainsKnownNestedRoot()
@@ -38,6 +39,7 @@ struct SpaceLensSelfTests {
         try await developerStorageDiscoversSupportedProjectArtifacts()
         try await developerStorageDeduplicatesHardLinkedFiles()
         try scanCoordinatorKeepsReplacementActive()
+        try scanEverythingPlanPrioritizesStartupAndSkipsNetworkVolumes()
         try fullDiskAccessIsCheckedOnlyForWholeDiskScans()
         try elapsedTimeFormattingIsReadable()
         try scanScopeStaysInsideTheSelectedVolume()
@@ -50,7 +52,62 @@ struct SpaceLensSelfTests {
         try fileNodeEqualityUsesImmutableArenaIdentity()
         try sessionStoreRetainsAndReplacesVolumeResults()
         try previousScanSummaryIsBoundedAndPersistent()
-        print("SpaceLens self-tests passed (35/35)")
+        print("SpaceLens self-tests passed (37/37)")
+    }
+
+    private static func scanEverythingPlanPrioritizesStartupAndSkipsNetworkVolumes() throws {
+        func volume(
+            _ name: String,
+            path: String,
+            uuid: String,
+            isExternal: Bool = false,
+            isLocal: Bool = true
+        ) -> VolumeInfo {
+            VolumeInfo(
+                url: URL(fileURLWithPath: path, isDirectory: true),
+                name: name,
+                totalCapacity: 100,
+                availableCapacity: 50,
+                isExternal: isExternal,
+                isReadOnly: false,
+                uuid: uuid,
+                isLocal: isLocal
+            )
+        }
+
+        let startup = volume("Macintosh HD", path: "/", uuid: "startup")
+        let external = volume(
+            "External",
+            path: "/Volumes/External",
+            uuid: "external",
+            isExternal: true
+        )
+        let duplicate = volume(
+            "External duplicate",
+            path: "/Volumes/External Duplicate",
+            uuid: "external",
+            isExternal: true
+        )
+        let network = volume(
+            "Server",
+            path: "/Volumes/Server",
+            uuid: "network",
+            isExternal: true,
+            isLocal: false
+        )
+        let plan = ScanEverythingPlan(volumes: [external, network, duplicate, startup])
+
+        try expect(plan.volumes == [startup, external], "Scan Everything did not normalize volumes")
+        try expect(
+            plan.steps == [
+                .volume(startup),
+                .volume(external),
+                .analysis(.aiCodingTools),
+                .analysis(.aiModelsAndRuntimes),
+                .analysis(.developerStorage)
+            ],
+            "Scan Everything did not place all volumes before analyses"
+        )
     }
 
     private static func developerStorageDiscoversSupportedProjectArtifacts() async throws {
@@ -1267,6 +1324,36 @@ struct SpaceLensSelfTests {
             probe.maximumConcurrentReads >= 2,
             "Scanner reached only \(probe.maximumConcurrentReads) concurrent sibling directory read(s)"
         )
+    }
+
+    private static func multipleScannersShareTraversalBudget() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensSharedBudget-\(UUID().uuidString)", isDirectory: true)
+        let firstRoot = fixtureRoot.appendingPathComponent("First", isDirectory: true)
+        let secondRoot = fixtureRoot.appendingPathComponent("Second", isDirectory: true)
+        for root in [firstRoot, secondRoot] {
+            for index in 0..<3 {
+                let branch = root.appendingPathComponent("Branch\(index)", isDirectory: true)
+                try FileManager.default.createDirectory(at: branch, withIntermediateDirectories: true)
+                try Data([UInt8(index)]).write(to: branch.appendingPathComponent("payload.bin"))
+            }
+        }
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        let budget = ScanTraversalBudget(permitCount: 3)
+        let scanner = DiskScanner(maximumParallelism: 3, traversalBudget: budget)
+        async let first = scanner.scan(url: firstRoot)
+        async let second = scanner.scan(url: secondRoot)
+        let results = try await (first, second)
+        let snapshot = budget.snapshot
+
+        try expect(results.0.itemsScanned == 7, "First shared-budget scan lost items")
+        try expect(results.1.itemsScanned == 7, "Second shared-budget scan lost items")
+        try expect(
+            snapshot.maximumObservedReaders <= 3,
+            "Shared traversal budget exceeded its reader limit"
+        )
+        try expect(snapshot.activeReaders == 0, "Shared traversal permits leaked after success")
     }
 
     private static func scanScopeStaysInsideTheSelectedVolume() throws {

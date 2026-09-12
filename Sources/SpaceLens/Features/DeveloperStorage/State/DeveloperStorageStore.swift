@@ -47,6 +47,17 @@ final class DeveloperStorageStore {
         selectedEcosystemID = id
     }
 
+    func installReport(_ report: DeveloperStorageReport) {
+        if activeAnalysisID != nil { cancelPreservingReport() }
+        state = .completed(report)
+        progress = DeveloperStorageProgress()
+        startedAt = nil
+        if selectedEcosystemID == nil
+            || !report.ecosystems.contains(where: { $0.id == selectedEcosystemID }) {
+            selectedEcosystemID = report.rankedEcosystems.first?.id
+        }
+    }
+
     func addProjectContainer(_ url: URL) {
         let container = DeveloperProjectContainer(url: url)
         if !projectContainers.contains(container) {

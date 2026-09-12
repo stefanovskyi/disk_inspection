@@ -8,6 +8,8 @@ SpaceLens is a native macOS app that helps you understand what is using your dis
 ## Highlights
 
 - Scans internal disks, external disks, and selected folders
+- Identifies the current macOS startup disk among mounted devices
+- Scans every mounted local disk and runs all storage analyses from one coordinated action
 - Visualizes storage with an interactive, drill-down sunburst chart
 - Shows a ranked, accessible list alongside the chart
 - Finds installed app/CLI versions and analyzes local storage for Cursor, Claude Code, Codex, Google Antigravity, and OpenCode
@@ -36,6 +38,14 @@ You can also open `Package.swift` in Xcode and run the `SpaceLens` target.
 2. Start the scan. You can cancel it at any time.
 3. Click a folder in the chart or ranked list to open its storage map. Select an item and press Return for keyboard navigation.
 4. Use the breadcrumbs or Back button to move up the hierarchy.
+
+Use **Scan Everything** in the sidebar to scan every mounted local disk and run AI Coding Tools,
+AI Models, and Developer Storage analysis in one coordinated batch. SpaceLens scans up to two
+different physical disks at once under one bounded reader budget, keeps volumes on the same device
+serial, and runs the analyses sequentially after every disk finishes. It keeps each completed result
+immediately and continues past an unavailable disk or analysis error. Network volumes and folders
+added only to the regular folder list are not included. You can browse completed results while the
+remaining steps run or cancel the whole batch from the sidebar.
 
 Choose **AI Coding Tools** in the sidebar to identify conventional native app and CLI installations
 for Cursor, Claude Code, Codex, Google Antigravity, and OpenCode and measure their known storage

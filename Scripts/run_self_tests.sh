@@ -18,6 +18,7 @@ swiftc \
     "$project_dir/Sources/SpaceLens/Features/DeveloperStorage/Domain/DeveloperStorageReport.swift" \
     "$project_dir/Sources/SpaceLens/Models/PreviousScanSummary.swift" \
     "$project_dir/Sources/SpaceLens/Models/VolumeInfo.swift" \
+    "$project_dir/Sources/SpaceLens/Models/ScanEverything.swift" \
     "$project_dir/Sources/SpaceLens/Models/ScanSessionStore.swift" \
     "$project_dir/Sources/SpaceLens/Models/SunburstLayout.swift" \
     "$project_dir/Sources/SpaceLens/Support/AppLayoutMetrics.swift" \

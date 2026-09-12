@@ -49,6 +49,17 @@ final class AIModelsAndRuntimesStore {
         selectedRuntimeID = id
     }
 
+    func installReport(_ report: AIModelsAndRuntimesReport) {
+        if activeAnalysisID != nil { cancelPreservingReport() }
+        state = .completed(report)
+        progress = AIModelsProgress()
+        startedAt = nil
+        if selectedRuntimeID == nil
+            || !report.runtimes.contains(where: { $0.id == selectedRuntimeID }) {
+            selectedRuntimeID = report.rankedRuntimes.first?.id
+        }
+    }
+
     func addRoot(_ url: URL) {
         let root = AIModelsAdditionalRoot(url: url)
         if !additionalRoots.contains(root) {

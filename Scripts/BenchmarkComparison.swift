@@ -117,6 +117,7 @@ private struct BenchmarkInputReport: Decodable {
         let iterations: Int
         let selectedFixtures: [String]
         let scannerParallelism: Int
+        let volumeScanLimit: Int?
         let directoryBufferSizeBytes: Int
         let flatFileCount: Int
         let deepDirectoryCount: Int
@@ -424,13 +425,20 @@ enum BenchmarkReportComparator {
         compare("trace template", baseline.trace.template, candidate.trace.template)
 
         let fixtures = Set(baseline.configuration.selectedFixtures).union(candidate.configuration.selectedFixtures)
+        if fixtures.contains("multi-volume") {
+            compare(
+                "volume scan limit",
+                baseline.configuration.volumeScanLimit,
+                candidate.configuration.volumeScanLimit
+            )
+        }
         if fixtures.contains("flat") {
             compare("flat file count", baseline.configuration.flatFileCount, candidate.configuration.flatFileCount)
         }
         if fixtures.contains("deep") {
             compare("deep directory count", baseline.configuration.deepDirectoryCount, candidate.configuration.deepDirectoryCount)
         }
-        if fixtures.contains("mixed") {
+        if fixtures.contains("mixed") || fixtures.contains("multi-volume") {
             compare("mixed depth", baseline.configuration.mixedDepth, candidate.configuration.mixedDepth)
             compare("mixed fanout", baseline.configuration.mixedFanout, candidate.configuration.mixedFanout)
             compare(

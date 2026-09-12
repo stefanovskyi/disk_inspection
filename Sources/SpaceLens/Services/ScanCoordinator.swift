@@ -7,6 +7,7 @@ final class ScanCoordinator {
         case aiCodingTools
         case aiModelsAndRuntimes
         case developerStorage
+        case scanEverything
     }
 
     private struct Registration {

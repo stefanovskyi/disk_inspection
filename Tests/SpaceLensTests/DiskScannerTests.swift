@@ -312,8 +312,9 @@ final class DiskScannerTests: XCTestCase {
         try Data([0x41]).write(to: root.appendingPathComponent("file.bin"))
 
         let gate = CancellationGate()
+        let traversalBudget = ScanTraversalBudget(permitCount: 2)
         let scanTask = Task {
-            try await DiskScanner().scan(url: root) { progress in
+            try await DiskScanner(traversalBudget: traversalBudget).scan(url: root) { progress in
                 if progress.itemsScanned == 1 {
                     gate.markStartedAndWait()
                 }
@@ -333,6 +334,7 @@ final class DiskScannerTests: XCTestCase {
         } catch ScanFailure.cancelled {
             // Expected.
         }
+        XCTAssertEqual(traversalBudget.snapshot.activeReaders, 0)
     }
 
     func testLargeDirectoryUsesBoundedResultTree() async throws {
@@ -426,6 +428,7 @@ final class DiskScannerTests: XCTestCase {
 
         let gate = CancellationGate()
         let itemRecorder = ScannedItemRecorder()
+        let traversalBudget = ScanTraversalBudget(permitCount: 2)
         let scanner = DiskScanner(
             stalledSubtreeTimeout: 0.1,
             shouldIsolateSubtree: { $0.lastPathComponent == "Blocked" },
@@ -439,7 +442,8 @@ final class DiskScannerTests: XCTestCase {
                     includingPropertiesForKeys: keys,
                     options: []
                 )
-            }
+            },
+            traversalBudget: traversalBudget
         )
 
         let start = Date()
@@ -460,6 +464,7 @@ final class DiskScannerTests: XCTestCase {
         XCTAssertEqual(result.diagnostics.providerTimeouts, 1)
         XCTAssertEqual(result.diagnostics.abandonedWorkers, 1)
         XCTAssertEqual(itemRecorder.items.count, observedCountAtTimeout)
+        XCTAssertEqual(traversalBudget.snapshot.activeReaders, 0)
         XCTAssertEqual(
             result.root.children.first(where: { $0.name == "Blocked" })?.isReadable,
             false
@@ -494,6 +499,69 @@ final class DiskScannerTests: XCTestCase {
 
         _ = try await scanner.scan(url: root)
         XCTAssertGreaterThanOrEqual(probe.maximumConcurrentReads, 2)
+    }
+
+    func testMultipleScannersShareOneTraversalBudget() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensSharedBudget-\(UUID().uuidString)", isDirectory: true)
+        let firstRoot = fixtureRoot.appendingPathComponent("FirstRoot", isDirectory: true)
+        let secondRoot = fixtureRoot.appendingPathComponent("SecondRoot", isDirectory: true)
+        for root in [firstRoot, secondRoot] {
+            for index in 0..<4 {
+                let directory = root.appendingPathComponent("Branch\(index)", isDirectory: true)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try Data([UInt8(index)]).write(to: directory.appendingPathComponent("payload.bin"))
+            }
+        }
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        let budget = ScanTraversalBudget(permitCount: 3)
+        let scanner = DiskScanner(
+            maximumParallelism: 3,
+            shouldIsolateSubtree: { _ in false },
+            directoryReader: { url, keys in
+                if url.path != firstRoot.path, url.path != secondRoot.path {
+                    Thread.sleep(forTimeInterval: 0.01)
+                }
+                return try FileManager.default.contentsOfDirectory(
+                    at: url,
+                    includingPropertiesForKeys: keys,
+                    options: []
+                )
+            },
+            traversalBudget: budget
+        )
+
+        async let first = scanner.scan(url: firstRoot)
+        async let second = scanner.scan(url: secondRoot)
+        let (firstResult, secondResult) = try await (first, second)
+        let snapshot = budget.snapshot
+
+        XCTAssertEqual(firstResult.itemsScanned, 9)
+        XCTAssertEqual(secondResult.itemsScanned, 9)
+        XCTAssertLessThanOrEqual(snapshot.maximumObservedReaders, 3)
+        XCTAssertEqual(snapshot.activeReaders, 0)
+        XCTAssertEqual(snapshot.waitingRootReaders, 0)
+    }
+
+    func testSinglePermitBudgetContinuesTraversalInline() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensInlineBudget-\(UUID().uuidString)", isDirectory: true)
+        let nested = root.appendingPathComponent("Nested/Leaf", isDirectory: true)
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        try Data([0x41]).write(to: nested.appendingPathComponent("payload.bin"))
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let budget = ScanTraversalBudget(permitCount: 1)
+        let result = try await DiskScanner(
+            maximumParallelism: 1,
+            traversalBudget: budget
+        ).scan(url: root)
+        let snapshot = budget.snapshot
+
+        XCTAssertEqual(result.itemsScanned, 4)
+        XCTAssertEqual(snapshot.maximumObservedReaders, 1)
+        XCTAssertEqual(snapshot.activeReaders, 0)
     }
 
     func testDirectoryDiscoveryPrunesArtifactsAndReportsBudgetLimits() async throws {

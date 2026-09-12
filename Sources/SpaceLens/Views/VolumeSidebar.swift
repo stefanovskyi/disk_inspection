@@ -38,7 +38,8 @@ struct VolumeSidebar: View {
 
                             Spacer(minLength: 4)
 
-                            if model.aiCodingTools.isRunning {
+                            if model.aiCodingTools.isRunning
+                                || model.isScanEverythingRunning(.aiCodingTools) {
                                 ProgressView()
                                     .controlSize(.small)
                             } else if model.aiCodingTools.state.report != nil {
@@ -93,7 +94,8 @@ struct VolumeSidebar: View {
 
                             Spacer(minLength: 4)
 
-                            if model.aiModelsAndRuntimes.isRunning {
+                            if model.aiModelsAndRuntimes.isRunning
+                                || model.isScanEverythingRunning(.aiModelsAndRuntimes) {
                                 ProgressView()
                                     .controlSize(.small)
                             } else if model.aiModelsAndRuntimes.state.report != nil {
@@ -152,7 +154,8 @@ struct VolumeSidebar: View {
 
                             Spacer(minLength: 4)
 
-                            if model.developerStorage.isRunning {
+                            if model.developerStorage.isRunning
+                                || model.isScanEverythingRunning(.developerStorage) {
                                 ProgressView().controlSize(.small)
                             } else if model.developerStorage.state.report != nil {
                                 Image(systemName: "checkmark.circle.fill")
@@ -203,6 +206,8 @@ struct VolumeSidebar: View {
             Spacer(minLength: 0)
 
             VStack(spacing: 9) {
+                ScanEverythingControl()
+
                 Button {
                     if model.selectedSection == .developerStorage {
                         model.chooseDeveloperProjectsFolder()
@@ -217,8 +222,9 @@ struct VolumeSidebar: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.bordered)
                 .tint(theme.accent)
+                .disabled(model.isScanningEverything)
                 .help(
                     primaryFolderButtonHelp
                 )
@@ -249,6 +255,7 @@ struct VolumeSidebar: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(theme.secondaryText)
                 .accessibilityHint("Refreshes the list of mounted disks")
+                .disabled(model.isScanningEverything)
             }
             .padding(14)
             .background(theme.surface)
@@ -363,6 +370,9 @@ struct VolumeSidebar: View {
     }
 
     private var analysisSubtitle: String? {
+        if let operation = model.scanEverythingOperation(for: .aiCodingTools) {
+            return StorageFormatters.bytes(operation.mappedBytes)
+        }
         if model.aiCodingTools.isRunning {
             return StorageFormatters.bytes(model.aiCodingTools.progress.mappedBytes)
         }
@@ -373,6 +383,9 @@ struct VolumeSidebar: View {
     }
 
     private var aiModelsAnalysisSubtitle: String? {
+        if let operation = model.scanEverythingOperation(for: .aiModelsAndRuntimes) {
+            return StorageFormatters.bytes(operation.mappedBytes)
+        }
         if model.aiModelsAndRuntimes.isRunning {
             return StorageFormatters.bytes(model.aiModelsAndRuntimes.progress.mappedBytes)
         }
@@ -383,6 +396,9 @@ struct VolumeSidebar: View {
     }
 
     private var developerStorageSubtitle: String? {
+        if let operation = model.scanEverythingOperation(for: .developerStorage) {
+            return StorageFormatters.bytes(operation.mappedBytes)
+        }
         if model.developerStorage.isRunning {
             return StorageFormatters.bytes(model.developerStorage.progress.mappedBytes)
         }
@@ -415,6 +431,134 @@ struct VolumeSidebar: View {
     }
 }
 
+private struct ScanEverythingControl: View {
+    @Environment(AppViewModel.self) private var model
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = SpaceTheme(colorScheme: colorScheme)
+
+        if let progress = model.scanEverythingProgress,
+           let startedAt = model.scanEverythingStartedAt {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "internaldrive")
+                        .foregroundStyle(theme.accent)
+                        .accessibilityHidden(true)
+                    Text("Scanning Everything")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(theme.primaryText)
+                    Spacer(minLength: 4)
+                    Button {
+                        model.cancelScanEverything()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.secondaryText)
+                    .help("Cancel Scan Everything")
+                    .accessibilityLabel("Cancel Scan Everything")
+                }
+
+                Text(statusTitle(progress))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(theme.secondaryText)
+                    .lineLimit(1)
+
+                ProgressView(value: progress.overallFraction)
+                    .progressViewStyle(.linear)
+                    .tint(theme.accent)
+
+                HStack {
+                    Text("\(progress.completedStepIDs.count) of \(progress.totalSteps) complete")
+                    Spacer(minLength: 4)
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text(StorageFormatters.duration(context.date.timeIntervalSince(startedAt)))
+                    }
+                }
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(theme.tertiaryText)
+
+                if let location = currentLocation(progress),
+                   !location.isEmpty {
+                    Text(location)
+                        .font(.caption2)
+                        .foregroundStyle(theme.tertiaryText)
+                        .lineLimit(1)
+                }
+            }
+            .padding(11)
+            .background(theme.elevatedSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .help(currentPath(progress) ?? statusTitle(progress))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Scan Everything in progress")
+            .accessibilityValue(
+                "\(progress.completedStepIDs.count) of \(progress.totalSteps) complete, \(statusTitle(progress))"
+            )
+        } else {
+            Button {
+                model.requestScanEverything()
+            } label: {
+                Label(scanEverythingButtonTitle, systemImage: "play.circle.fill")
+                    .font(.callout.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(theme.accent)
+            .disabled(model.isDiscoveringVolumes)
+            .help("Scan every mounted local disk and run all storage analyses")
+            .accessibilityHint("Scans all mounted local disks and runs every analysis")
+
+            if let summary = model.scanEverythingSummary {
+                Text(summaryText(summary))
+                    .font(.caption2)
+                    .foregroundStyle(summary.failureCount == 0 ? theme.tertiaryText : theme.warning)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var scanEverythingButtonTitle: String {
+        model.scanEverythingSummary == nil ? "Scan Everything" : "Scan Everything Again"
+    }
+
+    private func statusTitle(_ progress: ScanEverythingProgress) -> String {
+        if progress.activeVolumeCount > 1 {
+            return "Scanning \(progress.activeVolumeCount) disks"
+        }
+        if let operation = progress.activeOperationsInStableOrder.first {
+            return operation.step.title
+        }
+        return progress.completedStepIDs.count == progress.totalSteps
+            ? "Finishing Scan Everything"
+            : "Preparing scans"
+    }
+
+    private func currentLocation(_ progress: ScanEverythingProgress) -> String? {
+        let operations = progress.activeOperationsInStableOrder
+        guard operations.count == 1 else { return nil }
+        return operations[0].currentLocationName
+    }
+
+    private func currentPath(_ progress: ScanEverythingProgress) -> String? {
+        let operations = progress.activeOperationsInStableOrder
+        guard operations.count == 1 else { return nil }
+        return operations[0].currentPath
+    }
+
+    private func summaryText(_ summary: ScanEverythingSummary) -> String {
+        let total = summary.outcomes.count
+        let duration = StorageFormatters.duration(summary.duration)
+        if summary.failureCount == 0 {
+            return "Completed \(total) of \(total) steps in \(duration)"
+        }
+        return "Completed \(summary.completedCount) of \(total) steps in \(duration)"
+    }
+}
+
 private struct VolumeRow: View {
     @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
@@ -425,6 +569,7 @@ private struct VolumeRow: View {
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
         let hasCachedResult = model.cachedResult(for: volume) != nil
+        let scanEverythingProgress = model.scanEverythingOperation(for: volume)
 
         VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 9) {
@@ -447,7 +592,8 @@ private struct VolumeRow: View {
 
                     Spacer(minLength: 4)
 
-                    if model.scanningURL?.standardizedFileURL == volume.url.standardizedFileURL {
+                    if model.scanningURL?.standardizedFileURL == volume.url.standardizedFileURL
+                        || scanEverythingProgress != nil {
                         ProgressView()
                             .controlSize(.small)
                     } else if hasCachedResult {
@@ -458,6 +604,26 @@ private struct VolumeRow: View {
                         Image(systemName: "chevron.right")
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(theme.tertiaryText)
+                    }
+                }
+
+                if let scanEverythingProgress {
+                    HStack(spacing: 6) {
+                        Text("\(scanEverythingProgress.itemsScanned.formatted()) items")
+                        Spacer(minLength: 4)
+                        Text(StorageFormatters.bytes(scanEverythingProgress.mappedBytes))
+                    }
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(theme.tertiaryText)
+
+                    if let fraction = scanEverythingProgress.fraction {
+                        ProgressView(value: fraction)
+                            .progressViewStyle(.linear)
+                            .tint(theme.accent)
+                    } else {
+                        ProgressView()
+                            .progressViewStyle(.linear)
+                            .tint(theme.accent)
                     }
                 }
 
@@ -494,9 +660,11 @@ private struct VolumeRow: View {
             if hasCachedResult {
                 Button("View Existing Result") { model.viewCachedResult(at: volume.url) }
                 Button("Rescan Disk") { model.scan(volume.url) }
+                    .disabled(model.isScanningEverything)
                 Divider()
             } else {
                 Button("Scan") { model.scan(volume.url) }
+                    .disabled(model.isScanningEverything)
                 Divider()
             }
             Button("Show in Finder") {
@@ -513,6 +681,7 @@ private struct VolumeRow: View {
         }
         .accessibilityLabel(
             "\(volume.name), \(StorageFormatters.percent(volume.usedFraction)) used"
+                + (volume.isStartupVolume ? ", startup disk" : "")
                 + (showsLocation ? ", mounted at \(volume.url.path)" : "")
                 + (hasCachedResult ? ", session scan available" : "")
         )
@@ -523,7 +692,9 @@ private struct VolumeRow: View {
 
     private var volumeSubtitle: String {
         let capacity = "\(StorageFormatters.bytes(volume.usedCapacity)) of \(StorageFormatters.bytes(volume.totalCapacity))"
-        return showsLocation ? "\(capacity) · \(volume.url.path)" : capacity
+        let startupLabel = volume.isStartupVolume ? "Startup disk" : nil
+        let location = showsLocation ? volume.url.path : nil
+        return ([startupLabel, capacity, location].compactMap { $0 }).joined(separator: " · ")
     }
 }
 
@@ -614,8 +785,10 @@ private struct SessionFolderRow: View {
             if cachedResult != nil {
                 Button("View Existing Result") { model.viewCachedResult(at: folder.url) }
                 Button("Rescan Folder") { model.scan(folder.url) }
+                    .disabled(model.isScanningEverything)
             } else {
                 Button("Scan Folder") { model.scan(folder.url) }
+                    .disabled(model.isScanningEverything)
             }
             Divider()
             Button("Show in Finder") {

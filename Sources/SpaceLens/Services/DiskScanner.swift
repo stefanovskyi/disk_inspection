@@ -68,7 +68,7 @@ struct DirectoryDiscoveryScanResult: Sendable {
     let wasTruncated: Bool
 }
 
-struct DiskScanner {
+struct DiskScanner: Sendable {
     typealias ProgressHandler = @Sendable (ScanProgress) -> Void
     typealias ItemHandler = @Sendable (ScannedFileItem) -> Void
     typealias SubtreeIsolationPredicate = @Sendable (URL) -> Bool
@@ -83,19 +83,24 @@ struct DiskScanner {
         stalledSubtreeTimeout: TimeInterval = 5,
         shouldIsolateSubtree: SubtreeIsolationPredicate? = nil,
         directoryReader: DirectoryReader? = nil,
-        excludedURLs: [URL] = []
+        excludedURLs: [URL] = [],
+        traversalBudget: ScanTraversalBudget? = nil
     ) {
         let suggestedParallelism = max(2, min(ProcessInfo.processInfo.activeProcessorCount, 8))
+        let maximumParallelism = max(maximumParallelism ?? suggestedParallelism, 1)
         precondition(directoryBufferSize >= BulkDirectoryReader.minimumBufferSize)
         configuration = ScannerConfiguration(
-            maximumParallelism: max(maximumParallelism ?? suggestedParallelism, 1),
+            maximumParallelism: maximumParallelism,
             directoryBufferSize: directoryBufferSize,
             stalledSubtreeTimeout: stalledSubtreeTimeout,
             shouldIsolateSubtree: shouldIsolateSubtree ?? { url in
                 Self.shouldIsolateProtectedSubtree(url)
             },
             directoryReader: directoryReader,
-            excludedPaths: Set(excludedURLs.map { $0.standardizedFileURL.path })
+            excludedPaths: Set(excludedURLs.map { $0.standardizedFileURL.path }),
+            traversalBudget: traversalBudget ?? ScanTraversalBudget(
+                permitCount: maximumParallelism
+            )
         )
     }
 
@@ -162,6 +167,8 @@ struct DiskScanner {
         let configuration = configuration
         let standardizedURL = url.standardizedFileURL
         let worker = Task.detached(priority: .userInitiated) {
+            try await configuration.traversalBudget.acquireRoot()
+            defer { configuration.traversalBudget.release() }
             let signposter = SpaceLensSignposts.scan
             let signpostID = signposter.makeSignpostID()
             let signpostState = signposter.beginInterval(
@@ -222,7 +229,7 @@ struct DiskScanner {
                     session: session,
                     activityMonitor: nil,
                     isInsideIsolatedSubtree: false,
-                    ownsWorkerPermit: false,
+                    ownsWorkerPermit: true,
                     onProgress: onProgress
                 ) else {
                     throw ScanFailure.inaccessible(standardizedURL)
@@ -548,7 +555,7 @@ struct DiskScanner {
                 let entryMetadata = pendingDirectory.metadata
                 let entryURL = entry.url(relativeTo: url)
 
-                var acquiredPermit = session.parallelism.tryAcquire()
+                var acquiredPermit = session.parallelism.tryAcquireWorker()
                 while !acquiredPermit, !ownsWorkerPermit, pendingTaskCount > 0 {
                     if let completedChild = try await group.next() {
                         pendingTaskCount -= 1
@@ -566,7 +573,7 @@ struct DiskScanner {
                             )
                         }
                     }
-                    acquiredPermit = session.parallelism.tryAcquire()
+                    acquiredPermit = session.parallelism.tryAcquireWorker()
                 }
 
                 if acquiredPermit {
@@ -914,7 +921,7 @@ private final class ScanSession: @unchecked Sendable {
     let scope: ScanScope
     let configuration: ScannerConfiguration
     let visitedDirectories = VisitedDirectoryRegistry()
-    let parallelism: ScanParallelismLimiter
+    let parallelism: ScanTraversalBudget
     let directoryBuffers: BulkDirectoryBufferPool
     let diagnostics = ScanDiagnosticCounters()
 
@@ -951,9 +958,7 @@ private final class ScanSession: @unchecked Sendable {
         self.pruningDirectoryNames = pruningDirectoryNames
         self.discoveryLimiter = discoveryLimiter
         self.itemHandler = itemHandler
-        parallelism = ScanParallelismLimiter(
-            permitCount: configuration.maximumParallelism
-        )
+        parallelism = configuration.traversalBudget
         directoryBuffers = BulkDirectoryBufferPool(
             capacity: configuration.maximumParallelism,
             bufferSize: configuration.directoryBufferSize
@@ -1342,26 +1347,108 @@ private struct ScanProgressBatch {
     }
 }
 
-private final class ScanParallelismLimiter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var availablePermits: Int
-
-    init(permitCount: Int) {
-        availablePermits = permitCount
+final class ScanTraversalBudget: @unchecked Sendable {
+    struct Snapshot: Equatable, Sendable {
+        let activeReaders: Int
+        let maximumObservedReaders: Int
+        let waitingRootReaders: Int
+        let permitCount: Int
     }
 
-    func tryAcquire() -> Bool {
+    private let lock = NSLock()
+    let permitCount: Int
+    private var availablePermits: Int
+    private var waitingRootReaders = 0
+    private var maximumObservedReaders = 0
+    private let activityObserver: (@Sendable (Int) -> Void)?
+
+    init(
+        permitCount: Int,
+        activityObserver: (@Sendable (Int) -> Void)? = nil
+    ) {
+        precondition(permitCount > 0)
+        self.permitCount = permitCount
+        availablePermits = permitCount
+        self.activityObserver = activityObserver
+    }
+
+    func acquireRoot() async throws {
+        registerRootWaiter()
+
+        do {
+            while true {
+                try Task.checkCancellation()
+                if claimRootPermit() { return }
+                try await Task.sleep(nanoseconds: 1_000_000)
+            }
+        } catch {
+            unregisterRootWaiter()
+            throw error
+        }
+    }
+
+    func tryAcquireWorker() -> Bool {
         lock.lock()
-        defer { lock.unlock() }
-        guard availablePermits > 0 else { return false }
-        availablePermits -= 1
+        guard availablePermits > 0, waitingRootReaders == 0 else {
+            lock.unlock()
+            return false
+        }
+        let activeReaders = claimPermitWithoutLocking()
+        lock.unlock()
+        activityObserver?(activeReaders)
         return true
     }
 
     func release() {
         lock.lock()
+        precondition(availablePermits < permitCount, "Released an unowned scan traversal permit")
         availablePermits += 1
+        let activeReaders = permitCount - availablePermits
         lock.unlock()
+        activityObserver?(activeReaders)
+    }
+
+    var snapshot: Snapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        return Snapshot(
+            activeReaders: permitCount - availablePermits,
+            maximumObservedReaders: maximumObservedReaders,
+            waitingRootReaders: waitingRootReaders,
+            permitCount: permitCount
+        )
+    }
+
+    private func claimRootPermit() -> Bool {
+        lock.lock()
+        guard availablePermits > 0 else {
+            lock.unlock()
+            return false
+        }
+        waitingRootReaders -= 1
+        let activeReaders = claimPermitWithoutLocking()
+        lock.unlock()
+        activityObserver?(activeReaders)
+        return true
+    }
+
+    private func registerRootWaiter() {
+        lock.lock()
+        waitingRootReaders += 1
+        lock.unlock()
+    }
+
+    private func unregisterRootWaiter() {
+        lock.lock()
+        waitingRootReaders -= 1
+        lock.unlock()
+    }
+
+    private func claimPermitWithoutLocking() -> Int {
+        availablePermits -= 1
+        let activeReaders = permitCount - availablePermits
+        maximumObservedReaders = max(maximumObservedReaders, activeReaders)
+        return activeReaders
     }
 }
 
@@ -1383,6 +1470,7 @@ private struct ScannerConfiguration: @unchecked Sendable {
     let shouldIsolateSubtree: DiskScanner.SubtreeIsolationPredicate
     let directoryReader: DiskScanner.DirectoryReader?
     let excludedPaths: Set<String>
+    let traversalBudget: ScanTraversalBudget
 }
 
 private final class ScanActivityMonitor: @unchecked Sendable {
