@@ -78,6 +78,9 @@ final class AppViewModel {
     var isRequestingFullDiskAccess: Bool {
         pendingFullDiskScanURL != nil || pendingFullDiskScanEverythingPlan != nil
     }
+    var isRequestingFullDiskAccessForScanEverything: Bool {
+        pendingFullDiskScanEverythingPlan != nil
+    }
     var isRequestingScanEverything: Bool { pendingScanEverythingPlan != nil }
     var isRequestingRescan: Bool { pendingRescanVolume != nil }
     var isScanningEverything: Bool { scanEverythingState.isRunning }
@@ -181,14 +184,17 @@ final class AppViewModel {
             errorMessage = "SpaceLens did not find any work to scan."
             return
         }
+        if fullDiskAccessChecker.status(for: plan) == .needsUserApproval {
+            pendingFullDiskScanEverythingPlan = plan
+            return
+        }
         pendingScanEverythingPlan = plan
     }
 
     func confirmScanEverything() {
         guard let plan = pendingScanEverythingPlan else { return }
         pendingScanEverythingPlan = nil
-        if plan.includesStartupVolume,
-           fullDiskAccessChecker.status(for: URL(fileURLWithPath: "/")) == .needsUserApproval {
+        if fullDiskAccessChecker.status(for: plan) == .needsUserApproval {
             pendingFullDiskScanEverythingPlan = plan
             return
         }
@@ -477,11 +483,7 @@ final class AppViewModel {
     }
 
     func scanPendingDiskWithCurrentAccess() {
-        if let plan = pendingFullDiskScanEverythingPlan {
-            pendingFullDiskScanEverythingPlan = nil
-            startScanEverything(plan)
-            return
-        }
+        guard pendingFullDiskScanEverythingPlan == nil else { return }
         guard let url = pendingFullDiskScanURL else { return }
         pendingFullDiskScanURL = nil
         startScan(url)
@@ -494,9 +496,9 @@ final class AppViewModel {
 
     func resumePendingDiskScanIfAuthorized() {
         if let plan = pendingFullDiskScanEverythingPlan,
-           fullDiskAccessChecker.status(for: URL(fileURLWithPath: "/")) == .granted {
+           fullDiskAccessChecker.status(for: plan) == .granted {
             pendingFullDiskScanEverythingPlan = nil
-            startScanEverything(plan)
+            pendingScanEverythingPlan = plan
             return
         }
         guard let url = pendingFullDiskScanURL,

@@ -389,6 +389,10 @@ private struct FullDiskAccessPrompt: View {
     @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
 
+    private var isScanEverythingRequest: Bool {
+        model.isRequestingFullDiskAccessForScanEverything
+    }
+
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
 
@@ -399,12 +403,13 @@ private struct FullDiskAccessPrompt: View {
                     .accessibilityHidden(true)
 
                 VStack(spacing: 7) {
-                    Text("Full Disk Access recommended")
+                    Text(isScanEverythingRequest ? "Full Disk Access required" : "Full Disk Access recommended")
                         .font(.title3.weight(.semibold))
 
                     Text(
-                        "For a complete storage map, enable SpaceLens in System Settings. "
-                            + "Without Full Disk Access, macOS will hide protected folders and the totals will be incomplete."
+                        isScanEverythingRequest
+                            ? "Scan Everything needs Full Disk Access before it begins. Enable SpaceLens once in System Settings to prevent separate permission prompts for protected folders."
+                            : "For a complete storage map, enable SpaceLens in System Settings. Without Full Disk Access, macOS will hide protected folders and the totals will be incomplete."
                     )
                     .font(.callout)
                     .foregroundStyle(theme.secondaryText)
@@ -438,10 +443,12 @@ private struct FullDiskAccessPrompt: View {
                         }
                         .keyboardShortcut(.cancelAction)
 
-                        Button("Scan with Current Access") {
-                            model.scanPendingDiskWithCurrentAccess()
+                        if !isScanEverythingRequest {
+                            Button("Scan with Current Access") {
+                                model.scanPendingDiskWithCurrentAccess()
+                            }
+                            .keyboardShortcut(.defaultAction)
                         }
-                        .keyboardShortcut(.defaultAction)
                     }
                     .buttonStyle(.bordered)
                 }
@@ -452,7 +459,11 @@ private struct FullDiskAccessPrompt: View {
         .frame(width: 470)
         .background(theme.background)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Full Disk Access recommended before scanning")
+        .accessibilityLabel(
+            isScanEverythingRequest
+                ? "Full Disk Access required before Scan Everything"
+                : "Full Disk Access recommended before scanning"
+        )
     }
 }
 

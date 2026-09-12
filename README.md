@@ -99,7 +99,7 @@ For very large folders, less significant entries are combined under **Smaller it
 
 ## Full Disk Access
 
-macOS restricts access to some folders. SpaceLens explains how to grant Full Disk Access before scanning the startup disk; you can open System Settings, cancel, or continue with the access currently available. Folder scans selected through the macOS picker do not require broad access.
+macOS restricts access to some folders. SpaceLens checks access before **Scan Everything** and requires you to enable Full Disk Access in System Settings before that broad scan begins, preventing a sequence of separate protected-folder prompts. A standalone startup-disk scan still lets you open System Settings, cancel, or explicitly continue with the access currently available. Folder scans selected through the macOS picker do not require broad access.
 
 If a locally built app asks for permission again after rebuilding, see [Development](DEVELOPMENT.md#stable-permissions-for-local-builds).
 

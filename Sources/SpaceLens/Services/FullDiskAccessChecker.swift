@@ -13,7 +13,7 @@ struct FullDiskAccessChecker: Sendable {
 
     init(accessProbe: AccessProbe? = nil) {
         self.accessProbe = accessProbe ?? {
-            Self.canReadProtectedSystemDatabase()
+            Self.canReadProtectedUserDatabase()
         }
     }
 
@@ -21,12 +21,29 @@ struct FullDiskAccessChecker: Sendable {
         guard scanURL.standardizedFileURL.path == "/" else {
             return .notRequired
         }
-        return accessProbe() ? .granted : .needsUserApproval
+        return currentStatus
     }
 
-    private static func canReadProtectedSystemDatabase() -> Bool {
-        let path = "/Library/Application Support/com.apple.TCC/TCC.db"
-        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
+    func status(for plan: ScanEverythingPlan) -> FullDiskAccessStatus {
+        guard !plan.steps.isEmpty else { return .notRequired }
+        return currentStatus
+    }
+
+    private var currentStatus: FullDiskAccessStatus {
+        accessProbe() ? .granted : .needsUserApproval
+    }
+
+    static func protectedDatabaseURL(homeDirectory: URL) -> URL {
+        homeDirectory
+            .appendingPathComponent("Library/Application Support/com.apple.TCC", isDirectory: true)
+            .appendingPathComponent("TCC.db", isDirectory: false)
+    }
+
+    private static func canReadProtectedUserDatabase() -> Bool {
+        let databaseURL = protectedDatabaseURL(
+            homeDirectory: FileManager.default.homeDirectoryForCurrentUser
+        )
+        guard let handle = FileHandle(forReadingAtPath: databaseURL.path) else { return false }
         try? handle.close()
         return true
     }

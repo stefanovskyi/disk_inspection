@@ -1393,6 +1393,27 @@ struct SpaceLensSelfTests {
     private static func fullDiskAccessIsCheckedOnlyForWholeDiskScans() throws {
         let denied = FullDiskAccessChecker(accessProbe: { false })
         let granted = FullDiskAccessChecker(accessProbe: { true })
+        let exampleHome = URL(fileURLWithPath: "/Users/example", isDirectory: true)
+        let startup = VolumeInfo(
+            url: URL(fileURLWithPath: "/", isDirectory: true),
+            name: "Macintosh HD",
+            totalCapacity: 100,
+            availableCapacity: 50,
+            isExternal: false,
+            isReadOnly: false,
+            uuid: "startup",
+            isLocal: true
+        )
+        let external = VolumeInfo(
+            url: URL(fileURLWithPath: "/Volumes/External", isDirectory: true),
+            name: "External",
+            totalCapacity: 100,
+            availableCapacity: 50,
+            isExternal: true,
+            isReadOnly: false,
+            uuid: "external",
+            isLocal: true
+        )
 
         try expect(
             denied.status(for: URL(fileURLWithPath: "/")) == .needsUserApproval,
@@ -1405,6 +1426,23 @@ struct SpaceLensSelfTests {
         try expect(
             denied.status(for: URL(fileURLWithPath: "/Users/example/Documents")) == .notRequired,
             "Folder scan unnecessarily requested Full Disk Access"
+        )
+        try expect(
+            denied.status(for: ScanEverythingPlan(volumes: [startup])) == .needsUserApproval,
+            "Scan Everything did not gate its startup-disk work before scanning"
+        )
+        try expect(
+            denied.status(for: ScanEverythingPlan(volumes: [external])) == .needsUserApproval,
+            "Scan Everything did not gate an external-only plan before broad filesystem access"
+        )
+        try expect(
+            granted.status(for: ScanEverythingPlan(volumes: [startup])) == .granted,
+            "Scan Everything ignored existing Full Disk Access"
+        )
+        try expect(
+            FullDiskAccessChecker.protectedDatabaseURL(homeDirectory: exampleHome).path
+                == "/Users/example/Library/Application Support/com.apple.TCC/TCC.db",
+            "Full Disk Access used a system probe that can be readable without authorization"
         )
     }
 
