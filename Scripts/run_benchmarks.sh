@@ -69,6 +69,8 @@ swiftc \
     -module-cache-path "$temporary_dir/module-cache" \
     "$project_dir/Sources/SpaceLens/Models/FileNode.swift" \
     "$project_dir/Sources/SpaceLens/Models/SunburstLayout.swift" \
+    "$project_dir/Sources/SpaceLens/Models/VolumeInfo.swift" \
+    "$project_dir/Sources/SpaceLens/Models/ScanEverything.swift" \
     "$project_dir/Sources/SpaceLens/Support/PerformanceSignposts.swift" \
     "$project_dir/Sources/SpaceLens/Services/BulkDirectoryReader.swift" \
     "$project_dir/Sources/SpaceLens/Services/DiskScanner.swift" \

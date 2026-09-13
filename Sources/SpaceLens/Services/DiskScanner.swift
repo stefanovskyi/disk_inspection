@@ -479,12 +479,15 @@ struct DiskScanner: Sendable {
                 size: entryMetadata.isReadable ? entryMetadata.size : 0,
                 path: { entry.url(relativeTo: url).path }
             ) else { throw CancellationError() }
-            let entryURL = entry.url(relativeTo: url)
             guard session.recordObservation(
-                ScannedFileItem(url: entryURL, metadata: entryMetadata),
+                ScannedFileItem(
+                    url: entry.url(relativeTo: url),
+                    metadata: entryMetadata
+                ),
                 activityMonitor: activityMonitor
             ) else { throw CancellationError() }
             if !entryMetadata.isReadable {
+                let entryURL = entry.url(relativeTo: url)
                 progressBatch.flush(path: { entryURL.path })
                 session.recordUnreadable(
                     path: { entryURL.path },
@@ -502,7 +505,7 @@ struct DiskScanner: Sendable {
                     size: size,
                     isDirectory: entryMetadata.kind == .directory,
                     isReadable: entryMetadata.isReadable,
-                    isPriority: session.shouldPrioritize(entryURL)
+                    isPriority: session.shouldPrioritize(entry.url(relativeTo: url))
                 )
             )
         }
@@ -961,12 +964,14 @@ private final class ScanSession: @unchecked Sendable {
         parallelism = configuration.traversalBudget
         directoryBuffers = BulkDirectoryBufferPool(
             capacity: configuration.maximumParallelism,
-            bufferSize: configuration.directoryBufferSize
+            bufferSize: configuration.directoryBufferSize,
+            includeModificationDate: itemHandler != nil
         )
     }
 
-    func shouldPrioritize(_ url: URL) -> Bool {
-        let path = url.standardizedFileURL.path
+    func shouldPrioritize(_ url: @autoclosure () -> URL) -> Bool {
+        guard !priorityPaths.isEmpty else { return false }
+        let path = url().standardizedFileURL.path
         return priorityPaths.contains { priorityPath in
             priorityPath == path || priorityPath.hasPrefix(path == "/" ? "/" : path + "/")
         }
@@ -980,16 +985,16 @@ private final class ScanSession: @unchecked Sendable {
 
     @discardableResult
     func recordObservation(
-        _ item: ScannedFileItem,
+        _ item: @autoclosure () -> ScannedFileItem,
         activityMonitor: ScanActivityMonitor?
     ) -> Bool {
         guard let itemHandler else { return activityMonitor?.isActive != false }
         if let activityMonitor {
             return activityMonitor.performIfActive {
-                itemHandler(item)
+                itemHandler(item())
             }
         }
-        itemHandler(item)
+        itemHandler(item())
         return true
     }
 

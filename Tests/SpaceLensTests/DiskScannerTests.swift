@@ -31,6 +31,26 @@ final class DiskScannerTests: XCTestCase {
         XCTAssertTrue(metadataByName.values.allSatisfy { $0.identity != nil })
     }
 
+    func testBulkDirectoryReaderCanSkipModificationDates() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensBulkReaderNoDates-\(UUID().uuidString)", isDirectory: true)
+        let file = root.appendingPathComponent("file.bin")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(repeating: 0x41, count: 4_096).write(to: file)
+
+        let pool = BulkDirectoryBufferPool(
+            capacity: 1,
+            bufferSize: BulkDirectoryReader.defaultBufferSize,
+            includeModificationDate: false
+        )
+        let metadata = try XCTUnwrap(BulkDirectoryReader.contents(of: root, using: pool).first?.metadata)
+
+        XCTAssertNil(metadata.modificationDate)
+        XCTAssertGreaterThan(metadata.size, 0)
+        XCTAssertNotNil(metadata.identity)
+    }
+
     func testBulkDirectoryReaderReusesBoundedBuffersAtSupportedSizes() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("SpaceLensBufferPool-\(UUID().uuidString)", isDirectory: true)

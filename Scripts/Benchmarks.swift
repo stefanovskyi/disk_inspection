@@ -47,7 +47,8 @@ struct BenchmarkConfiguration {
 
     static func load(environment: [String: String] = ProcessInfo.processInfo.environment) throws -> Self {
         let knownFixtures = Set([
-            "flat", "deep", "mixed", "provider", "multi-volume", "external", "full-disk"
+            "flat", "flat-observer", "deep", "mixed", "provider", "multi-volume", "external",
+            "full-disk"
         ])
         let defaultFixtures = Set(["flat", "deep", "mixed", "provider", "multi-volume"])
         let requestedFixtures = environment["SPACELENS_BENCHMARK_FIXTURES"]
@@ -239,18 +240,31 @@ struct SpaceLensBenchmarks {
 
         var measurements: [BenchmarkMeasurement] = []
 
-        if configuration.selectedFixtures.contains("flat") {
+        if configuration.selectedFixtures.contains("flat")
+            || configuration.selectedFixtures.contains("flat-observer") {
             let root = fixtureRoot.appendingPathComponent("Flat", isDirectory: true)
             print("Preparing flat fixture (\(configuration.flatFileCount) files)...")
             try createFlatFixture(at: root, fileCount: configuration.flatFileCount)
-            measurements.append(
-                try await measure(name: "flat", iterations: configuration.iterations) {
-                    try await DiskScanner(
-                        maximumParallelism: configuration.scannerParallelism,
-                        directoryBufferSize: configuration.directoryBufferSize
-                    ).scan(url: root)
-                }
-            )
+            if configuration.selectedFixtures.contains("flat") {
+                measurements.append(
+                    try await measure(name: "flat", iterations: configuration.iterations) {
+                        try await DiskScanner(
+                            maximumParallelism: configuration.scannerParallelism,
+                            directoryBufferSize: configuration.directoryBufferSize
+                        ).scan(url: root)
+                    }
+                )
+            }
+            if configuration.selectedFixtures.contains("flat-observer") {
+                measurements.append(
+                    try await measure(name: "flat-observer", iterations: configuration.iterations) {
+                        try await DiskScanner(
+                            maximumParallelism: configuration.scannerParallelism,
+                            directoryBufferSize: configuration.directoryBufferSize
+                        ).scan(url: root, onItem: { _ in })
+                    }
+                )
+            }
         }
 
         if configuration.selectedFixtures.contains("deep") {

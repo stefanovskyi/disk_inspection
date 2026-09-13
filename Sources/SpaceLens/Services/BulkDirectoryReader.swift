@@ -434,17 +434,23 @@ final class ScanDiagnosticCounters: @unchecked Sendable {
 final class BulkDirectoryBufferPool: @unchecked Sendable {
     let capacity: Int
     let bufferSize: Int
+    let includeModificationDate: Bool
 
     private let lock = NSLock()
     private var availableBuffers: [BulkDirectoryBuffer] = []
     private var pooledAllocations = 0
     private var totalAllocations = 0
 
-    init(capacity: Int, bufferSize: Int) {
+    init(
+        capacity: Int,
+        bufferSize: Int,
+        includeModificationDate: Bool = true
+    ) {
         precondition(capacity > 0)
         precondition(bufferSize >= BulkDirectoryReader.minimumBufferSize)
         self.capacity = capacity
         self.bufferSize = bufferSize
+        self.includeModificationDate = includeModificationDate
     }
 
     var pooledBufferCount: Int {
@@ -486,7 +492,10 @@ final class BulkDirectoryBufferPool: @unchecked Sendable {
         lock.unlock()
 
         return BufferLease(
-            buffer: BulkDirectoryBuffer(byteCount: bufferSize),
+            buffer: BulkDirectoryBuffer(
+                byteCount: bufferSize,
+                includeModificationDate: includeModificationDate
+            ),
             isPooled: isPooled
         )
     }
@@ -509,7 +518,7 @@ private final class BulkDirectoryBuffer {
     private let byteCount: Int
     private var requestedAttributes: attrlist
 
-    init(byteCount: Int) {
+    init(byteCount: Int, includeModificationDate: Bool) {
         self.byteCount = byteCount
         bytes = UnsafeMutableRawPointer.allocate(
             byteCount: byteCount,
@@ -522,9 +531,11 @@ private final class BulkDirectoryBuffer {
             | UInt32(ATTR_CMN_NAME)
             | UInt32(ATTR_CMN_DEVID)
             | UInt32(ATTR_CMN_OBJTYPE)
-            | UInt32(ATTR_CMN_MODTIME)
             | UInt32(ATTR_CMN_FILEID)
             | UInt32(ATTR_CMN_ERROR)
+        if includeModificationDate {
+            requested.commonattr |= UInt32(ATTR_CMN_MODTIME)
+        }
         requested.fileattr = UInt32(ATTR_FILE_TOTALSIZE | ATTR_FILE_ALLOCSIZE)
         requestedAttributes = requested
     }

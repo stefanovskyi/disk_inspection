@@ -20,6 +20,7 @@ struct SpaceLensSelfTests {
         try await liveScanProgressPublishesPreviewAndMappedBytes()
         try await providerMatchingOnlyExaminesDirectories()
         try bulkDirectoryReaderReturnsMetadataWithoutFollowingSymlinks()
+        try bulkDirectoryReaderCanSkipModificationDates()
         try bulkDirectoryReaderReusesBoundedBuffersAtSupportedSizes()
         try bulkDirectoryReaderStreamsAndStopsEarly()
         try await largeDirectoriesKeepABoundedResultTree()
@@ -52,7 +53,7 @@ struct SpaceLensSelfTests {
         try fileNodeEqualityUsesImmutableArenaIdentity()
         try sessionStoreRetainsAndReplacesVolumeResults()
         try previousScanSummaryIsBoundedAndPersistent()
-        print("SpaceLens self-tests passed (37/37)")
+        print("SpaceLens self-tests passed (38/38)")
     }
 
     private static func scanEverythingPlanPrioritizesStartupAndSkipsNetworkVolumes() throws {
@@ -941,6 +942,26 @@ struct SpaceLensSelfTests {
         )
         try expect(metadataByName["folder-link"]?.kind == .symbolicLink, "Bulk reader followed a symbolic link")
         try expect(metadataByName.values.allSatisfy { $0.identity != nil }, "Bulk reader lost device/inode identities")
+    }
+
+    private static func bulkDirectoryReaderCanSkipModificationDates() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensBulkReaderNoDates-\(UUID().uuidString)", isDirectory: true)
+        let file = root.appendingPathComponent("file.bin")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(repeating: 0x41, count: 4_096).write(to: file)
+
+        let pool = BulkDirectoryBufferPool(
+            capacity: 1,
+            bufferSize: BulkDirectoryReader.defaultBufferSize,
+            includeModificationDate: false
+        )
+        let metadata = try BulkDirectoryReader.contents(of: root, using: pool).first?.metadata
+
+        try expect(metadata?.modificationDate == nil, "Bulk reader returned an unrequested modification time")
+        try expect((metadata?.size ?? 0) > 0, "Bulk reader lost size while omitting modification time")
+        try expect(metadata?.identity != nil, "Bulk reader lost identity while omitting modification time")
     }
 
     private static func diagnosticCountersTrackScannerWork() async throws {
