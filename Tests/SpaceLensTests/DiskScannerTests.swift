@@ -200,6 +200,80 @@ final class DiskScannerTests: XCTestCase {
         XCTAssertGreaterThan(result.diagnostics.rssAfterArenaConstructionBytes, 0)
     }
 
+    func testCountsOnlyProgressMatchesLiveResultWithoutMaintainingPreviewState() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensCountsOnly-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        for branchIndex in 0..<12 {
+            let branch = root.appendingPathComponent("Branch-\(branchIndex)", isDirectory: true)
+            let nested = branch.appendingPathComponent("Nested", isDirectory: true)
+            try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+            try Data(repeating: UInt8(branchIndex), count: 4_096)
+                .write(to: nested.appendingPathComponent("payload.bin"))
+        }
+
+        let liveRecorder = ProgressRecorder()
+        let liveResult = try await DiskScanner(
+            maximumParallelism: 4,
+            previewPolicy: .live
+        ).scan(url: root) { liveRecorder.record($0) }
+
+        let countsOnlyRecorder = ProgressRecorder()
+        let countsOnlyResult = try await DiskScanner(
+            maximumParallelism: 4,
+            previewPolicy: .countsOnly
+        ).scan(url: root) { countsOnlyRecorder.record($0) }
+
+        func assertEquivalentTree(_ left: FileNode, _ right: FileNode) {
+            XCTAssertEqual(left.url, right.url)
+            XCTAssertEqual(left.name, right.name)
+            XCTAssertEqual(left.size, right.size)
+            XCTAssertEqual(left.isDirectory, right.isDirectory)
+            XCTAssertEqual(left.isReadable, right.isReadable)
+            XCTAssertEqual(left.itemCount, right.itemCount)
+            XCTAssertEqual(left.directItemCount, right.directItemCount)
+            XCTAssertEqual(left.isAggregate, right.isAggregate)
+            XCTAssertEqual(left.children.count, right.children.count)
+            for (leftChild, rightChild) in zip(left.children, right.children) {
+                assertEquivalentTree(leftChild, rightChild)
+            }
+        }
+
+        assertEquivalentTree(countsOnlyResult.root, liveResult.root)
+        XCTAssertEqual(countsOnlyResult.itemsScanned, liveResult.itemsScanned)
+        XCTAssertEqual(countsOnlyResult.unreadableItems, liveResult.unreadableItems)
+        XCTAssertEqual(countsOnlyRecorder.latest?.itemsScanned, countsOnlyResult.itemsScanned)
+        XCTAssertEqual(countsOnlyRecorder.latest?.mappedBytes, countsOnlyResult.root.size)
+        XCTAssertTrue(countsOnlyRecorder.snapshots.allSatisfy { $0.previewRoot == nil })
+        XCTAssertEqual(countsOnlyResult.diagnostics.previewMappedByteMerges, 0)
+        XCTAssertEqual(countsOnlyResult.diagnostics.rootPreviewBranchResolutions, 0)
+        XCTAssertEqual(countsOnlyResult.diagnostics.completedPreviewAttempts, 0)
+        XCTAssertEqual(countsOnlyResult.diagnostics.completedPreviewAccepted, 0)
+        XCTAssertEqual(countsOnlyResult.diagnostics.previewConstructions, 0)
+        XCTAssertEqual(countsOnlyResult.diagnostics.previewEmissions, 0)
+        XCTAssertLessThan(
+            countsOnlyResult.diagnostics.progressMerges,
+            countsOnlyResult.diagnostics.directoryCount
+        )
+        XCTAssertGreaterThan(countsOnlyResult.diagnostics.directoryTasks, 0)
+        XCTAssertLessThan(
+            countsOnlyResult.diagnostics.forcedProgressFlushes,
+            countsOnlyResult.diagnostics.directoryTasks
+        )
+
+        XCTAssertGreaterThan(liveResult.diagnostics.previewMappedByteMerges, 0)
+        XCTAssertEqual(liveResult.diagnostics.rootPreviewBranchResolutions, 12)
+        XCTAssertEqual(liveResult.diagnostics.completedPreviewAttempts, 12)
+        XCTAssertGreaterThan(liveResult.diagnostics.completedPreviewAccepted, 0)
+        XCTAssertGreaterThan(liveResult.diagnostics.previewConstructions, 0)
+        XCTAssertEqual(
+            liveResult.diagnostics.previewEmissions,
+            liveResult.diagnostics.previewConstructions
+        )
+    }
+
     func testLivePreviewGrowsBeforeCompletedTreeIsAvailable() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("SpaceLensLivePreview-\(UUID().uuidString)", isDirectory: true)

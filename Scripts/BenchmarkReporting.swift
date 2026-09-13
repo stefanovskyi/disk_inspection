@@ -44,6 +44,17 @@ private struct BenchmarkIterationReport: Codable {
     let discardedNodes: Int
     let progressMerges: Int
     let progressEmissions: Int
+    let progressLockAcquisitions: Int
+    let progressLockWaitNanoseconds: UInt64
+    let progressLockHoldNanoseconds: UInt64
+    let previewMappedByteMerges: Int
+    let rootPreviewBranchResolutions: Int
+    let completedPreviewAttempts: Int
+    let completedPreviewAccepted: Int
+    let previewConstructions: Int
+    let previewEmissions: Int
+    let workerProgressFlushes: Int
+    let forcedProgressFlushes: Int
     let providerTimeouts: Int
     let abandonedWorkers: Int
     let retainedArenaNodeCount: Int
@@ -141,7 +152,7 @@ enum BenchmarkReportWriter {
     ) -> BenchmarkReport {
         let processInfo = ProcessInfo.processInfo
         return BenchmarkReport(
-            schemaVersion: 5,
+            schemaVersion: 6,
             runID: configuration.runID,
             startedAt: startedAt,
             finishedAt: finishedAt,
@@ -206,6 +217,17 @@ enum BenchmarkReportWriter {
                 discardedNodes: diagnostics.discardedNodes,
                 progressMerges: diagnostics.progressMerges,
                 progressEmissions: diagnostics.progressEmissions,
+                progressLockAcquisitions: diagnostics.progressLockAcquisitions,
+                progressLockWaitNanoseconds: diagnostics.progressLockWaitNanoseconds,
+                progressLockHoldNanoseconds: diagnostics.progressLockHoldNanoseconds,
+                previewMappedByteMerges: diagnostics.previewMappedByteMerges,
+                rootPreviewBranchResolutions: diagnostics.rootPreviewBranchResolutions,
+                completedPreviewAttempts: diagnostics.completedPreviewAttempts,
+                completedPreviewAccepted: diagnostics.completedPreviewAccepted,
+                previewConstructions: diagnostics.previewConstructions,
+                previewEmissions: diagnostics.previewEmissions,
+                workerProgressFlushes: diagnostics.workerProgressFlushes,
+                forcedProgressFlushes: diagnostics.forcedProgressFlushes,
                 providerTimeouts: diagnostics.providerTimeouts,
                 abandonedWorkers: diagnostics.abandonedWorkers,
                 retainedArenaNodeCount: diagnostics.retainedArenaNodeCount,
@@ -254,7 +276,12 @@ enum BenchmarkReportWriter {
             "cached_hover_lookup_120_milliseconds", "segment_count",
             "syscall_batches", "fallback_lstat_calls", "buffer_allocations",
             "directory_tasks", "retained_nodes", "discarded_nodes",
-            "progress_merges", "progress_emissions", "provider_timeouts",
+            "progress_merges", "progress_emissions", "progress_lock_acquisitions",
+            "progress_lock_wait_nanoseconds", "progress_lock_hold_nanoseconds",
+            "preview_mapped_byte_merges", "root_preview_branch_resolutions",
+            "completed_preview_attempts", "completed_preview_accepted",
+            "preview_constructions", "preview_emissions", "worker_progress_flushes",
+            "forced_progress_flushes", "provider_timeouts",
             "abandoned_workers", "retained_arena_node_count",
             "arena_construction_milliseconds", "rss_before_arena_construction_bytes",
             "rss_after_arena_construction_bytes", "maximum_directory_readers",
@@ -291,15 +318,30 @@ enum BenchmarkReportWriter {
                     String(format: "%.6f", iteration.cachedHoverLookup120Milliseconds),
                     String(iteration.segmentCount)
                 ]
-                let diagnosticValues = [
+                let traversalDiagnosticValues = [
                     String(iteration.syscallBatches),
                     String(iteration.fallbackLstatCalls),
                     String(iteration.bufferAllocations),
                     String(iteration.directoryTasks),
                     String(iteration.retainedNodes),
                     String(iteration.discardedNodes),
+                ]
+                let progressDiagnosticValues = [
                     String(iteration.progressMerges),
                     String(iteration.progressEmissions),
+                    String(iteration.progressLockAcquisitions),
+                    String(iteration.progressLockWaitNanoseconds),
+                    String(iteration.progressLockHoldNanoseconds),
+                    String(iteration.previewMappedByteMerges),
+                    String(iteration.rootPreviewBranchResolutions),
+                    String(iteration.completedPreviewAttempts),
+                    String(iteration.completedPreviewAccepted),
+                    String(iteration.previewConstructions),
+                    String(iteration.previewEmissions),
+                    String(iteration.workerProgressFlushes),
+                    String(iteration.forcedProgressFlushes),
+                ]
+                let completionDiagnosticValues = [
                     String(iteration.providerTimeouts),
                     String(iteration.abandonedWorkers),
                     String(iteration.retainedArenaNodeCount),
@@ -307,7 +349,9 @@ enum BenchmarkReportWriter {
                     String(iteration.rssBeforeArenaConstructionBytes),
                     String(iteration.rssAfterArenaConstructionBytes)
                 ]
-                values.append(contentsOf: diagnosticValues)
+                values.append(contentsOf: traversalDiagnosticValues)
+                values.append(contentsOf: progressDiagnosticValues)
+                values.append(contentsOf: completionDiagnosticValues)
                 values.append(iteration.maximumDirectoryReaders.map(String.init) ?? "")
                 values.append(
                     iteration.cancellationLatencyMilliseconds.map {

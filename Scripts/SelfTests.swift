@@ -18,6 +18,7 @@ struct SpaceLensSelfTests {
         try await scannerBuildsTreeWithoutFollowingSymlinks()
         try await diagnosticCountersTrackScannerWork()
         try await liveScanProgressPublishesPreviewAndMappedBytes()
+        try await countsOnlyProgressMatchesLiveResultWithoutPreviewMaintenance()
         try await providerMatchingOnlyExaminesDirectories()
         try bulkDirectoryReaderReturnsMetadataWithoutFollowingSymlinks()
         try bulkDirectoryReaderCanSkipModificationDates()
@@ -53,7 +54,7 @@ struct SpaceLensSelfTests {
         try fileNodeEqualityUsesImmutableArenaIdentity()
         try sessionStoreRetainsAndReplacesVolumeResults()
         try previousScanSummaryIsBoundedAndPersistent()
-        print("SpaceLens self-tests passed (38/38)")
+        print("SpaceLens self-tests passed (39/39)")
     }
 
     private static func scanEverythingPlanPrioritizesStartupAndSkipsNetworkVolumes() throws {
@@ -913,6 +914,87 @@ struct SpaceLensSelfTests {
         )
         let mappedBytes = snapshots.map(\.mappedBytes)
         try expect(mappedBytes == mappedBytes.sorted(), "Mapped-byte progress moved backwards")
+    }
+
+    private static func countsOnlyProgressMatchesLiveResultWithoutPreviewMaintenance() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensCountsOnly-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        for branchIndex in 0..<12 {
+            let branch = root.appendingPathComponent("Branch-\(branchIndex)", isDirectory: true)
+            let nested = branch.appendingPathComponent("Nested", isDirectory: true)
+            try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+            try Data(repeating: UInt8(branchIndex), count: 4_096)
+                .write(to: nested.appendingPathComponent("payload.bin"))
+        }
+
+        let liveRecorder = SelfTestProgressRecorder()
+        let liveResult = try await DiskScanner(
+            maximumParallelism: 4,
+            previewPolicy: .live
+        ).scan(url: root) { liveRecorder.record($0) }
+        let countsOnlyRecorder = SelfTestProgressRecorder()
+        let countsOnlyResult = try await DiskScanner(
+            maximumParallelism: 4,
+            previewPolicy: .countsOnly
+        ).scan(url: root) { countsOnlyRecorder.record($0) }
+
+        func treesMatch(_ left: FileNode, _ right: FileNode) -> Bool {
+            left.url == right.url
+                && left.name == right.name
+                && left.size == right.size
+                && left.isDirectory == right.isDirectory
+                && left.isReadable == right.isReadable
+                && left.itemCount == right.itemCount
+                && left.directItemCount == right.directItemCount
+                && left.isAggregate == right.isAggregate
+                && left.children.count == right.children.count
+                && zip(left.children, right.children).allSatisfy {
+                    treesMatch($0.0, $0.1)
+                }
+        }
+
+        try expect(
+            treesMatch(countsOnlyResult.root, liveResult.root),
+            "Counts-only changed the retained tree"
+        )
+        try expect(
+            countsOnlyResult.itemsScanned == liveResult.itemsScanned,
+            "Counts-only changed the scanned-item total"
+        )
+        try expect(
+            countsOnlyRecorder.snapshots.allSatisfy { $0.previewRoot == nil },
+            "Counts-only emitted a preview tree"
+        )
+        try expect(
+            countsOnlyRecorder.snapshots.last?.mappedBytes == countsOnlyResult.root.size,
+            "Counts-only final mapped bytes did not match the result"
+        )
+        try expect(
+            countsOnlyResult.diagnostics.previewMappedByteMerges == 0
+                && countsOnlyResult.diagnostics.rootPreviewBranchResolutions == 0
+                && countsOnlyResult.diagnostics.completedPreviewAttempts == 0
+                && countsOnlyResult.diagnostics.previewConstructions == 0,
+            "Counts-only performed live-preview maintenance"
+        )
+        try expect(
+            countsOnlyResult.diagnostics.progressMerges
+                < countsOnlyResult.diagnostics.directoryCount,
+            "Counts-only progress still merged at every directory"
+        )
+        try expect(
+            countsOnlyResult.diagnostics.directoryTasks > 0
+                && countsOnlyResult.diagnostics.forcedProgressFlushes
+                    < countsOnlyResult.diagnostics.directoryTasks,
+            "Completed child tasks still forced shared progress merges"
+        )
+        try expect(
+            liveResult.diagnostics.rootPreviewBranchResolutions == 12
+                && liveResult.diagnostics.completedPreviewAttempts == 12,
+            "Live preview did not resolve only direct root branches"
+        )
     }
 
     private static func bulkDirectoryReaderReturnsMetadataWithoutFollowingSymlinks() throws {

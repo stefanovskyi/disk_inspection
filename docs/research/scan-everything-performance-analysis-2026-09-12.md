@@ -4,7 +4,7 @@
 
 This note records the evidence gathered for the current SpaceLens **Scan Everything** workflow so future performance sessions can start from a stable baseline instead of repeating the investigation.
 
-The 2026-09-12 investigation was diagnostic only. A 2026-09-13 follow-up implemented and validated the first P0 scanner fixes; the original measurements remain the pre-fix baseline.
+The 2026-09-12 investigation was diagnostic only. A 2026-09-13 follow-up implemented and validated the first P0 scanner fixes, which were committed as `20de801` (`Restore fast path for unobserved disk scans`). The original measurements remain the pre-fix baseline. Later 2026-09-13 work evaluated reader concurrency and bulk-buffer sizing, then implemented and measured preview/progress batching plus a counts-only Scan Everything policy.
 
 The target being evaluated is one of:
 
@@ -13,22 +13,27 @@ The target being evaluated is one of:
 
 ## Executive summary
 
-- The observed complete workflow took **4 min 28 sec** for five successful steps.
-- The two eligible local disks ran concurrently. Their phase took approximately **145.3 seconds**, controlled by the slower startup-disk scan.
+- The initial pre-fix complete workflow took **4 min 28 sec** for five successful steps.
+- In that pre-fix run, the two eligible local disks ran concurrently. Their phase took approximately **145.3 seconds**, controlled by the slower startup-disk scan.
 - The three analyses then ran sequentially and took approximately **123 seconds** in total.
 - The present implementation does **not** reuse disk traversal facts in the analysis phase. The analysis reports account for at least **2,065,329 additional item-visits**, plus Developer Storage discovery work not represented in that count.
 - A sub-minute startup-disk scan is demonstrably possible: commit `0765207` scanned approximately 5.09 million items in a three-run warm median of **53.145 seconds** on the same Mac and OS.
 - A controlled synthetic comparison localized a major scanner regression to commit `fbea874`. The dominant flat-directory cost is eager per-file URL, observation, and empty-priority work even when a normal disk scan has no item observer.
 - The 2026-09-13 P0 implementation removed that work from the normal no-observer path. Its comparable 12,000-file median fell from **0.2805 seconds to 0.0201 seconds**, a **92.9% reduction**.
-- Packaged-app validation with Full Disk Access measured a **76.927-second warm median** for Macintosh HD and **17.620 seconds** for T7 Touch. The disk phase is **1.89x faster** than the pre-fix live run, but still misses the 60-second target by 16.927 seconds.
+- Before the preview/progress follow-up, packaged-app validation with Full Disk Access measured a **76.927-second warm median** for Macintosh HD and **17.620 seconds** for T7 Touch. That disk phase was **1.89x faster** than the pre-fix live run but still missed the 60-second target by 16.927 seconds.
 - The complete warm median fell from **4 min 28 sec to 3 min 16 sec**, an approximate **26.8% elapsed reduction**. Sequential analysis remains the dominant cost.
+- A new directory-heavy sweep measured **0.8761 seconds with one reader**, **0.2249 seconds with eight**, and **0.2227 seconds with sixteen**. Eight readers are already the useful ceiling on this Mac; sixteen add task churn for approximately 1% improvement.
+- A 256 KiB directory buffer reduced a 12,000-file flat scan from 17 bulk batches to 5 and improved the median from **0.0201 to 0.0183 seconds**. This approximately 9% dense-directory gain is real but is unlikely to translate directly to a startup disk dominated by small directories.
+- Preview/progress batching reduced the large directory-heavy fixture's historical live median from **0.2249 to 0.1236 seconds** and reduced shared progress merges from **9,362 to 2** per run. Counts-only reached **0.1207 seconds** and performed no preview work.
+- On the startup disk, batched live preview produced a **64.183-second** three-run median and a standalone counts-only run reached **63.536 seconds**, respectively 16.6% and 17.4% below the earlier 76.927-second warm median. A busy-host counts-only series was highly variable, so its incremental whole-disk benefit remains unproven.
+- A final handoff refinement returned each short-lived child worker's pending delta to its parent's local accumulator instead of forcing a shared merge. The final-source optimized benchmark then scanned **5,294,771 items in 57.170 seconds**, with 1,925 progress merges instead of 84,160 in the intermediate counts-only build. This single pass crossed 60 seconds but is not yet a repeatable release gate.
 - A no-op observer still raises the same fixture to **0.1715 seconds**, so a future inspection snapshot must not naively attach the existing synchronous per-item callback to every volume scan.
 - Reusing disk traversal should be based on a compact, selective `InspectionSnapshot`, not the lossy chart result and not a retained array of every `ScannedFileItem`.
 - The existing asynchronous previous-scan finalizer rewrote a 19.45 MB archive for about 21 seconds while analysis was beginning, introducing unaccounted contention.
 
 ## Implementation follow-up — 2026-09-13
 
-The P0 scanner and benchmark fixes are implemented in the worktree that contains this note:
+The P0 scanner and benchmark fixes were committed as `20de801`:
 
 - The benchmark compile list now includes the models required by `FullDiskAccessChecker`.
 - Ordinary scans with no item observer no longer construct or standardize a `ScannedFileItem` URL.
@@ -48,13 +53,133 @@ The comparable before/after reports show a **92.9% elapsed reduction** and **1,2
 
 The full synthetic suite also preserved provider timeout/abandonment behavior. Its three-run medians were 0.0239 seconds for the deep fixture and 0.0156 seconds for the mixed fixture. The packaged-app measurements below confirm a material whole-disk improvement, although a controlled idle-host run is still required for a release-quality gate.
 
-Verification completed after the implementation:
+Verification completed on the final follow-up source:
 
-- `make test`: 38 of 38 framework-free checks passed, including scanner safety and the new optional-modification-time check.
-- `swift test`: 93 of 93 XCTest checks passed, including 19 `DiskScannerTests`.
+- `make test`: 39 of 39 framework-free checks passed, including scanner safety, counts-only semantics, and parallel child-delta handoff.
+- `swift test`: 95 of 95 XCTest checks passed, including 20 `DiskScannerTests` and 11 `ScanEverythingTests`.
 - `make build` and `make app` completed successfully.
 - `codesign --verify --deep --strict` and `plutil -lint` passed for `dist/SpaceLens.app`.
 - The packaged app used ad-hoc signing because no stable local development identity was available.
+
+### Post-commit concurrency and buffer sweep — 2026-09-13
+
+A five-run warm-cache sweep used the existing mixed-tree generator with depth 4, fanout 8, and 16 files per directory. The fixture contained 79,577 items across 4,681 directories and deliberately emphasized many small directories containing tiny files.
+
+| Reader limit | Warm median | Throughput | Directory tasks | Interpretation |
+|---:|---:|---:|---:|---|
+| 1 | 0.8761 sec | 90,828 items/sec | 0 | Serial traversal is substantially slower |
+| 8 | 0.2249 sec | 353,814 items/sec | 35–55 | Current limit captures nearly all useful concurrency |
+| 16 | 0.2227 sec | 357,364 items/sec | 501–638 | Approximately 1% faster with much more task churn |
+
+The one-to-eight-reader change was approximately **3.9x faster**. The eight-to-sixteen-reader change was below 1%, so increasing the production ceiling above eight is not a useful next optimization on this hardware.
+
+A separate nine-run flat-fixture check used the same 12,000 files with a 256 KiB buffer:
+
+| Buffer | Warm median | Throughput | Bulk batches |
+|---:|---:|---:|---:|
+| 64 KiB post-P0 baseline | 0.0201 sec | 598,536 items/sec | 17 |
+| 256 KiB follow-up | 0.0183 sec | 656,478 items/sec | 5 |
+
+The larger buffer reduced elapsed time by approximately **9%** on this dense single directory. It should be treated as a candidate rather than a proven whole-disk improvement: each directory in the mixed fixture already fit in one batch, which is representative of why larger buffers cannot solve a small-directory workload alone.
+
+The mixed fixture retained 79,576 of 79,577 items because every directory remained below the per-directory 96-child cap. That counter demonstrates that a per-directory cap is not a global result-tree bound. The benchmark's RSS samples include fixture-construction and allocator effects, so they do not isolate the exact memory cost; a separate scan-only peak-memory measurement is required before assigning a percentage.
+
+### Preview hot-path follow-up — 2026-09-13
+
+The preview-policy and progress-batching change is now implemented. `DiskScanner`
+accepts `.live` or `.countsOnly`; interactive scans keep `.live`, while the
+default Scan Everything volume factory selects `.countsOnly`. The traversal
+computes each direct root child's preview branch once, passes that identity down
+recursion, accumulates byte/item/branch deltas in worker-local state, and returns
+a short-lived child's pending delta to its parent's local accumulator. Shared
+state is merged only at a progress deadline, provider safety event, or final
+snapshot. A live preview is projected only when a progress value is emitted.
+Counts-only scans never maintain or construct preview state.
+
+References:
+
+- [Preview policy and scanner configuration](../../Sources/SpaceLens/Services/DiskScanner.swift#L71-L110)
+- [Root branch and worker-delta types](../../Sources/SpaceLens/Services/DiskScanner.swift#L1002-L1042)
+- [Shared merge and preview-emission boundary](../../Sources/SpaceLens/Services/DiskScanner.swift#L1145-L1257)
+- [Worker accumulation and child-to-parent handoff](../../Sources/SpaceLens/Services/DiskScanner.swift#L1506-L1703)
+- [Counts-only Scan Everything factory](../../Sources/SpaceLens/Services/ScanEverythingRunner.swift#L18-L25)
+- [Published diagnostic fields](../../Sources/SpaceLens/Models/FileNode.swift#L272-L299)
+
+The benchmark report schema now records progress-lock acquisitions and wait/hold
+time, mapped-byte preview merges, root-branch resolutions, completed-preview
+attempts/acceptance, preview constructions/emissions, and timed/forced worker
+flushes. These are aggregate counters; no per-entry logging was added. Benchmark
+reports use schema version 6, comparison reports use schema version 3, and the
+new comparison fields are optional so older reports remain readable.
+
+A five-run optimized A/B reused the same large mixed-tree parameters as the
+reader sweep: depth 4, fanout 8, 16 files per directory, 79,577 total items, and
+4,681 directories.
+
+| Variant | Median | Throughput | Shared progress merges | Preview constructions |
+|---|---:|---:|---:|---:|
+| Historical live path, eight readers | 0.2249 sec | 353,814 items/sec | 9,362 | Not instrumented |
+| Batched live preview | 0.1236 sec | 643,654 items/sec | 2 per run | 2 per run |
+| Batched counts-only | 0.1207 sec | 659,041 items/sec | 2 per run | 0 |
+
+The batched live-preview median is approximately **45.0% lower** than the earlier
+historical live median on the same generated workload. This comparison spans
+separate benchmark executions, so it establishes a strong direction rather than
+a pristine one-binary A/B. Within the new same-process A/B, counts-only is about
+**2.3% faster** than batched live preview. The result means that deferring shared
+progress work is the primary synthetic improvement; deleting the remaining
+throttled preview projection is a smaller additional saving on this sub-second
+fixture.
+
+Both policies produced the same semantic result tree, exact byte/item totals,
+directory count, retained-node count, unreadable behavior, and provider-timeout
+behavior. Counts-only produced zero mapped-preview merges, branch resolutions,
+completed-preview attempts, preview constructions, and preview emissions. A
+separate standard-suite run also passed the flat, deep, mixed, sequential and
+parallel multi-volume, cancellation-latency, and stalled-provider checks.
+
+The Full Disk Access harness then scanned the live startup volume. An adjacent
+single-pass check measured `.countsOnly` at 63.536 seconds for 5,292,184 items
+and `.live` at 68.619 seconds for 5,291,401 items. Counts-only was 7.4% faster in
+that pair, and both policies landed inside the projected 58–69-second range.
+
+A subsequent three-pass-per-policy series was intentionally retained even
+though the host became busy:
+
+| Policy | Median | Range | Variability | Maximum unreadable | Provider timeouts per run |
+|---|---:|---:|---:|---:|---:|
+| Batched live preview | 64.183 sec | 63.183–71.312 sec | 12.7% | 460 | 4 |
+| Batched counts-only | 82.808 sec | 65.224–86.300 sec | 25.5% | 471 | 2–7 |
+
+Immediately after the series, system load averages were 19.10, 24.52, and
+23.23. The fixed-order series ran all live passes before all counts-only passes,
+and the filesystem changed slightly between scans. It is therefore not a valid
+causal result that counts-only is slower. The counts-only runs performed zero
+preview merges/constructions/emissions and held the progress lock for
+approximately 26–27 ms in the two comparable runs, versus approximately 48–61
+ms for live preview. The standalone counts-only pass also completed in 63.536
+seconds.
+
+The three-pass batched-live median is **16.6% below** the earlier 76.927-second
+packaged warm median. The standalone counts-only pass is **17.4% below** that
+baseline. These cross-run comparisons support the original 10–25% hypothesis
+and place the refactored scanner near the one-minute boundary, but they are not
+a controlled release gate. A quiet-host, interleaved, multiple-pass packaged
+series remains necessary before assigning an incremental whole-disk percentage
+to counts-only.
+
+The final implementation removed the remaining forced merge at ordinary child
+task completion: a child now transfers its pending delta into its parent's local
+accumulator. Only an elapsed progress deadline, provider-isolation safety event,
+or the final snapshot merges shared progress. On the final source, one
+additional counts-only startup scan completed in **57.170 seconds** for
+5,294,771 items, 457 unreadable items, and five provider timeouts. It performed
+1,925 progress merges and 2,383 progress-lock acquisitions, versus 84,160 and
+84,621 respectively in the intermediate 63.536-second counts-only run—a
+**97.7% reduction in shared merges**. Total progress-lock hold time was 2.825 ms,
+and all preview counters remained zero. The load averages were still high at 27.23,
+19.64, and 21.01, and this was one pass, so 57.170 seconds is proof of a
+sub-minute observation rather than proof of a sub-minute median.
 
 ### Packaged Scan Everything validation — 2026-09-13
 
@@ -97,8 +222,8 @@ Important caveats:
 - Power: AC power; Low Power Mode off.
 - Spotlight indexing: disabled.
 - Time Machine: idle during inspection.
-- Repository HEAD during the investigation: `05d6af6` (`Gate Scan Everything on Full Disk Access`).
-- The packaged app used for the live run contained the current Scan Everything feature code. Its exact Git revision was not embedded in the binary, so the live run should be treated as a current-feature build rather than a commit-exact benchmark.
+- Repository HEAD during the original investigation: `05d6af6` (`Gate Scan Everything on Full Disk Access`).
+- The post-fix source was subsequently committed as `20de801`. The packaged app used for validation was built from the equivalent pre-commit worktree, but its exact Git revision was not embedded in the binary, so it remains a source-equivalent rather than commit-embedded benchmark.
 
 ### Eligible volumes
 
@@ -111,16 +236,16 @@ SpaceLens discovered exactly two eligible local volumes:
 
 They are on distinct physical devices. There were no eligible network mounts.
 
-### Important run caveats
+### Pre-fix run caveats
 
 - This was one live end-to-end observation, not a statistically clean release benchmark.
 - The host was busy: load averages were roughly 12–17, CPU activity was significant, and memory compression was high.
 - The app passed its Full Disk Access preflight, but the startup scan still reported 449 unreadable/protected items.
 - A fully readable scan may take longer.
-- A requested warm repeat could not be run because the Mac remained locked.
+- A requested pre-fix warm repeat could not be run because the Mac remained locked. The later post-fix validation did complete three warm repeats.
 - Filesystem contents can change during a multi-minute scan; item counts are therefore workload fingerprints, not immutable constants.
 
-## Live Scan Everything result
+## Pre-fix live Scan Everything result
 
 | Operation | Observed time | Work/result | Gap to 60 seconds |
 |---|---:|---|---:|
@@ -301,9 +426,9 @@ At `05d6af6`, every readable non-directory entry in a normal disk scan:
 
 The historical implementation can be inspected with `git show 05d6af6:Sources/SpaceLens/Services/DiskScanner.swift` and the equivalent `BulkDirectoryReader.swift` path. The current source links below show the corrected implementation:
 
-- [Lazy per-entry work](../../Sources/SpaceLens/Services/DiskScanner.swift#L478-L509)
-- [`ScannedFileItem` URL standardization](../../Sources/SpaceLens/Services/DiskScanner.swift#L827-L872)
-- [Priority and observer early exits](../../Sources/SpaceLens/Services/DiskScanner.swift#L972-L998)
+- [Lazy per-entry work](../../Sources/SpaceLens/Services/DiskScanner.swift#L492-L528)
+- [`ScannedFileItem` URL standardization](../../Sources/SpaceLens/Services/DiskScanner.swift#L919-L960)
+- [Priority and observer early exits](../../Sources/SpaceLens/Services/DiskScanner.swift#L1116-L1142)
 - [Modification-time parsing](../../Sources/SpaceLens/Services/BulkDirectoryReader.swift#L263-L271)
 - [Conditional modification-time attribute request](../../Sources/SpaceLens/Services/BulkDirectoryReader.swift#L516-L540)
 
@@ -312,6 +437,54 @@ The added modification-time field also increased bulk syscall batches from 17 to
 The 2026-09-13 implementation now makes observation construction and priority URL evaluation lazy, with early exits when their consumers are absent. It also configures the bulk reader to request modification time only for observer-enabled scans. The comparable post-fix fixture returned to 17 bulk batches and approximately the diagnostic variant's predicted 20 ms median.
 
 This diagnosis and fix are causal for the synthetic flat workload. The packaged Scan Everything run confirms a 1.89x warm-median startup-disk improvement on the real workload. A controlled idle-host measurement is still needed to separate the remaining scanner cost from host contention.
+
+## Remaining Macintosh HD hot-path diagnosis
+
+The refactored live-preview scanner produced a 64.183-second three-run median on
+the busy-host series, leaving an observed 4.183-second or 6.5% gap to 60 seconds.
+The adjacent counts-only pass reached 63.536 seconds, and the final child-delta
+handoff implementation subsequently reached 57.170 seconds once. These are
+encouraging diagnostic results rather than a new controlled baseline: the later
+counts-only series had 25.5% variability and the host load averages exceeded 19. The earlier
+76.927-second packaged warm median remains the stable comparison point until a
+quiet-host, interleaved repeat is captured. The historical 53.145-second result
+still shows that this hardware can cross the boundary.
+
+### Ranked hypotheses
+
+1. **Preview/progress maintenance was a material hot path and is now batched.** The large mixed fixture dropped from 9,362 shared progress merges to 2 per run, while its historical-live to batched-live median fell by 45.0%. The full-disk batched-live median was 16.6% below the earlier packaged baseline. Counts-only removes the remaining preview work, but its incremental full-disk effect needs a quiet-host interleaved repeat.
+2. **Other per-directory shared-state contention remains material.** Visited identity, diagnostics, and buffer-pool state still use shared synchronization. Worker-local diagnostics and a lock-striped identity registry are the next coordination candidates; progress itself is no longer merged after nearly every directory.
+3. **Per-entry cancellation and remaining path work are plausible candidates on millions of tiny files.** Normal traversal checks task cancellation for every parsed entry even though directory syscalls and progress batches already create natural bounded checkpoints. Cancellation checks can be sampled every fixed number of entries on the non-isolated path, with a regression gate for worst-case cancellation latency. Root-preview branch identity is now passed through recursion; remaining exclusion/scope path normalization still needs an audit and isolated A/B.
+4. **The result tree is bounded locally but not globally.** Direct-child retention is capped at 96, yet directory-heavy trees with fewer than 96 entries per directory retain nearly every file. A global retained-node budget or earlier aggregation of tiny leaf files may reduce peak memory and cache pressure. It must preserve totals, item counts, priority paths, navigation semantics for retained nodes, and a visible `Smaller items` aggregate.
+5. **Cross-volume competition may slow the startup-disk critical path.** Macintosh HD and T7 share one eight-reader traversal budget. Because T7 completes after about 18 seconds, it can consume CPU and reader slots during the beginning of the startup scan. A startup-only versus concurrent A/B must quantify this before changing scheduling; serializing both disks would otherwise increase disk-phase wall time.
+
+### Evidence from the follow-up sweep
+
+- One reader is conclusively too slow for the directory-heavy fixture; eight readers were 3.9x faster.
+- Sixteen readers did not improve meaningful throughput over eight, so raising concurrency is not the answer.
+- A 256 KiB buffer helps a large flat directory but cannot reduce the mandatory open/read/close work for thousands of small directories that already fit in one syscall batch.
+- The mixed fixture's all-node retention confirms a memory-shape concern, but not yet a scan-time cause.
+- Preview/progress batching is measured synthetically and on the startup disk, although the counts-only incremental whole-disk effect remains noisy. Cancellation sampling, global-node-budget, cross-volume, diagnostics-batching, and identity-registry hypotheses remain unmeasured on an isolated A/B.
+
+### Required A/B sequence
+
+Change one variable at a time and run both the large mixed fixture and packaged Macintosh HD protocol:
+
+1. [x] Capture the historical scanner with live preview.
+2. [x] Add counts/path progress with preview-state maintenance disabled.
+3. [x] Pass the root-branch token through recursion, return child deltas to parent workers, and merge shared progress only at elapsed deadlines, provider safety events, or finalization.
+4. [ ] Batch worker-local diagnostics and add a lock-striped visited-directory registry; worker-local progress batching is complete.
+5. [ ] Try per-batch or sampled cancellation checks on the normal non-provider path, with a cancellation-latency regression test.
+6. [ ] Compare 64 KiB versus 256 KiB bulk buffers on the packaged startup disk.
+7. [ ] Compare Macintosh HD alone versus Macintosh HD concurrent with T7.
+8. [ ] Compare current result retention with a global retained-node budget, measuring both scan time and peak physical footprint.
+
+The implementation uses a configurable policy rather than deleting live preview.
+`.countsOnly` remains appropriate for Scan Everything because that workflow does
+not present the preview and the synthetic A/B shows a small benefit with semantic
+parity. Interactive disk scans retain `.live`. The quiet-host repeat should
+decide the size of the whole-disk counts-only benefit, not whether unused preview
+state belongs in the Scan Everything hot path.
 
 ## Previous-scan finalization contention
 
@@ -371,10 +544,10 @@ That is sufficient for presentation but not for exact model discovery, category 
 
 References:
 
-- [`retainedChildLimit`](../../Sources/SpaceLens/Services/DiskScanner.swift#L71-L76)
-- [`Smaller items` aggregation](../../Sources/SpaceLens/Services/DiskScanner.swift#L633-L650)
+- [`retainedChildLimit`](../../Sources/SpaceLens/Services/DiskScanner.swift#L76-L82)
+- [`Smaller items` aggregation](../../Sources/SpaceLens/Services/DiskScanner.swift#L704-L723)
 - [`FileNode.Record` fields](../../Sources/SpaceLens/Models/FileNode.swift#L5-L17)
-- [`ScannedFileItem` contains the reusable identity and modification facts](../../Sources/SpaceLens/Services/DiskScanner.swift#L827-L872)
+- [`ScannedFileItem` contains the reusable identity and modification facts](../../Sources/SpaceLens/Services/DiskScanner.swift#L919-L960)
 
 ## Recommended reuse architecture
 
@@ -485,6 +658,65 @@ Reference: [benchmark compile list](../../Scripts/run_benchmarks.sh#L64-L78).
 
 The checked-in script now includes both model dependencies and runs successfully. The existing comparison command enforced its scan, layout, and memory regression thresholds against comparable pre-fix and post-fix reports. A `flat-observer` fixture was added for measuring callback overhead separately; it is opt-in rather than part of the default suite.
 
+### P0 — Instrument and optimize preview-state maintenance — implemented and measured 2026-09-13
+
+Implemented aggregate counters without per-entry logging for:
+
+- Progress-lock acquisitions plus aggregate wait and hold time.
+- Preview byte merges, root-branch derivations, completed-preview attempts and acceptance, and preview construction/emission.
+- Timed and forced worker-progress flushes.
+- Existing progress merges/emissions, provider timeouts/abandoned workers, maximum active readers, and result-arena construction/RSS boundaries remain available alongside the new fields.
+
+Still pending are exact bulk-syscall/batch-parse time, entry-aggregation and
+directory-finalization time, traversal-permit wait time, previous-scan
+finalization time, and archive I/O time.
+
+The scanner now has an explicit preview policy. Scan Everything uses counts/path
+progress without maintaining or constructing a preview tree; interactive scans
+retain the live preview. Traversal propagates a root-branch token, each worker
+accumulates scalar and branch deltas locally, and a completed child transfers its
+pending delta into the parent's local accumulator. Shared progress is merged only
+when the approximately 200 ms progress interval is due, a provider safety event
+requires it, or the final snapshot is constructed. Provider heartbeat accounting
+remains strict and separate from the user-visible progress cadence.
+
+The original hypothesis was a **10–25%** startup-scan reduction, or roughly
+8–19 seconds from the 76.927-second packaged baseline. The intermediate
+live-preview benchmark was 16.6% lower, and the final-source counts-only pass was
+25.7% lower. Those cross-run results support the estimated range, but only the
+synthetic live/counts-only comparison is a controlled same-process A/B.
+
+A same-process synthetic A/B and an optimized Full Disk Access benchmark series
+are recorded in the preview follow-up above. Batching itself is the dominant
+measured gain. The full-disk benchmark timings reached the estimated range, but
+high host load and counts-only outliers prevent a release-quality claim about
+the incremental counts-only effect.
+
+### P1 — Batch remaining shared state and reduce repeated path work — partially completed
+
+Completed in the preview/progress follow-up:
+
+- Worker-local progress and preview deltas with child-to-parent handoff.
+- Root-preview branch identity passed through recursion.
+- Shared progress merging limited to elapsed deadlines, provider safety events, and finalization.
+
+Still pending:
+
+- Worker-local diagnostic deltas.
+- A lock-striped visited-directory registry instead of one identity lock.
+- Removal of any remaining repeated exclusion/scope path normalization.
+- Sampled or per-batch cancellation checks on the normal path, while keeping provider-isolated activity checks strict and preserving prompt cancellation.
+
+The earlier provisional **5–15%** range applied to the combined work. Progress
+batching has now been measured separately; do not assign the same range to the
+remaining diagnostic, identity, path, or cancellation changes without new A/Bs.
+
+### P1 — Validate a 256 KiB directory buffer and volume allocation — next
+
+The dense flat fixture improved by approximately 9% with a 256 KiB buffer, but the directory-heavy fixture already used one syscall batch per directory. Change the default only if the packaged startup scan improves without a memory or provider-timeout regression.
+
+Separately measure Macintosh HD alone and alongside T7. Keep the shared eight-reader ceiling; test reader reservation or startup-volume weighting only if concurrency measurably harms the critical path. Do not serialize distinct disks merely to improve the reported Macintosh HD duration, because the user-visible disk phase is the wall time for all disks.
+
 ### P1 — Build a selective `InspectionSnapshot` during disk traversal
 
 Implement the low-overhead router and snapshot described above. Benchmark its tax on the disk phase before connecting analyzers. The disk target has no room for an unmeasured lock or URL-allocation cost.
@@ -509,6 +741,18 @@ The approximate 123-second analysis phase must save about 63 seconds, or 51%, to
 
 Give summary construction, archive decoding, archive encoding, and atomic writing their own metrics. Then evaluate batching completed volume summaries or deferring persistence until analysis completes. Do not hide persistence time if it remains part of user-visible completion semantics.
 
+### P2 — Add a global retained-result budget
+
+Define a total node budget in addition to the existing per-directory cap. Prefer retaining directories and materially large files, and aggregate omitted tiny leaves while preserving exact byte and item totals. Measure peak physical footprint in a scan-only harness so fixture creation and allocator high-water behavior do not contaminate the result.
+
+This is primarily a memory-pressure and responsiveness improvement. Do not claim a disk-time percentage until a real A/B demonstrates one.
+
+### P2 — Add FSEvents-backed incremental refresh
+
+After a correct full scan, persist or retain a snapshot keyed by volume identity and FSEvents position, then rescan only changed subtrees. Fall back to a full scan on event drops, root changes, incompatible versions, coverage gaps, mount changes, or any `MustScanSubDirs` condition.
+
+This does not accelerate the first scan. It has the largest potential effect on later scans: a mostly unchanged startup disk could refresh in seconds rather than revisiting 5.3 million entries. Keep a visible full-rescan action and never let incremental coverage gaps appear as zero usage.
+
 ### P2 — Expose the timings already captured
 
 `ScanEverythingStepOutcome` already stores an exact duration for every disk and analysis, and `ScanEverythingSummary` stores the exact total. The UI currently renders only `completed/total` and aggregate duration.
@@ -525,7 +769,11 @@ Persist or export a machine-readable run summary so later sessions do not need U
 
 ### P2 — Split buttons only after phase contracts are explicit
 
-Splitting the current implementation changes presentation, not cost: it would expose approximately 2:25 for disks and 2:03 for analyses.
+Splitting the latest measured packaged workflow changes presentation, not cost:
+it would expose a warm-median disk phase of approximately 76.9 seconds and a
+post-disk phase of approximately 115–116 seconds. The final preview/progress
+source has only optimized-harness disk timings, not a new packaged end-to-end
+measurement, and no analysis-reuse change has been made.
 
 A meaningful split should define:
 
@@ -541,9 +789,11 @@ A meaningful split should define:
 
 This is credible but unproven:
 
-- The packaged disk-phase warm median is now 76.927 seconds, down from about 145.3 seconds. Reaching 60 seconds requires another 1.28x speedup or 22% reduction; reaching the suggested 55-second gate requires about 1.40x.
+- The stable pre-follow-up packaged disk-phase warm median is 76.927 seconds, down from about 145.3 seconds. The optimized Full Disk Access benchmark subsequently produced a 64.183-second live-preview median, an intermediate 63.536-second counts-only pass, and a final-source 57.170-second counts-only pass. The final source has crossed the raw 60-second target once, but the host was too busy for these runs to replace the controlled packaged baseline. Reaching the suggested 55-second gate from 57.170 seconds requires another 3.8% reduction plus repeatability.
 - The inferred post-disk warm median is approximately 115–116 seconds. Reaching 60 seconds requires roughly another 1.93x speedup; avoiding broad repeated traversal remains the plausible route.
 - T7 now completes in a 17.620-second warm median and comfortably meets its individual target.
+- The concurrency sweep rules out simply raising the reader limit above eight. The buffer sweep is worth validating but is too small and too workload-specific to close the startup-disk gap alone.
+- Preview/progress batching delivered a material disk-phase reduction. A quiet-host repeat plus the remaining diagnostics/identity shared-state work are the current route to a reliable sub-60-second disk phase; selective snapshot reuse is the route to the analysis-phase reduction.
 
 ### One complete operation under one minute
 
@@ -581,6 +831,8 @@ For the packaged app with Full Disk Access:
 - Unreadable items, provider timeouts, abandoned workers, and coverage issues.
 - CPU samples, resident memory, and physical-footprint peak.
 - Snapshot size and router/collector counters if reuse is enabled.
+- Preview merge, branch-derivation, preview-emission, and completed-preview-attempt counters.
+- Time in bulk syscalls, batch parsing, entry aggregation, directory finalization, traversal-permit waits, and result construction.
 
 ### Suggested gates
 
@@ -593,23 +845,36 @@ For a reliable under-60-second claim, aim below the boundary rather than accepti
 
 ## Next-session checklist
 
-1. [x] Confirm the worktree base revision (`05d6af6`) and package the current changed worktree.
+1. [x] Establish and package the P0 source-equivalent build; commit the implementation as `20de801`.
 2. [x] Repair the benchmark compile list and run the existing synthetic suite.
-3. [ ] Add or expose exact phase/substage timing without changing scheduling.
-4. [x] Capture one least-warm and three warm packaged-app runs with Full Disk Access; a controlled idle-host series remains pending.
-5. [x] Implement and benchmark the no-observer/empty-priority fast path.
-6. [x] Compare the post-fix startup and external-volume results with the recorded live baseline; both improved materially, and synthetic safety/performance checks are complete.
-7. [ ] Prototype the selective snapshot router behind the two-call seam.
-8. [ ] Measure the router and each collector independently; no-handler and no-op-handler measurements are complete.
-9. [ ] Connect one analyzer at a time, verifying report equivalence and coverage.
-10. [ ] Instrument and re-measure finalization overlap and peak memory.
-11. [ ] Decide whether the measurements support the two-operation or one-operation target.
+3. [x] Capture one least-warm and three warm packaged-app runs with Full Disk Access; a controlled idle-host series remains pending.
+4. [x] Implement and benchmark the no-observer/empty-priority fast path.
+5. [x] Compare the post-fix startup and external-volume results with the recorded live baseline.
+6. [x] Sweep one, eight, and sixteen readers on a larger directory-heavy fixture; keep the production ceiling at eight.
+7. [x] Measure a 256 KiB buffer on the flat fixture; retain it as a whole-disk A/B candidate.
+8. [ ] Add exact scan substages plus permit, finalization, and persistence counters; preview/progress-lock counters are complete.
+9. [x] Add a configurable counts-only preview policy and run synthetic plus optimized Full Disk Access preview-on/preview-off comparisons.
+10. [ ] Repeat the live/counts-only comparison as an interleaved packaged-app series on a quiet host.
+11. [ ] Batch worker-local diagnostics and add a lock-striped visited-directory registry; worker-local progress batching and recursive root-branch state are complete.
+12. [ ] Test sampled cancellation checks with an explicit cancellation-latency gate.
+13. [ ] Compare 64 KiB and 256 KiB buffers on packaged Macintosh HD.
+14. [ ] Compare Macintosh HD alone with the concurrent Macintosh HD plus T7 workload.
+15. [ ] Prototype and measure a global retained-node budget, including scan-only peak physical footprint.
+16. [ ] Prototype the selective snapshot router behind the two-call seam.
+17. [ ] Measure the router and each collector independently; connect one analyzer at a time and verify report equivalence and coverage.
+18. [ ] Instrument and re-measure previous-scan finalization overlap.
+19. [ ] Design FSEvents invalidation and full-rescan fallback before implementing incremental refresh.
+20. [ ] Decide whether the measurements support the two-operation or one-operation target.
 
-## Repository state at handoff
+## Repository state at latest update
 
-- The worktree is based on `05d6af6` and contains uncommitted P0 scanner, bulk-reader, benchmark, test, and documentation changes.
-- Production changes are limited to `DiskScanner`'s lazy no-observer/empty-priority paths and optional bulk modification-time metadata.
-- The benchmark script and fixtures were updated, and matching XCTest plus framework-free coverage was added.
-- `make build`, `make test`, `swift test`, and `make app` completed successfully. The packaged app passed code-signature and plist validation and is ad-hoc signed.
-- Comparable benchmark reports and throwaway outputs remain under `/private/tmp`; their durable results are recorded in this note.
-- No `InspectionSnapshot`, analyzer reuse, persistence scheduling, UI timing, or split-operation changes have been implemented yet.
+- The P0 scanner, bulk-reader, benchmark, test, and original documentation changes are committed as `20de801` (`Restore fast path for unobserved disk scans`).
+- Production changes in that commit are limited to `DiskScanner`'s lazy no-observer/empty-priority paths and optional bulk modification-time metadata.
+- The uncommitted follow-up adds the live/counts-only preview policy, selects counts-only for Scan Everything, propagates root-branch identity through recursion, and batches worker-local progress before shared-state merges.
+- The benchmark script/report schema now supports live/counts-only mixed and full-disk A/B fixtures and exposes preview/progress coordination counters. Matching XCTest and framework-free coverage was added.
+- `make build`, `make test`, `swift test`, and `make app` completed successfully for the follow-up. The packaged app passed code-signature and plist validation and is ad-hoc signed.
+- Optimized Full Disk Access A/B scans completed. Batched live preview reached a 64.183-second three-run median, an intermediate counts-only pass reached 63.536 seconds, and the final child-delta handoff source reached 57.170 seconds once. A high-load counts-only series was too variable to establish a repeatable median; a quiet-host interleaved packaged-app repeat remains pending.
+- The later concurrency and 256 KiB buffer reports are throwaway outputs under `/private/tmp/spacelens-next-perf`; their durable values are recorded in this note.
+- The final synthetic report was written under `/private/tmp/spacelens-preview-final.OMtMYB`, the noisy three-pass full-disk A/B under `/private/tmp/spacelens-full-preview-ab.tds3gW`, and the 57.170-second final-source run under `/private/tmp/spacelens-full-final.zQinGH`. These are temporary artifacts; their durable values and caveats are recorded above.
+- This latest source and documentation update is not yet committed.
+- No 256 KiB production default, global result budget, `InspectionSnapshot`, analyzer reuse, incremental refresh, persistence scheduling, UI timing, or split-operation change has been implemented yet.

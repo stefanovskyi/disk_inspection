@@ -5,6 +5,7 @@ struct BenchmarkComparisonTests {
     static func main() throws {
         try testPercentageDeltasAndThresholds()
         try testConfigurationMismatchFailsComparison()
+        try testPreviewVariantConfigurationMismatch()
         try testLegacyReportsRemainComparable()
         try testThresholdValidation()
         print("Benchmark comparison tests passed")
@@ -40,6 +41,10 @@ struct BenchmarkComparisonTests {
         try expect(
             comparison.fixtures[0].diagnostics?.rssBeforeArenaConstructionBytes.baseline == 1_000_000,
             "arena RSS boundary is incorrect"
+        )
+        try expect(
+            comparison.fixtures[0].diagnostics?.previewConstructions?.baseline == 4,
+            "preview construction count is incorrect"
         )
         try expect(!comparison.passed, "regressed comparison unexpectedly passed")
     }
@@ -78,6 +83,75 @@ struct BenchmarkComparisonTests {
         }
     }
 
+    private static func testPreviewVariantConfigurationMismatch() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensPreviewComparisonTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let mixedBaseline = directory.appendingPathComponent("mixed-baseline.json")
+        let mixedCandidate = directory.appendingPathComponent("mixed-candidate.json")
+        try report(
+            scan: 10,
+            throughput: 100,
+            layout: 4,
+            memory: 1_000,
+            parallelism: 8,
+            fixtureName: "mixed-live-preview",
+            mixedDepth: 3
+        ).write(to: mixedBaseline)
+        try report(
+            scan: 9,
+            throughput: 110,
+            layout: 3,
+            memory: 900,
+            parallelism: 8,
+            fixtureName: "mixed-live-preview",
+            mixedDepth: 4
+        ).write(to: mixedCandidate)
+
+        let mixedComparison = try BenchmarkReportComparator.compare(
+            baselineURL: mixedBaseline,
+            candidateURL: mixedCandidate,
+            thresholds: .init(scanPercent: 10, layoutPercent: 10, memoryPercent: 10)
+        )
+        try expect(
+            mixedComparison.configurationDifferences.contains { $0.contains("mixed depth") },
+            "preview fixture mixed-depth mismatch was not detected"
+        )
+
+        let fullBaseline = directory.appendingPathComponent("full-baseline.json")
+        let fullCandidate = directory.appendingPathComponent("full-candidate.json")
+        try report(
+            scan: 10,
+            throughput: 100,
+            layout: 4,
+            memory: 1_000,
+            parallelism: 8,
+            fixtureName: "full-disk-counts-only",
+            fullDiskAccessGranted: true
+        ).write(to: fullBaseline)
+        try report(
+            scan: 9,
+            throughput: 110,
+            layout: 3,
+            memory: 900,
+            parallelism: 8,
+            fixtureName: "full-disk-counts-only",
+            fullDiskAccessGranted: false
+        ).write(to: fullCandidate)
+
+        let fullComparison = try BenchmarkReportComparator.compare(
+            baselineURL: fullBaseline,
+            candidateURL: fullCandidate,
+            thresholds: .init(scanPercent: 10, layoutPercent: 10, memoryPercent: 10)
+        )
+        try expect(
+            fullComparison.configurationDifferences.contains { $0.contains("Full Disk Access") },
+            "preview fixture Full Disk Access mismatch was not detected"
+        )
+    }
+
     private static func testLegacyReportsRemainComparable() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("SpaceLensLegacyComparisonTests-\(UUID().uuidString)", isDirectory: true)
@@ -110,10 +184,13 @@ struct BenchmarkComparisonTests {
         layout: Double,
         memory: UInt64,
         parallelism: Int,
-        includeDiagnostics: Bool = true
+        includeDiagnostics: Bool = true,
+        fixtureName: String = "flat",
+        mixedDepth: Int = 3,
+        fullDiskAccessGranted: Bool? = nil
     ) throws -> Data {
         var fixture: [String: Any] = [
-            "name": "flat",
+            "name": fixtureName,
             "summary": [
                 "medianScanDurationSeconds": scan,
                 "itemsPerSecond": throughput,
@@ -133,6 +210,17 @@ struct BenchmarkComparisonTests {
                 "discardedNodes": 300,
                 "progressMerges": 120,
                 "progressEmissions": 10,
+                "progressLockAcquisitions": 125,
+                "progressLockWaitNanoseconds": 10_000,
+                "progressLockHoldNanoseconds": 20_000,
+                "previewMappedByteMerges": 8,
+                "rootPreviewBranchResolutions": 2,
+                "completedPreviewAttempts": 2,
+                "completedPreviewAccepted": 2,
+                "previewConstructions": 4,
+                "previewEmissions": 4,
+                "workerProgressFlushes": 120,
+                "forcedProgressFlushes": 8,
                 "providerTimeouts": 1,
                 "abandonedWorkers": 1,
                 "retainedArenaNodeCount": 700,
@@ -156,17 +244,17 @@ struct BenchmarkComparisonTests {
             ],
             "configuration": [
                 "iterations": 9,
-                "selectedFixtures": ["flat"],
+                "selectedFixtures": [fixtureName],
                 "scannerParallelism": parallelism,
                 "directoryBufferSizeBytes": 65_536,
                 "flatFileCount": 12_000,
                 "deepDirectoryCount": 96,
-                "mixedDepth": 3,
+                "mixedDepth": mixedDepth,
                 "mixedFanout": 6,
                 "mixedFilesPerDirectory": 12,
                 "providerTimeoutMilliseconds": 75,
                 "externalPathWasProvided": false,
-                "fullDiskAccessGranted": NSNull()
+                "fullDiskAccessGranted": fullDiskAccessGranted.map { $0 as Any } ?? NSNull()
             ],
             "trace": ["requested": false, "template": NSNull()],
             "fixtures": [fixture]

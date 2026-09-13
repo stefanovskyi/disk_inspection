@@ -268,6 +268,26 @@ final class ScanEverythingTests: XCTestCase {
         )
     }
 
+    func testDefaultVolumeScannerUsesCountsOnlyProgress() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpaceLensEverythingCountsOnly-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(repeating: 0x41, count: 4_096)
+            .write(to: root.appendingPathComponent("payload.bin"))
+
+        let recorder = VolumeProgressRecorder()
+        let scanner = DefaultVolumeScannerFactory().makeScanner(
+            traversalBudget: ScanTraversalBudget(permitCount: 1)
+        )
+        let result = try await scanner.scan(url: root) { recorder.record($0) }
+
+        XCTAssertEqual(recorder.latest?.itemsScanned, result.itemsScanned)
+        XCTAssertEqual(recorder.latest?.mappedBytes, result.root.size)
+        XCTAssertTrue(recorder.snapshots.allSatisfy { $0.previewRoot == nil })
+        XCTAssertEqual(result.diagnostics.previewConstructions, 0)
+    }
+
     private func runner(
         scanner: any VolumeScanning,
         policy: ScanEverythingExecutionPolicy = .adaptive
@@ -417,6 +437,23 @@ private actor ProgressEventRecorder {
         if case .progress(let progress) = event {
             progressSnapshots.append(progress)
         }
+    }
+}
+
+private final class VolumeProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [ScanProgress] = []
+
+    var latest: ScanProgress? {
+        lock.withLock { values.last }
+    }
+
+    var snapshots: [ScanProgress] {
+        lock.withLock { values }
+    }
+
+    func record(_ progress: ScanProgress) {
+        lock.withLock { values.append(progress) }
     }
 }
 

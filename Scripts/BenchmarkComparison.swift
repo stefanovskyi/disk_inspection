@@ -75,6 +75,17 @@ struct BenchmarkComparisonReport: Codable {
         let discardedNodes: Metric
         let progressMerges: Metric
         let progressEmissions: Metric
+        let progressLockAcquisitions: Metric?
+        let progressLockWaitNanoseconds: Metric?
+        let progressLockHoldNanoseconds: Metric?
+        let previewMappedByteMerges: Metric?
+        let rootPreviewBranchResolutions: Metric?
+        let completedPreviewAttempts: Metric?
+        let completedPreviewAccepted: Metric?
+        let previewConstructions: Metric?
+        let previewEmissions: Metric?
+        let workerProgressFlushes: Metric?
+        let forcedProgressFlushes: Metric?
         let providerTimeouts: Metric
         let abandonedWorkers: Metric
         let retainedArenaNodeCount: Metric
@@ -148,6 +159,17 @@ private struct BenchmarkInputReport: Decodable {
             let discardedNodes: Int?
             let progressMerges: Int?
             let progressEmissions: Int?
+            let progressLockAcquisitions: Int?
+            let progressLockWaitNanoseconds: UInt64?
+            let progressLockHoldNanoseconds: UInt64?
+            let previewMappedByteMerges: Int?
+            let rootPreviewBranchResolutions: Int?
+            let completedPreviewAttempts: Int?
+            let completedPreviewAccepted: Int?
+            let previewConstructions: Int?
+            let previewEmissions: Int?
+            let workerProgressFlushes: Int?
+            let forcedProgressFlushes: Int?
             let providerTimeouts: Int?
             let abandonedWorkers: Int?
             let retainedArenaNodeCount: Int?
@@ -249,7 +271,7 @@ enum BenchmarkReportComparator {
         if memory.regression { regressions.append("peak resident memory") }
 
         return BenchmarkComparisonReport(
-            schemaVersion: 2,
+            schemaVersion: 3,
             createdAt: Date(),
             baseline: .init(
                 path: baselineURL.standardizedFileURL.path,
@@ -356,6 +378,39 @@ enum BenchmarkReportComparator {
             discardedNodes: discardedNodes,
             progressMerges: progressMerges,
             progressEmissions: progressEmissions,
+            progressLockAcquisitions: compared({
+                $0.progressLockAcquisitions.map(Double.init)
+            }),
+            progressLockWaitNanoseconds: compared({
+                $0.progressLockWaitNanoseconds.map(Double.init)
+            }),
+            progressLockHoldNanoseconds: compared({
+                $0.progressLockHoldNanoseconds.map(Double.init)
+            }),
+            previewMappedByteMerges: compared({
+                $0.previewMappedByteMerges.map(Double.init)
+            }),
+            rootPreviewBranchResolutions: compared({
+                $0.rootPreviewBranchResolutions.map(Double.init)
+            }),
+            completedPreviewAttempts: compared({
+                $0.completedPreviewAttempts.map(Double.init)
+            }),
+            completedPreviewAccepted: compared({
+                $0.completedPreviewAccepted.map(Double.init)
+            }),
+            previewConstructions: compared({
+                $0.previewConstructions.map(Double.init)
+            }),
+            previewEmissions: compared({
+                $0.previewEmissions.map(Double.init)
+            }),
+            workerProgressFlushes: compared({
+                $0.workerProgressFlushes.map(Double.init)
+            }),
+            forcedProgressFlushes: compared({
+                $0.forcedProgressFlushes.map(Double.init)
+            }),
             providerTimeouts: providerTimeouts,
             abandonedWorkers: abandonedWorkers,
             retainedArenaNodeCount: retainedArenaNodeCount,
@@ -438,7 +493,12 @@ enum BenchmarkReportComparator {
         if fixtures.contains("deep") {
             compare("deep directory count", baseline.configuration.deepDirectoryCount, candidate.configuration.deepDirectoryCount)
         }
-        if fixtures.contains("mixed") || fixtures.contains("multi-volume") {
+        if fixtures.contains(where: {
+            $0 == "mixed"
+                || $0 == "mixed-live-preview"
+                || $0 == "mixed-counts-only"
+                || $0 == "multi-volume"
+        }) {
             compare("mixed depth", baseline.configuration.mixedDepth, candidate.configuration.mixedDepth)
             compare("mixed fanout", baseline.configuration.mixedFanout, candidate.configuration.mixedFanout)
             compare(
@@ -461,7 +521,11 @@ enum BenchmarkReportComparator {
                 candidate.configuration.externalPathWasProvided
             )
         }
-        if fixtures.contains("full-disk") {
+        if fixtures.contains(where: {
+            $0 == "full-disk"
+                || $0 == "full-disk-live-preview"
+                || $0 == "full-disk-counts-only"
+        }) {
             compare(
                 "Full Disk Access",
                 baseline.configuration.fullDiskAccessGranted,

@@ -68,6 +68,11 @@ struct DirectoryDiscoveryScanResult: Sendable {
     let wasTruncated: Bool
 }
 
+enum ScanPreviewPolicy: Equatable, Sendable {
+    case live
+    case countsOnly
+}
+
 struct DiskScanner: Sendable {
     typealias ProgressHandler = @Sendable (ScanProgress) -> Void
     typealias ItemHandler = @Sendable (ScannedFileItem) -> Void
@@ -84,7 +89,8 @@ struct DiskScanner: Sendable {
         shouldIsolateSubtree: SubtreeIsolationPredicate? = nil,
         directoryReader: DirectoryReader? = nil,
         excludedURLs: [URL] = [],
-        traversalBudget: ScanTraversalBudget? = nil
+        traversalBudget: ScanTraversalBudget? = nil,
+        previewPolicy: ScanPreviewPolicy = .live
     ) {
         let suggestedParallelism = max(2, min(ProcessInfo.processInfo.activeProcessorCount, 8))
         let maximumParallelism = max(maximumParallelism ?? suggestedParallelism, 1)
@@ -100,7 +106,8 @@ struct DiskScanner: Sendable {
             excludedPaths: Set(excludedURLs.map { $0.standardizedFileURL.path }),
             traversalBudget: traversalBudget ?? ScanTraversalBudget(
                 permitCount: maximumParallelism
-            )
+            ),
+            previewPolicy: previewPolicy
         )
     }
 
@@ -192,7 +199,17 @@ struct DiskScanner: Sendable {
                     signposter.emitEvent(
                         "ScanProgressCounters",
                         id: signpostID,
-                        "merges=\(diagnostics.progressMerges) emissions=\(diagnostics.progressEmissions)"
+                        "merges=\(diagnostics.progressMerges) emissions=\(diagnostics.progressEmissions) workerFlushes=\(diagnostics.workerProgressFlushes) forcedFlushes=\(diagnostics.forcedProgressFlushes) lockAcquisitions=\(diagnostics.progressLockAcquisitions)"
+                    )
+                    signposter.emitEvent(
+                        "ScanPreviewCounters",
+                        id: signpostID,
+                        "byteMerges=\(diagnostics.previewMappedByteMerges) branchResolutions=\(diagnostics.rootPreviewBranchResolutions) completionAttempts=\(diagnostics.completedPreviewAttempts) completionAccepted=\(diagnostics.completedPreviewAccepted) constructions=\(diagnostics.previewConstructions) emissions=\(diagnostics.previewEmissions)"
+                    )
+                    signposter.emitEvent(
+                        "ScanProgressLockTiming",
+                        id: signpostID,
+                        "waitNanoseconds=\(diagnostics.progressLockWaitNanoseconds) holdNanoseconds=\(diagnostics.progressLockHoldNanoseconds)"
                     )
                     signposter.emitEvent(
                         "ScanProviderCounters",
@@ -221,6 +238,12 @@ struct DiskScanner: Sendable {
                 itemHandler: onItem
             )
             diagnosticSession = session
+            let rootProgress = ScanWorkerProgress(
+                session: session,
+                activityMonitor: nil,
+                emitsInitialProgress: true,
+                onProgress: onProgress
+            )
 
             do {
                 guard let root = try await Self.inspect(
@@ -230,11 +253,14 @@ struct DiskScanner: Sendable {
                     activityMonitor: nil,
                     isInsideIsolatedSubtree: false,
                     ownsWorkerPermit: true,
+                    traversalContext: .root,
+                    workerProgress: rootProgress,
                     onProgress: onProgress
                 ) else {
                     throw ScanFailure.inaccessible(standardizedURL)
                 }
                 try Task.checkCancellation()
+                rootProgress.flushBeforeFinalSnapshot(path: { standardizedURL.path })
                 let progress = session.progressSnapshot(at: standardizedURL)
                 session.recordProgressEmission()
                 onProgress(progress)
@@ -293,6 +319,8 @@ struct DiskScanner: Sendable {
         activityMonitor: ScanActivityMonitor?,
         isInsideIsolatedSubtree: Bool,
         ownsWorkerPermit: Bool,
+        traversalContext: ScanTraversalContext,
+        workerProgress: ScanWorkerProgress,
         onProgress: @escaping ProgressHandler
     ) async throws -> FileNodeSnapshot? {
         try Task.checkCancellation()
@@ -306,10 +334,10 @@ struct DiskScanner: Sendable {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            guard session.recordItem(
-                at: url,
-                activityMonitor: activityMonitor,
-                onProgress: onProgress
+            guard workerProgress.recordItem(
+                size: 0,
+                branch: traversalContext.previewBranch,
+                path: { url.path }
             ) else { throw CancellationError() }
             guard session.recordObservation(
                 ScannedFileItem.unreadable(at: url),
@@ -329,10 +357,10 @@ struct DiskScanner: Sendable {
         let isDirectory = metadata.kind == .directory
 
         if !metadata.isReadable {
-            guard session.recordItem(
-                at: url,
-                activityMonitor: activityMonitor,
-                onProgress: onProgress
+            guard workerProgress.recordItem(
+                size: 0,
+                branch: traversalContext.previewBranch,
+                path: { url.path }
             ) else { throw CancellationError() }
             guard session.recordObservation(
                 ScannedFileItem(url: url, metadata: metadata),
@@ -352,22 +380,15 @@ struct DiskScanner: Sendable {
         }
 
         guard isDirectory else {
-            guard session.recordItem(
-                at: url,
-                activityMonitor: activityMonitor,
-                onProgress: onProgress
+            guard workerProgress.recordItem(
+                size: metadata.size,
+                branch: traversalContext.previewBranch,
+                path: { url.path }
             ) else { throw CancellationError() }
             guard session.recordObservation(
                 ScannedFileItem(url: url, metadata: metadata),
                 activityMonitor: activityMonitor
             ) else { throw CancellationError() }
-            if activityMonitor == nil {
-                session.mergeMappedBytes(
-                    metadata.size,
-                    itemCount: 1,
-                    within: url.deletingLastPathComponent()
-                )
-            }
             return FileNodeSnapshot(
                 name: name,
                 size: metadata.size,
@@ -388,6 +409,8 @@ struct DiskScanner: Sendable {
                 url,
                 session: session,
                 ownsWorkerPermit: ownsWorkerPermit,
+                traversalContext: traversalContext,
+                workerProgress: workerProgress,
                 onProgress: onProgress
             )
         }
@@ -396,10 +419,10 @@ struct DiskScanner: Sendable {
             guard session.visitedDirectories.insertIfNew(identity) else { return nil }
         }
 
-        guard session.recordItem(
-            at: url,
-            activityMonitor: activityMonitor,
-            onProgress: onProgress
+        guard workerProgress.recordItem(
+            size: 0,
+            branch: traversalContext.previewBranch,
+            path: { url.path }
         ) else { throw CancellationError() }
         guard session.recordObservation(
             ScannedFileItem(url: url, metadata: metadata),
@@ -422,13 +445,6 @@ struct DiskScanner: Sendable {
         var totalItems = 1
         var measuredDirectItems = 0
         var pendingDirectories: [(entry: LowLevelDirectoryEntry, metadata: LowLevelFileMetadata)] = []
-        var progressBatch = ScanProgressBatch(
-            session: session,
-            activityMonitor: activityMonitor,
-            previewURL: url,
-            onProgress: onProgress
-        )
-
         let consumeEntry: (LowLevelDirectoryEntry) throws -> Void = { entry in
             try Task.checkCancellation()
             guard activityMonitor?.isActive != false else { throw CancellationError() }
@@ -442,14 +458,17 @@ struct DiskScanner: Sendable {
                     session.diagnostics.recordFallbackLstat()
                     entryMetadata = try LowLevelMetadataReader.metadata(at: entryURL)
                 } catch {
-                    guard progressBatch.recordItem(size: 0, path: { entryURL.path }) else {
+                    guard workerProgress.recordItem(
+                        size: 0,
+                        branch: traversalContext.previewBranch,
+                        path: { entryURL.path }
+                    ) else {
                         throw CancellationError()
                     }
                     guard session.recordObservation(
                         ScannedFileItem.unreadable(at: entryURL),
                         activityMonitor: activityMonitor
                     ) else { throw CancellationError() }
-                    progressBatch.flush(path: { entryURL.path })
                     session.recordUnreadable(
                         at: entryURL,
                         unresponsive: false,
@@ -475,8 +494,9 @@ struct DiskScanner: Sendable {
                 return
             }
 
-            guard progressBatch.recordItem(
+            guard workerProgress.recordItem(
                 size: entryMetadata.isReadable ? entryMetadata.size : 0,
+                branch: traversalContext.previewBranch,
                 path: { entry.url(relativeTo: url).path }
             ) else { throw CancellationError() }
             guard session.recordObservation(
@@ -488,7 +508,6 @@ struct DiskScanner: Sendable {
             ) else { throw CancellationError() }
             if !entryMetadata.isReadable {
                 let entryURL = entry.url(relativeTo: url)
-                progressBatch.flush(path: { entryURL.path })
                 session.recordUnreadable(
                     path: { entryURL.path },
                     unresponsive: false,
@@ -533,11 +552,9 @@ struct DiskScanner: Sendable {
             }
             try Task.checkCancellation()
             guard activityMonitor?.isActive != false else { throw CancellationError() }
-            progressBatch.flush(path: { url.path })
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            progressBatch.flush(path: { url.path })
             session.recordUnreadable(at: url, unresponsive: false, onProgress: onProgress)
             return FileNodeSnapshot(
                 name: name,
@@ -548,7 +565,7 @@ struct DiskScanner: Sendable {
             )
         }
 
-        try await withThrowingTaskGroup(of: FileNodeSnapshot?.self) { group in
+        try await withThrowingTaskGroup(of: ScanChildTaskResult.self) { group in
             var pendingTaskCount = 0
 
             for pendingDirectory in pendingDirectories {
@@ -557,13 +574,34 @@ struct DiskScanner: Sendable {
                 let entry = pendingDirectory.entry
                 let entryMetadata = pendingDirectory.metadata
                 let entryURL = entry.url(relativeTo: url)
+                let childPreviewBranch: RootPreviewBranch
+                if traversalContext.isRoot, session.maintainsPreview {
+                    workerProgress.recordRootBranchResolution()
+                    childPreviewBranch = .named(entryMetadata.name)
+                } else {
+                    childPreviewBranch = traversalContext.previewBranch
+                }
+                let childTraversalContext = ScanTraversalContext(
+                    isRoot: false,
+                    previewBranch: childPreviewBranch
+                )
 
                 var acquiredPermit = session.parallelism.tryAcquireWorker()
                 while !acquiredPermit, !ownsWorkerPermit, pendingTaskCount > 0 {
-                    if let completedChild = try await group.next() {
+                    if let completedResult = try await group.next() {
                         pendingTaskCount -= 1
-                        if let completedChild {
-                            session.recordCompletedPreview(completedChild, parentURL: url)
+                        workerProgress.absorb(
+                            completedResult.progressDelta,
+                            path: { url.path }
+                        )
+                        if let completedChild = completedResult.node {
+                            if traversalContext.isRoot {
+                                workerProgress.recordCompletedPreview(
+                                    completedChild,
+                                    branch: .named(completedChild.name),
+                                    path: { url.path }
+                                )
+                            }
                             measuredDirectItems += 1
                             total = addingWithoutOverflow(total, completedChild.size)
                             totalItems = addingWithoutOverflow(totalItems, completedChild.itemCount)
@@ -583,15 +621,27 @@ struct DiskScanner: Sendable {
                     pendingTaskCount += 1
                     session.diagnostics.recordDirectoryTask()
                     group.addTask {
+                        let childProgress = ScanWorkerProgress(
+                            session: session,
+                            activityMonitor: activityMonitor,
+                            emitsInitialProgress: false,
+                            onProgress: onProgress
+                        )
                         defer { session.parallelism.release() }
-                        return try await inspect(
+                        let node = try await inspect(
                             entryURL,
                             knownMetadata: entryMetadata,
                             session: session,
                             activityMonitor: activityMonitor,
                             isInsideIsolatedSubtree: isInsideIsolatedSubtree,
                             ownsWorkerPermit: true,
+                            traversalContext: childTraversalContext,
+                            workerProgress: childProgress,
                             onProgress: onProgress
+                        )
+                        return ScanChildTaskResult(
+                            node: node,
+                            progressDelta: childProgress.takePendingDeltaForParent()
                         )
                     }
                 } else if let child = try await inspect(
@@ -601,9 +651,17 @@ struct DiskScanner: Sendable {
                     activityMonitor: activityMonitor,
                     isInsideIsolatedSubtree: isInsideIsolatedSubtree,
                     ownsWorkerPermit: ownsWorkerPermit,
+                    traversalContext: childTraversalContext,
+                    workerProgress: workerProgress,
                     onProgress: onProgress
                 ) {
-                    session.recordCompletedPreview(child, parentURL: url)
+                    if traversalContext.isRoot {
+                        workerProgress.recordCompletedPreview(
+                            child,
+                            branch: childPreviewBranch,
+                            path: { url.path }
+                        )
+                    }
                     measuredDirectItems += 1
                     total = addingWithoutOverflow(total, child.size)
                     totalItems = addingWithoutOverflow(totalItems, child.itemCount)
@@ -616,10 +674,20 @@ struct DiskScanner: Sendable {
                 }
             }
 
-            for try await child in group {
+            for try await completedResult in group {
                 pendingTaskCount -= 1
-                guard let child else { continue }
-                session.recordCompletedPreview(child, parentURL: url)
+                workerProgress.absorb(
+                    completedResult.progressDelta,
+                    path: { url.path }
+                )
+                guard let child = completedResult.node else { continue }
+                if traversalContext.isRoot {
+                    workerProgress.recordCompletedPreview(
+                        child,
+                        branch: .named(child.name),
+                        path: { url.path }
+                    )
+                }
                 measuredDirectItems += 1
                 total = addingWithoutOverflow(total, child.size)
                 totalItems = addingWithoutOverflow(totalItems, child.itemCount)
@@ -676,6 +744,8 @@ struct DiskScanner: Sendable {
         _ url: URL,
         session: ScanSession,
         ownsWorkerPermit: Bool,
+        traversalContext: ScanTraversalContext,
+        workerProgress: ScanWorkerProgress,
         onProgress: @escaping ProgressHandler
     ) async throws -> FileNodeSnapshot? {
         let signposter = SpaceLensSignposts.providerSubtree
@@ -694,6 +764,12 @@ struct DiskScanner: Sendable {
         let resultBox = LockedResultBox<FileNodeSnapshot?>()
         session.diagnostics.recordDirectoryTask()
         let isolatedWorker = Task.detached(priority: .userInitiated) {
+            let isolatedProgress = ScanWorkerProgress(
+                session: session,
+                activityMonitor: monitor,
+                emitsInitialProgress: false,
+                onProgress: onProgress
+            )
             do {
                 let node = try await inspect(
                     url,
@@ -702,8 +778,11 @@ struct DiskScanner: Sendable {
                     activityMonitor: monitor,
                     isInsideIsolatedSubtree: true,
                     ownsWorkerPermit: ownsWorkerPermit,
+                    traversalContext: traversalContext,
+                    workerProgress: isolatedProgress,
                     onProgress: onProgress
                 )
+                isolatedProgress.flushBeforeProviderCompletion(path: { url.path })
                 resultBox.store(.success(node))
             } catch {
                 resultBox.store(.failure(error))
@@ -734,17 +813,20 @@ struct DiskScanner: Sendable {
                 session.diagnostics.recordProviderTimeoutAndAbandonedWorker()
                 signposter.emitEvent("SubtreeTimedOut", id: signpostID)
 
-                session.mergeItems(
-                    abandonment.pendingItems,
+                session.mergeProgress(
+                    ScanProgressDelta(itemCount: abandonment.pendingItems),
                     path: { url.path },
+                    allowsEmission: true,
+                    forced: true,
                     onProgress: onProgress
                 )
                 if !abandonment.recordedAnyItems {
-                    _ = session.recordItem(
-                        at: url,
-                        activityMonitor: nil,
-                        onProgress: onProgress
+                    _ = workerProgress.recordItem(
+                        size: 0,
+                        branch: traversalContext.previewBranch,
+                        path: { url.path }
                     )
+                    workerProgress.flushForWorkerCompletion(path: { url.path })
                     _ = session.recordObservation(
                         ScannedFileItem.unreadable(at: url, kind: .directory),
                         activityMonitor: nil
@@ -769,14 +851,21 @@ struct DiskScanner: Sendable {
         }
 
         let abandonment = monitor.abandon()
-        session.mergeItems(
-            abandonment.pendingItems,
+        session.mergeProgress(
+            ScanProgressDelta(itemCount: abandonment.pendingItems),
             path: { url.path },
+            allowsEmission: true,
+            forced: true,
             onProgress: onProgress
         )
         let result = try resultBox.take().get()
         if let result {
-            session.mergeMappedBytes(result.size, itemCount: result.itemCount, within: url)
+            workerProgress.recordMappedBytes(
+                result.size,
+                itemCount: result.itemCount,
+                branch: traversalContext.previewBranch,
+                path: { url.path }
+            )
         }
         return result
     }
@@ -910,9 +999,49 @@ private final class DirectoryDiscoveryLimiter: @unchecked Sendable {
     }
 }
 
+private enum RootPreviewBranch: Hashable, Sendable {
+    case ungrouped
+    case named(String)
+}
+
+private struct ScanTraversalContext: Sendable {
+    let isRoot: Bool
+    let previewBranch: RootPreviewBranch
+
+    static let root = Self(isRoot: true, previewBranch: .ungrouped)
+}
+
+private struct PreviewProgressDelta: Sendable {
+    var bytes: Int64 = 0
+    var itemCount = 0
+}
+
+private struct ScanProgressDelta: Sendable {
+    var itemCount = 0
+    var mappedBytes: Int64 = 0
+    var previewByBranch: [RootPreviewBranch: PreviewProgressDelta] = [:]
+    var completedPreviews: [RootPreviewBranch: FileNodeSnapshot] = [:]
+    var rootBranchResolutions = 0
+    var completedPreviewAttempts = 0
+
+    var isEmpty: Bool {
+        itemCount == 0
+            && mappedBytes == 0
+            && previewByBranch.isEmpty
+            && completedPreviews.isEmpty
+            && rootBranchResolutions == 0
+            && completedPreviewAttempts == 0
+    }
+}
+
+private struct ScanChildTaskResult: Sendable {
+    let node: FileNodeSnapshot?
+    let progressDelta: ScanProgressDelta
+}
+
 private final class ScanSession: @unchecked Sendable {
-    private static let completedPreviewChildLimit = 8
-    private static let progressEmissionIntervalNanoseconds: UInt64 = 200_000_000
+    fileprivate static let completedPreviewChildLimit = 8
+    fileprivate static let progressEmissionIntervalNanoseconds: UInt64 = 200_000_000
 
     private struct PreviewBranch {
         let name: String
@@ -940,6 +1069,21 @@ private final class ScanSession: @unchecked Sendable {
     private var previewBranches: [String: PreviewBranch] = [:]
     private var ungroupedPreviewSize: Int64 = 0
     private var ungroupedPreviewItems = 0
+    private var progressLockAcquisitions = 0
+    private var progressLockWaitNanoseconds: UInt64 = 0
+    private var progressLockHoldNanoseconds: UInt64 = 0
+    private var previewMappedByteMerges = 0
+    private var rootPreviewBranchResolutions = 0
+    private var completedPreviewAttempts = 0
+    private var completedPreviewAccepted = 0
+    private var previewConstructions = 0
+    private var previewEmissions = 0
+    private var workerProgressFlushes = 0
+    private var forcedProgressFlushes = 0
+
+    var maintainsPreview: Bool {
+        configuration.previewPolicy == .live
+    }
 
     init(
         progress: ScanProgress,
@@ -998,76 +1142,68 @@ private final class ScanSession: @unchecked Sendable {
         return true
     }
 
-    func progressSnapshot(at url: URL) -> ScanProgress {
-        progressLock.lock()
-        defer { progressLock.unlock() }
-        progress.currentPath = url.path
-        progress.previewRoot = makePreviewRoot()
-        return progress
-    }
-
-    func diagnosticSnapshot() -> ScanDiagnosticSnapshot {
-        diagnostics.snapshot(bufferAllocations: directoryBuffers.allocationCount)
-    }
-
-    func recordProgressEmission() {
-        diagnostics.recordProgressEmission()
-    }
-
-    @discardableResult
-    func recordItem(
-        at url: URL,
-        activityMonitor: ScanActivityMonitor?,
-        onProgress: DiskScanner.ProgressHandler
-    ) -> Bool {
-        recordItem(
-            path: { url.path },
-            activityMonitor: activityMonitor,
-            onProgress: onProgress
-        )
-    }
-
-    @discardableResult
-    func recordItem(
+    func mergeProgress(
+        _ delta: ScanProgressDelta,
         path: () -> String,
-        activityMonitor: ScanActivityMonitor?,
-        onProgress: DiskScanner.ProgressHandler
-    ) -> Bool {
-        let itemCount: Int
-        if let activityMonitor {
-            guard activityMonitor.recordActivity() else { return false }
-            itemCount = activityMonitor.takePendingItems()
-        } else {
-            itemCount = 1
-        }
-
-        mergeItems(itemCount, path: path, onProgress: onProgress)
-        return true
-    }
-
-    func mergeItems(
-        _ itemCount: Int,
-        path: () -> String,
+        allowsEmission: Bool,
+        forced: Bool,
         onProgress: DiskScanner.ProgressHandler
     ) {
-        guard itemCount > 0 else { return }
-
-        progressLock.lock()
-        diagnostics.recordProgressMerge()
-        let addition = progress.itemsScanned.addingReportingOverflow(itemCount)
-        progress.itemsScanned = addition.overflow ? Int.max : addition.partialValue
+        guard !delta.isEmpty else { return }
 
         let now = DispatchTime.now().uptimeNanoseconds
+        let lockStartedAt = now
+        progressLock.lock()
+        let lockAcquiredAt = DispatchTime.now().uptimeNanoseconds
+        progressLockAcquisitions = addingWithoutOverflow(progressLockAcquisitions, 1)
+        progressLockWaitNanoseconds = addingWithoutOverflow(
+            progressLockWaitNanoseconds,
+            lockAcquiredAt &- lockStartedAt
+        )
+        workerProgressFlushes = addingWithoutOverflow(workerProgressFlushes, 1)
+        if forced {
+            forcedProgressFlushes = addingWithoutOverflow(forcedProgressFlushes, 1)
+        }
+        diagnostics.recordProgressMerge()
+
+        progress.itemsScanned = addingWithoutOverflow(progress.itemsScanned, delta.itemCount)
+        progress.mappedBytes = addingWithoutOverflow(progress.mappedBytes, delta.mappedBytes)
+        rootPreviewBranchResolutions = addingWithoutOverflow(
+            rootPreviewBranchResolutions,
+            delta.rootBranchResolutions
+        )
+        completedPreviewAttempts = addingWithoutOverflow(
+            completedPreviewAttempts,
+            delta.completedPreviewAttempts
+        )
+
+        if maintainsPreview {
+            mergePreviewDeltas(delta.previewByBranch)
+            mergeCompletedPreviews(delta.completedPreviews)
+        }
+
         let emittedProgress: ScanProgress?
-        if progress.itemsScanned == 1
-            || now &- lastProgressEmission >= Self.progressEmissionIntervalNanoseconds {
+        if allowsEmission
+            && (lastProgressEmission == 0
+                || now &- lastProgressEmission >= Self.progressEmissionIntervalNanoseconds) {
             lastProgressEmission = now
             progress.currentPath = path()
-            progress.previewRoot = makePreviewRoot()
+            if maintainsPreview {
+                previewConstructions = addingWithoutOverflow(previewConstructions, 1)
+                previewEmissions = addingWithoutOverflow(previewEmissions, 1)
+                progress.previewRoot = makePreviewRoot()
+            } else {
+                progress.previewRoot = nil
+            }
             emittedProgress = progress
         } else {
             emittedProgress = nil
         }
+
+        progressLockHoldNanoseconds = addingWithoutOverflow(
+            progressLockHoldNanoseconds,
+            DispatchTime.now().uptimeNanoseconds &- lockAcquiredAt
+        )
         progressLock.unlock()
 
         if let emittedProgress {
@@ -1076,53 +1212,52 @@ private final class ScanSession: @unchecked Sendable {
         }
     }
 
-    func mergeMappedBytes(_ bytes: Int64, itemCount: Int, within directoryURL: URL) {
-        guard bytes > 0 else { return }
-
+    func progressSnapshot(at url: URL) -> ScanProgress {
+        let lockStartedAt = DispatchTime.now().uptimeNanoseconds
         progressLock.lock()
-        progress.mappedBytes = addingWithoutOverflow(progress.mappedBytes, bytes)
-
-        if let branchName = rootBranchName(containing: directoryURL) {
-            if var branch = previewBranches[branchName] {
-                branch.size = addingWithoutOverflow(branch.size, bytes)
-                branch.itemCount = addingWithoutOverflow(branch.itemCount, itemCount)
-                previewBranches[branchName] = branch
-            } else if previewBranches.count < Self.completedPreviewChildLimit {
-                previewBranches[branchName] = PreviewBranch(
-                    name: branchName,
-                    size: bytes,
-                    itemCount: itemCount,
-                    completedSnapshot: nil
-                )
-            } else {
-                ungroupedPreviewSize = addingWithoutOverflow(ungroupedPreviewSize, bytes)
-                ungroupedPreviewItems = addingWithoutOverflow(ungroupedPreviewItems, itemCount)
-            }
+        let lockAcquiredAt = DispatchTime.now().uptimeNanoseconds
+        progressLockAcquisitions = addingWithoutOverflow(progressLockAcquisitions, 1)
+        progressLockWaitNanoseconds = addingWithoutOverflow(
+            progressLockWaitNanoseconds,
+            lockAcquiredAt &- lockStartedAt
+        )
+        progress.currentPath = url.path
+        if maintainsPreview {
+            previewConstructions = addingWithoutOverflow(previewConstructions, 1)
+            previewEmissions = addingWithoutOverflow(previewEmissions, 1)
+            progress.previewRoot = makePreviewRoot()
         } else {
-            ungroupedPreviewSize = addingWithoutOverflow(ungroupedPreviewSize, bytes)
-            ungroupedPreviewItems = addingWithoutOverflow(ungroupedPreviewItems, itemCount)
+            progress.previewRoot = nil
         }
+        let snapshot = progress
+        progressLockHoldNanoseconds = addingWithoutOverflow(
+            progressLockHoldNanoseconds,
+            DispatchTime.now().uptimeNanoseconds &- lockAcquiredAt
+        )
         progressLock.unlock()
+        return snapshot
     }
 
-    func recordCompletedPreview(_ snapshot: FileNodeSnapshot, parentURL: URL) {
-        guard parentURL.standardizedFileURL.path == rootURL.path else { return }
-
+    func diagnosticSnapshot() -> ScanDiagnosticSnapshot {
+        var snapshot = diagnostics.snapshot(bufferAllocations: directoryBuffers.allocationCount)
         progressLock.lock()
-        if var branch = previewBranches[snapshot.name] {
-            branch.completedSnapshot = projectedPreview(snapshot, remainingDepth: 1)
-            branch.size = max(branch.size, snapshot.size)
-            branch.itemCount = max(branch.itemCount, snapshot.itemCount)
-            previewBranches[snapshot.name] = branch
-        } else if previewBranches.count < Self.completedPreviewChildLimit {
-            previewBranches[snapshot.name] = PreviewBranch(
-                name: snapshot.name,
-                size: snapshot.size,
-                itemCount: snapshot.itemCount,
-                completedSnapshot: projectedPreview(snapshot, remainingDepth: 1)
-            )
-        }
+        snapshot.progressLockAcquisitions = progressLockAcquisitions
+        snapshot.progressLockWaitNanoseconds = progressLockWaitNanoseconds
+        snapshot.progressLockHoldNanoseconds = progressLockHoldNanoseconds
+        snapshot.previewMappedByteMerges = previewMappedByteMerges
+        snapshot.rootPreviewBranchResolutions = rootPreviewBranchResolutions
+        snapshot.completedPreviewAttempts = completedPreviewAttempts
+        snapshot.completedPreviewAccepted = completedPreviewAccepted
+        snapshot.previewConstructions = previewConstructions
+        snapshot.previewEmissions = previewEmissions
+        snapshot.workerProgressFlushes = workerProgressFlushes
+        snapshot.forcedProgressFlushes = forcedProgressFlushes
         progressLock.unlock()
+        return snapshot
+    }
+
+    func recordProgressEmission() {
+        diagnostics.recordProgressEmission()
     }
 
     func recordUnreadable(
@@ -1145,16 +1280,34 @@ private final class ScanSession: @unchecked Sendable {
         forceProgressEmission: Bool = false,
         onProgress: DiskScanner.ProgressHandler
     ) {
+        let lockStartedAt = DispatchTime.now().uptimeNanoseconds
         progressLock.lock()
-        progress.unreadableItems += 1
+        let lockAcquiredAt = DispatchTime.now().uptimeNanoseconds
+        progressLockAcquisitions = addingWithoutOverflow(progressLockAcquisitions, 1)
+        progressLockWaitNanoseconds = addingWithoutOverflow(
+            progressLockWaitNanoseconds,
+            lockAcquiredAt &- lockStartedAt
+        )
+        progress.unreadableItems = addingWithoutOverflow(progress.unreadableItems, 1)
         if unresponsive {
-            progress.unresponsiveItems += 1
+            progress.unresponsiveItems = addingWithoutOverflow(progress.unresponsiveItems, 1)
         }
         if forceProgressEmission {
+            lastProgressEmission = DispatchTime.now().uptimeNanoseconds
             progress.currentPath = path()
-            progress.previewRoot = makePreviewRoot()
+            if maintainsPreview {
+                previewConstructions = addingWithoutOverflow(previewConstructions, 1)
+                previewEmissions = addingWithoutOverflow(previewEmissions, 1)
+                progress.previewRoot = makePreviewRoot()
+            } else {
+                progress.previewRoot = nil
+            }
         }
         let emittedProgress = forceProgressEmission ? progress : nil
+        progressLockHoldNanoseconds = addingWithoutOverflow(
+            progressLockHoldNanoseconds,
+            DispatchTime.now().uptimeNanoseconds &- lockAcquiredAt
+        )
         progressLock.unlock()
 
         if let emittedProgress {
@@ -1163,21 +1316,71 @@ private final class ScanSession: @unchecked Sendable {
         }
     }
 
-    private func rootBranchName(containing directoryURL: URL) -> String? {
-        let directoryPath = directoryURL.standardizedFileURL.path
-        let rootPath = rootURL.path
-        guard directoryPath != rootPath else { return nil }
+    private func mergePreviewDeltas(
+        _ deltas: [RootPreviewBranch: PreviewProgressDelta]
+    ) {
+        for (rootBranch, delta) in deltas where delta.bytes > 0 {
+            previewMappedByteMerges = addingWithoutOverflow(previewMappedByteMerges, 1)
+            switch rootBranch {
+            case .ungrouped:
+                ungroupedPreviewSize = addingWithoutOverflow(ungroupedPreviewSize, delta.bytes)
+                ungroupedPreviewItems = addingWithoutOverflow(
+                    ungroupedPreviewItems,
+                    delta.itemCount
+                )
+            case .named(let branchName):
+                if var branch = previewBranches[branchName] {
+                    branch.size = addingWithoutOverflow(branch.size, delta.bytes)
+                    branch.itemCount = addingWithoutOverflow(branch.itemCount, delta.itemCount)
+                    previewBranches[branchName] = branch
+                } else if previewBranches.count < Self.completedPreviewChildLimit {
+                    previewBranches[branchName] = PreviewBranch(
+                        name: branchName,
+                        size: delta.bytes,
+                        itemCount: delta.itemCount,
+                        completedSnapshot: nil
+                    )
+                } else {
+                    ungroupedPreviewSize = addingWithoutOverflow(
+                        ungroupedPreviewSize,
+                        delta.bytes
+                    )
+                    ungroupedPreviewItems = addingWithoutOverflow(
+                        ungroupedPreviewItems,
+                        delta.itemCount
+                    )
+                }
+            }
+        }
+    }
 
-        let relativeStart = rootPath == "/" ? 1 : rootPath.count + 1
-        guard directoryPath.count >= relativeStart else { return nil }
-        let relative = String(directoryPath.dropFirst(relativeStart))
-        return relative.split(separator: "/", maxSplits: 1).first.map(String.init)
+    private func mergeCompletedPreviews(
+        _ completedPreviews: [RootPreviewBranch: FileNodeSnapshot]
+    ) {
+        for (rootBranch, snapshot) in completedPreviews {
+            guard case .named(let branchName) = rootBranch else { continue }
+            if var branch = previewBranches[branchName] {
+                branch.completedSnapshot = snapshot
+                branch.size = max(branch.size, snapshot.size)
+                branch.itemCount = max(branch.itemCount, snapshot.itemCount)
+                previewBranches[branchName] = branch
+                completedPreviewAccepted = addingWithoutOverflow(completedPreviewAccepted, 1)
+            } else if previewBranches.count < Self.completedPreviewChildLimit {
+                previewBranches[branchName] = PreviewBranch(
+                    name: branchName,
+                    size: snapshot.size,
+                    itemCount: snapshot.itemCount,
+                    completedSnapshot: snapshot
+                )
+                completedPreviewAccepted = addingWithoutOverflow(completedPreviewAccepted, 1)
+            }
+        }
     }
 
     private func makePreviewRoot() -> FileNode {
         var children = previewBranches.values.map { branch in
             if let completed = branch.completedSnapshot {
-                return completed
+                return projectedPreview(completed, remainingDepth: 1)
             }
             return FileNodeSnapshot(
                 name: branch.name,
@@ -1293,62 +1496,250 @@ private final class ScanSession: @unchecked Sendable {
         let addition = left.addingReportingOverflow(right)
         return addition.overflow ? Int.max : addition.partialValue
     }
+
+    private func addingWithoutOverflow(_ left: UInt64, _ right: UInt64) -> UInt64 {
+        let addition = left.addingReportingOverflow(right)
+        return addition.overflow ? UInt64.max : addition.partialValue
+    }
 }
 
-private struct ScanProgressBatch {
-    private static let itemLimit = 256
+private final class ScanWorkerProgress {
+    private static let clockCheckItemLimit = 256
 
-    let session: ScanSession
-    let activityMonitor: ScanActivityMonitor?
-    let previewURL: URL
-    let onProgress: DiskScanner.ProgressHandler
-    private var localPendingItems = 0
-    private var itemsSinceMerge = 0
-    private var mappedBytesSinceMerge: Int64 = 0
+    private let session: ScanSession
+    private let activityMonitor: ScanActivityMonitor?
+    private let onProgress: DiskScanner.ProgressHandler
+    private var delta = ScanProgressDelta()
+    private var activePreviewBranch: RootPreviewBranch?
+    private var activePreviewDelta = PreviewProgressDelta()
+    private var itemsSinceClockCheck = 0
+    private var lastMergeCheck = DispatchTime.now().uptimeNanoseconds
+    private var emitsInitialProgress: Bool
 
     init(
         session: ScanSession,
         activityMonitor: ScanActivityMonitor?,
-        previewURL: URL,
+        emitsInitialProgress: Bool,
         onProgress: @escaping DiskScanner.ProgressHandler
     ) {
         self.session = session
         self.activityMonitor = activityMonitor
-        self.previewURL = previewURL
+        self.emitsInitialProgress = emitsInitialProgress
         self.onProgress = onProgress
     }
 
-    mutating func recordItem(size: Int64, path: () -> String) -> Bool {
+    @discardableResult
+    func recordItem(
+        size: Int64,
+        previewItemCount: Int = 1,
+        branch: RootPreviewBranch,
+        path: () -> String
+    ) -> Bool {
         if let activityMonitor {
             guard activityMonitor.recordActivity() else { return false }
-        } else {
-            localPendingItems += 1
-            let addition = mappedBytesSinceMerge.addingReportingOverflow(size)
-            mappedBytesSinceMerge = addition.overflow ? Int64.max : addition.partialValue
+            itemsSinceClockCheck += 1
+            if itemsSinceClockCheck >= Self.clockCheckItemLimit {
+                itemsSinceClockCheck = 0
+                flushProviderItemsIfDue(path: path)
+            }
+            return true
         }
-        itemsSinceMerge += 1
 
-        if itemsSinceMerge >= Self.itemLimit {
-            flush(path: path)
+        delta.itemCount = addingWithoutOverflow(delta.itemCount, 1)
+        delta.mappedBytes = addingWithoutOverflow(delta.mappedBytes, size)
+        recordPreviewBytes(size, itemCount: previewItemCount, branch: branch)
+        itemsSinceClockCheck += 1
+
+        if emitsInitialProgress {
+            emitsInitialProgress = false
+            flush(path: path, allowsEmission: true, forced: false)
+        } else if itemsSinceClockCheck >= Self.clockCheckItemLimit {
+            itemsSinceClockCheck = 0
+            flushIfDue(path: path)
         }
         return true
     }
 
-    mutating func flush(path: () -> String) {
-        let itemCount: Int
-        if let activityMonitor {
-            itemCount = activityMonitor.takePendingItems()
-        } else {
-            itemCount = localPendingItems
-            localPendingItems = 0
+    func recordMappedBytes(
+        _ bytes: Int64,
+        itemCount: Int,
+        branch: RootPreviewBranch,
+        path: () -> String
+    ) {
+        guard activityMonitor == nil, bytes > 0 else { return }
+        delta.mappedBytes = addingWithoutOverflow(delta.mappedBytes, bytes)
+        recordPreviewBytes(bytes, itemCount: itemCount, branch: branch)
+        flushIfDue(path: path)
+    }
+
+    func recordRootBranchResolution() {
+        guard session.maintainsPreview else { return }
+        delta.rootBranchResolutions = addingWithoutOverflow(delta.rootBranchResolutions, 1)
+    }
+
+    func recordCompletedPreview(
+        _ snapshot: FileNodeSnapshot,
+        branch: RootPreviewBranch,
+        path: () -> String
+    ) {
+        guard session.maintainsPreview else { return }
+        delta.completedPreviewAttempts = addingWithoutOverflow(
+            delta.completedPreviewAttempts,
+            1
+        )
+        if delta.completedPreviews[branch] != nil
+            || delta.completedPreviews.count < ScanSession.completedPreviewChildLimit {
+            delta.completedPreviews[branch] = snapshot
         }
-        itemsSinceMerge = 0
-        let mappedBytes = mappedBytesSinceMerge
-        mappedBytesSinceMerge = 0
-        if activityMonitor == nil {
-            session.mergeMappedBytes(mappedBytes, itemCount: itemCount, within: previewURL)
+        flushIfDue(path: path)
+    }
+
+    func flushForWorkerCompletion(path: () -> String) {
+        guard activityMonitor == nil else { return }
+        flush(path: path, allowsEmission: true, forced: true)
+    }
+
+    func takePendingDeltaForParent() -> ScanProgressDelta {
+        guard activityMonitor == nil else { return ScanProgressDelta() }
+        foldActivePreviewDelta()
+        let pending = delta
+        delta = ScanProgressDelta()
+        itemsSinceClockCheck = 0
+        return pending
+    }
+
+    func absorb(_ pending: ScanProgressDelta, path: () -> String) {
+        guard activityMonitor == nil, !pending.isEmpty else { return }
+        foldActivePreviewDelta()
+        delta.itemCount = addingWithoutOverflow(delta.itemCount, pending.itemCount)
+        delta.mappedBytes = addingWithoutOverflow(delta.mappedBytes, pending.mappedBytes)
+        delta.rootBranchResolutions = addingWithoutOverflow(
+            delta.rootBranchResolutions,
+            pending.rootBranchResolutions
+        )
+        delta.completedPreviewAttempts = addingWithoutOverflow(
+            delta.completedPreviewAttempts,
+            pending.completedPreviewAttempts
+        )
+        for (branch, preview) in pending.previewByBranch {
+            var accumulated = delta.previewByBranch[branch] ?? PreviewProgressDelta()
+            accumulated.bytes = addingWithoutOverflow(accumulated.bytes, preview.bytes)
+            accumulated.itemCount = addingWithoutOverflow(
+                accumulated.itemCount,
+                preview.itemCount
+            )
+            delta.previewByBranch[branch] = accumulated
         }
-        session.mergeItems(itemCount, path: path, onProgress: onProgress)
+        for (branch, snapshot) in pending.completedPreviews
+            where delta.completedPreviews[branch] != nil
+                || delta.completedPreviews.count < ScanSession.completedPreviewChildLimit {
+            delta.completedPreviews[branch] = snapshot
+        }
+        itemsSinceClockCheck = addingWithoutOverflow(
+            itemsSinceClockCheck,
+            pending.itemCount
+        )
+        flushIfDue(path: path)
+    }
+
+    func flushBeforeFinalSnapshot(path: () -> String) {
+        guard activityMonitor == nil else { return }
+        flush(path: path, allowsEmission: false, forced: true)
+    }
+
+    func flushBeforeProviderCompletion(path: () -> String) {
+        guard let activityMonitor else { return }
+        guard activityMonitor.isActive else {
+            delta = ScanProgressDelta()
+            return
+        }
+        flush(path: path, allowsEmission: true, forced: true)
+    }
+
+    private func flushProviderItemsIfDue(path: () -> String) {
+        guard let activityMonitor else { return }
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard now &- lastMergeCheck >= ScanSession.progressEmissionIntervalNanoseconds else {
+            return
+        }
+        lastMergeCheck = now
+        let itemCount = activityMonitor.takePendingItems()
+        guard itemCount > 0 else { return }
+        session.mergeProgress(
+            ScanProgressDelta(itemCount: itemCount),
+            path: path,
+            allowsEmission: true,
+            forced: false,
+            onProgress: onProgress
+        )
+    }
+
+    private func flushIfDue(path: () -> String) {
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard now &- lastMergeCheck >= ScanSession.progressEmissionIntervalNanoseconds else {
+            return
+        }
+        lastMergeCheck = now
+        flush(path: path, allowsEmission: true, forced: false)
+    }
+
+    private func flush(
+        path: () -> String,
+        allowsEmission: Bool,
+        forced: Bool
+    ) {
+        foldActivePreviewDelta()
+        guard !delta.isEmpty else { return }
+        let pending = delta
+        delta = ScanProgressDelta()
+        itemsSinceClockCheck = 0
+        session.mergeProgress(
+            pending,
+            path: path,
+            allowsEmission: allowsEmission,
+            forced: forced,
+            onProgress: onProgress
+        )
+    }
+
+    private func recordPreviewBytes(
+        _ bytes: Int64,
+        itemCount: Int,
+        branch: RootPreviewBranch
+    ) {
+        guard session.maintainsPreview, bytes > 0 else { return }
+        if activePreviewBranch != branch {
+            foldActivePreviewDelta()
+            activePreviewBranch = branch
+        }
+        activePreviewDelta.bytes = addingWithoutOverflow(activePreviewDelta.bytes, bytes)
+        activePreviewDelta.itemCount = addingWithoutOverflow(
+            activePreviewDelta.itemCount,
+            itemCount
+        )
+    }
+
+    private func foldActivePreviewDelta() {
+        guard let activePreviewBranch, activePreviewDelta.bytes > 0 else { return }
+        var branchDelta = delta.previewByBranch[activePreviewBranch] ?? PreviewProgressDelta()
+        branchDelta.bytes = addingWithoutOverflow(branchDelta.bytes, activePreviewDelta.bytes)
+        branchDelta.itemCount = addingWithoutOverflow(
+            branchDelta.itemCount,
+            activePreviewDelta.itemCount
+        )
+        delta.previewByBranch[activePreviewBranch] = branchDelta
+        self.activePreviewBranch = nil
+        activePreviewDelta = PreviewProgressDelta()
+    }
+
+    private func addingWithoutOverflow(_ left: Int64, _ right: Int64) -> Int64 {
+        let addition = left.addingReportingOverflow(right)
+        return addition.overflow ? Int64.max : addition.partialValue
+    }
+
+    private func addingWithoutOverflow(_ left: Int, _ right: Int) -> Int {
+        let addition = left.addingReportingOverflow(right)
+        return addition.overflow ? Int.max : addition.partialValue
     }
 }
 
@@ -1476,6 +1867,7 @@ private struct ScannerConfiguration: @unchecked Sendable {
     let directoryReader: DiskScanner.DirectoryReader?
     let excludedPaths: Set<String>
     let traversalBudget: ScanTraversalBudget
+    let previewPolicy: ScanPreviewPolicy
 }
 
 private final class ScanActivityMonitor: @unchecked Sendable {

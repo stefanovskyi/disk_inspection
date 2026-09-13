@@ -19,7 +19,8 @@ struct DefaultVolumeScannerFactory: VolumeScannerFactory {
     func makeScanner(traversalBudget: ScanTraversalBudget) -> any VolumeScanning {
         DiskScanner(
             maximumParallelism: traversalBudget.permitCount,
-            traversalBudget: traversalBudget
+            traversalBudget: traversalBudget,
+            previewPolicy: .countsOnly
         )
     }
 }

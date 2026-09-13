@@ -120,6 +120,35 @@ struct CompareBenchmarks {
                 + "providers: timeouts \(formattedIntegerPair(diagnostics.providerTimeouts)), "
                 + "abandoned \(formattedIntegerPair(diagnostics.abandonedWorkers))"
         )
+        if let progressLocks = diagnostics.progressLockAcquisitions,
+           let workerFlushes = diagnostics.workerProgressFlushes,
+           let forcedFlushes = diagnostics.forcedProgressFlushes {
+            print(
+                "  progress coordination: locks \(formattedIntegerPair(progressLocks)), "
+                    + "worker flushes \(formattedIntegerPair(workerFlushes)), "
+                    + "forced flushes \(formattedIntegerPair(forcedFlushes))"
+            )
+        }
+        if let byteMerges = diagnostics.previewMappedByteMerges,
+           let branchResolutions = diagnostics.rootPreviewBranchResolutions,
+           let completionAttempts = diagnostics.completedPreviewAttempts,
+           let previewConstructions = diagnostics.previewConstructions,
+           let previewEmissions = diagnostics.previewEmissions {
+            print(
+                "  preview: byte merges \(formattedIntegerPair(byteMerges)), "
+                    + "branch resolutions \(formattedIntegerPair(branchResolutions)), "
+                    + "completion attempts \(formattedIntegerPair(completionAttempts)), "
+                    + "constructions \(formattedIntegerPair(previewConstructions)), "
+                    + "emissions \(formattedIntegerPair(previewEmissions))"
+            )
+        }
+        if let wait = diagnostics.progressLockWaitNanoseconds,
+           let hold = diagnostics.progressLockHoldNanoseconds {
+            print(
+                "  progress lock: wait \(formattedNanosecondPair(wait)), "
+                    + "hold \(formattedNanosecondPair(hold))"
+            )
+        }
         print(
             "  arena: \(formattedDecimalPair(diagnostics.arenaConstructionDurationMilliseconds, suffix: " ms")), "
                 + "RSS before \(formattedMemoryPair(diagnostics.rssBeforeArenaConstructionBytes)), "
@@ -143,6 +172,16 @@ struct CompareBenchmarks {
             format: "%.1f -> %.1f MiB",
             metric.baseline / 1_048_576,
             metric.candidate / 1_048_576
+        )
+    }
+
+    private static func formattedNanosecondPair(
+        _ metric: BenchmarkComparisonReport.Metric
+    ) -> String {
+        String(
+            format: "%.3f -> %.3f ms",
+            metric.baseline / 1_000_000,
+            metric.candidate / 1_000_000
         )
     }
 

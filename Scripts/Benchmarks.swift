@@ -47,8 +47,9 @@ struct BenchmarkConfiguration {
 
     static func load(environment: [String: String] = ProcessInfo.processInfo.environment) throws -> Self {
         let knownFixtures = Set([
-            "flat", "flat-observer", "deep", "mixed", "provider", "multi-volume", "external",
-            "full-disk"
+            "flat", "flat-observer", "deep", "mixed", "mixed-live-preview",
+            "mixed-counts-only", "provider", "multi-volume", "external", "full-disk",
+            "full-disk-live-preview", "full-disk-counts-only"
         ])
         let defaultFixtures = Set(["flat", "deep", "mixed", "provider", "multi-volume"])
         let requestedFixtures = environment["SPACELENS_BENCHMARK_FIXTURES"]
@@ -90,7 +91,11 @@ struct BenchmarkConfiguration {
                     + "\(BulkDirectoryReader.minimumBufferSize / 1024)"
             )
         }
-        let fullDiskAccessGranted = requestedFixtures.contains("full-disk")
+        let fullDiskAccessGranted = requestedFixtures.contains(where: {
+            $0 == "full-disk"
+                || $0 == "full-disk-live-preview"
+                || $0 == "full-disk-counts-only"
+        })
             ? FullDiskAccessChecker().status(for: URL(fileURLWithPath: "/")) == .granted
             : nil
         return BenchmarkConfiguration(
@@ -281,7 +286,9 @@ struct SpaceLensBenchmarks {
             )
         }
 
-        if configuration.selectedFixtures.contains("mixed") {
+        if configuration.selectedFixtures.contains("mixed")
+            || configuration.selectedFixtures.contains("mixed-live-preview")
+            || configuration.selectedFixtures.contains("mixed-counts-only") {
             let root = fixtureRoot.appendingPathComponent("Mixed", isDirectory: true)
             print(
                 "Preparing mixed fixture (depth \(configuration.mixedDepth), "
@@ -294,14 +301,22 @@ struct SpaceLensBenchmarks {
                 fanout: configuration.mixedFanout,
                 filesPerDirectory: configuration.mixedFilesPerDirectory
             )
-            measurements.append(
-                try await measure(name: "mixed", iterations: configuration.iterations) {
-                    try await DiskScanner(
-                        maximumParallelism: configuration.scannerParallelism,
-                        directoryBufferSize: configuration.directoryBufferSize
-                    ).scan(url: root)
-                }
-            )
+            let variants: [(name: String, policy: ScanPreviewPolicy)] = [
+                ("mixed", .live),
+                ("mixed-live-preview", .live),
+                ("mixed-counts-only", .countsOnly)
+            ]
+            for variant in variants where configuration.selectedFixtures.contains(variant.name) {
+                measurements.append(
+                    try await measure(name: variant.name, iterations: configuration.iterations) {
+                        try await DiskScanner(
+                            maximumParallelism: configuration.scannerParallelism,
+                            directoryBufferSize: configuration.directoryBufferSize,
+                            previewPolicy: variant.policy
+                        ).scan(url: root)
+                    }
+                )
+            }
         }
 
         if configuration.selectedFixtures.contains("multi-volume") {
@@ -383,7 +398,9 @@ struct SpaceLensBenchmarks {
             )
         }
 
-        if configuration.selectedFixtures.contains("full-disk") {
+        if configuration.selectedFixtures.contains("full-disk")
+            || configuration.selectedFixtures.contains("full-disk-live-preview")
+            || configuration.selectedFixtures.contains("full-disk-counts-only") {
             let root = URL(fileURLWithPath: "/", isDirectory: true)
             guard configuration.fullDiskAccessGranted == true else {
                 throw BenchmarkFailure.invalidConfiguration(
@@ -391,17 +408,25 @@ struct SpaceLensBenchmarks {
                 )
             }
             print("Full-disk fixture is read-only and will scan the startup volume: /")
-            measurements.append(
-                try await measure(name: "full-disk", iterations: configuration.iterations) {
-                    try await DiskScanner(
-                        maximumParallelism: configuration.scannerParallelism,
-                        directoryBufferSize: configuration.directoryBufferSize,
-                        excludedURLs: configuration.tracePath.map {
-                            [URL(fileURLWithPath: $0, isDirectory: true)]
-                        } ?? []
-                    ).scan(url: root)
-                }
-            )
+            let variants: [(name: String, policy: ScanPreviewPolicy)] = [
+                ("full-disk", .live),
+                ("full-disk-live-preview", .live),
+                ("full-disk-counts-only", .countsOnly)
+            ]
+            for variant in variants where configuration.selectedFixtures.contains(variant.name) {
+                measurements.append(
+                    try await measure(name: variant.name, iterations: configuration.iterations) {
+                        try await DiskScanner(
+                            maximumParallelism: configuration.scannerParallelism,
+                            directoryBufferSize: configuration.directoryBufferSize,
+                            excludedURLs: configuration.tracePath.map {
+                                [URL(fileURLWithPath: $0, isDirectory: true)]
+                            } ?? [],
+                            previewPolicy: variant.policy
+                        ).scan(url: root)
+                    }
+                )
+            }
         }
 
         if configuration.selectedFixtures.contains("external") {
@@ -556,8 +581,26 @@ struct SpaceLensBenchmarks {
                     + "discarded=\(diagnostics.discardedNodes) "
                     + "progress-merges=\(diagnostics.progressMerges) "
                     + "progress-emissions=\(diagnostics.progressEmissions) "
+                    + "progress-locks=\(diagnostics.progressLockAcquisitions) "
+                    + "worker-flushes=\(diagnostics.workerProgressFlushes) "
+                    + "forced-flushes=\(diagnostics.forcedProgressFlushes) "
                     + "provider-timeouts=\(diagnostics.providerTimeouts) "
                     + "abandoned-workers=\(diagnostics.abandonedWorkers)"
+            )
+            print(
+                "    preview: byte-merges=\(diagnostics.previewMappedByteMerges) "
+                    + "branch-resolutions=\(diagnostics.rootPreviewBranchResolutions) "
+                    + "completion-attempts=\(diagnostics.completedPreviewAttempts) "
+                    + "completion-accepted=\(diagnostics.completedPreviewAccepted) "
+                    + "constructions=\(diagnostics.previewConstructions) "
+                    + "emissions=\(diagnostics.previewEmissions)"
+            )
+            print(
+                String(
+                    format: "    progress lock: wait=%.3f ms hold=%.3f ms",
+                    Double(diagnostics.progressLockWaitNanoseconds) / 1_000_000,
+                    Double(diagnostics.progressLockHoldNanoseconds) / 1_000_000
+                )
             )
             print(
                 String(
@@ -730,6 +773,17 @@ struct SpaceLensBenchmarks {
             diagnostics.discardedNodes += value.discardedNodes
             diagnostics.progressMerges += value.progressMerges
             diagnostics.progressEmissions += value.progressEmissions
+            diagnostics.progressLockAcquisitions += value.progressLockAcquisitions
+            diagnostics.progressLockWaitNanoseconds += value.progressLockWaitNanoseconds
+            diagnostics.progressLockHoldNanoseconds += value.progressLockHoldNanoseconds
+            diagnostics.previewMappedByteMerges += value.previewMappedByteMerges
+            diagnostics.rootPreviewBranchResolutions += value.rootPreviewBranchResolutions
+            diagnostics.completedPreviewAttempts += value.completedPreviewAttempts
+            diagnostics.completedPreviewAccepted += value.completedPreviewAccepted
+            diagnostics.previewConstructions += value.previewConstructions
+            diagnostics.previewEmissions += value.previewEmissions
+            diagnostics.workerProgressFlushes += value.workerProgressFlushes
+            diagnostics.forcedProgressFlushes += value.forcedProgressFlushes
             diagnostics.providerTimeouts += value.providerTimeouts
             diagnostics.abandonedWorkers += value.abandonedWorkers
             diagnostics.retainedArenaNodeCount += value.retainedArenaNodeCount

@@ -75,6 +75,23 @@ Run three read-only startup-disk scans with:
 make benchmark-full
 ```
 
+Compare the interactive live-preview policy with the counts-only policy used by
+Scan Everything on the same directory-heavy fixture:
+
+```bash
+SPACELENS_BENCHMARK_FIXTURES=mixed-live-preview,mixed-counts-only \
+SPACELENS_BENCHMARK_ITERATIONS=5 \
+SPACELENS_BENCHMARK_MIXED_DEPTH=4 \
+SPACELENS_BENCHMARK_MIXED_FANOUT=8 \
+SPACELENS_BENCHMARK_MIXED_FILES_PER_DIRECTORY=16 \
+make benchmark
+```
+
+For a Full Disk Access A/B, use
+`full-disk-live-preview,full-disk-counts-only` instead. The startup disk is
+read-only in both variants; the fixture names keep the two policies distinct in
+the same report.
+
 The external-disk fixture is opt-in. Point it at a dedicated directory rather than a volume root:
 
 ```bash

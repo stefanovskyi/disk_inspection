@@ -279,6 +279,17 @@ struct ScanDiagnosticSnapshot: Codable, Equatable, Sendable {
     var discardedNodes = 0
     var progressMerges = 0
     var progressEmissions = 0
+    var progressLockAcquisitions = 0
+    var progressLockWaitNanoseconds: UInt64 = 0
+    var progressLockHoldNanoseconds: UInt64 = 0
+    var previewMappedByteMerges = 0
+    var rootPreviewBranchResolutions = 0
+    var completedPreviewAttempts = 0
+    var completedPreviewAccepted = 0
+    var previewConstructions = 0
+    var previewEmissions = 0
+    var workerProgressFlushes = 0
+    var forcedProgressFlushes = 0
     var providerTimeouts = 0
     var abandonedWorkers = 0
     var retainedArenaNodeCount = 0
