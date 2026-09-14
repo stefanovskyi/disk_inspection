@@ -25,7 +25,7 @@ struct FullDiskAccessChecker: Sendable {
     }
 
     func status(for plan: ScanEverythingPlan) -> FullDiskAccessStatus {
-        guard !plan.steps.isEmpty else { return .notRequired }
+        guard plan.includesStartupVolume else { return .notRequired }
         return currentStatus
     }
 

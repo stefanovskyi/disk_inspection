@@ -14,6 +14,20 @@ enum ScanEverythingAnalysis: String, CaseIterable, Hashable, Sendable {
     }
 }
 
+enum ScanEverythingScope: Equatable, Sendable {
+    case discScan
+    case analysis
+    case combined
+
+    var title: String {
+        switch self {
+        case .discScan: "Disc Scan"
+        case .analysis: "Analysis"
+        case .combined: "Scan Everything"
+        }
+    }
+}
+
 enum ScanEverythingStep: Equatable, Sendable, Identifiable {
     case volume(VolumeInfo)
     case analysis(ScanEverythingAnalysis)
@@ -33,14 +47,14 @@ enum ScanEverythingStep: Equatable, Sendable, Identifiable {
     }
 }
 
-/// An immutable snapshot of the work selected when Scan Everything begins.
+/// An immutable snapshot of the work selected when a batch operation begins.
 struct ScanEverythingPlan: Equatable, Sendable {
     let volumes: [VolumeInfo]
     let analyses: [ScanEverythingAnalysis]
 
     init(
         volumes: [VolumeInfo],
-        analyses: [ScanEverythingAnalysis] = ScanEverythingAnalysis.allCases
+        analyses: [ScanEverythingAnalysis] = []
     ) {
         var seenVolumes: Set<String> = []
         self.volumes = volumes
@@ -59,6 +73,12 @@ struct ScanEverythingPlan: Equatable, Sendable {
 
     var includesStartupVolume: Bool {
         volumes.contains(where: \.isStartupVolume)
+    }
+
+    var scope: ScanEverythingScope {
+        if volumes.isEmpty { return .analysis }
+        if analyses.isEmpty { return .discScan }
+        return .combined
     }
 
     private static func volumeOrder(_ left: VolumeInfo, _ right: VolumeInfo) -> Bool {
@@ -140,8 +160,8 @@ struct ScanEverythingSummary: Equatable, Sendable {
 
 enum ScanEverythingState: Equatable, Sendable {
     case idle
-    case running(startedAt: Date, progress: ScanEverythingProgress)
-    case completed(ScanEverythingSummary)
+    case running(plan: ScanEverythingPlan, startedAt: Date, progress: ScanEverythingProgress)
+    case completed(plan: ScanEverythingPlan, summary: ScanEverythingSummary)
     case cancelled
 
     var isRunning: Bool {
@@ -150,17 +170,24 @@ enum ScanEverythingState: Equatable, Sendable {
     }
 
     var progress: ScanEverythingProgress? {
-        guard case .running(_, let progress) = self else { return nil }
+        guard case .running(_, _, let progress) = self else { return nil }
         return progress
     }
 
     var startedAt: Date? {
-        guard case .running(let startedAt, _) = self else { return nil }
+        guard case .running(_, let startedAt, _) = self else { return nil }
         return startedAt
     }
 
     var summary: ScanEverythingSummary? {
-        guard case .completed(let summary) = self else { return nil }
+        guard case .completed(_, let summary) = self else { return nil }
         return summary
+    }
+
+    var plan: ScanEverythingPlan? {
+        switch self {
+        case .running(let plan, _, _), .completed(let plan, _): plan
+        case .idle, .cancelled: nil
+        }
     }
 }

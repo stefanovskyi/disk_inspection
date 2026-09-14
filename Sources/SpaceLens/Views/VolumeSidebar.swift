@@ -440,12 +440,13 @@ private struct ScanEverythingControl: View {
 
         if let progress = model.scanEverythingProgress,
            let startedAt = model.scanEverythingStartedAt {
+            let scope = model.scanEverythingScope ?? .combined
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    Image(systemName: "internaldrive")
+                    Image(systemName: scope == .analysis ? "chart.bar.xaxis" : "internaldrive")
                         .foregroundStyle(theme.accent)
                         .accessibilityHidden(true)
-                    Text("Scanning Everything")
+                    Text(scope == .analysis ? "Running Analysis" : "Scanning Discs")
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(theme.primaryText)
                     Spacer(minLength: 4)
@@ -456,8 +457,8 @@ private struct ScanEverythingControl: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(theme.secondaryText)
-                    .help("Cancel Scan Everything")
-                    .accessibilityLabel("Cancel Scan Everything")
+                    .help("Cancel \(scope.title)")
+                    .accessibilityLabel("Cancel \(scope.title)")
                 }
 
                 Text(statusTitle(progress))
@@ -492,37 +493,48 @@ private struct ScanEverythingControl: View {
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .help(currentPath(progress) ?? statusTitle(progress))
             .accessibilityElement(children: .contain)
-            .accessibilityLabel("Scan Everything in progress")
+            .accessibilityLabel("\(scope.title) in progress")
             .accessibilityValue(
                 "\(progress.completedStepIDs.count) of \(progress.totalSteps) complete, \(statusTitle(progress))"
             )
         } else {
-            Button {
-                model.requestScanEverything()
-            } label: {
-                Label(scanEverythingButtonTitle, systemImage: "play.circle.fill")
-                    .font(.callout.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+            HStack(spacing: 8) {
+                Button {
+                    model.requestDiscScan()
+                } label: {
+                    Label("Disc Scan", systemImage: "internaldrive.fill")
+                        .font(.callout.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(theme.accent)
+                .disabled(model.isDiscoveringVolumes)
+                .help("Scan every mounted local disk")
+                .accessibilityHint("Scans all mounted local disks")
+
+                Button {
+                    model.requestAllAnalyses()
+                } label: {
+                    Label("Analysis", systemImage: "chart.bar.xaxis")
+                        .font(.callout.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(theme.accent)
+                .help("Run all storage analyses")
+                .accessibilityHint("Runs AI Coding Tools, AI Models, and Developer Storage analyses")
             }
-            .buttonStyle(.borderedProminent)
-            .tint(theme.accent)
-            .disabled(model.isDiscoveringVolumes)
-            .help("Scan every mounted local disk and run all storage analyses")
-            .accessibilityHint("Scans all mounted local disks and runs every analysis")
 
             if let summary = model.scanEverythingSummary {
-                Text(summaryText(summary))
+                Text(summaryText(summary, scope: model.scanEverythingScope))
                     .font(.caption2)
                     .foregroundStyle(summary.failureCount == 0 ? theme.tertiaryText : theme.warning)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
             }
         }
-    }
-
-    private var scanEverythingButtonTitle: String {
-        model.scanEverythingSummary == nil ? "Scan Everything" : "Scan Everything Again"
     }
 
     private func statusTitle(_ progress: ScanEverythingProgress) -> String {
@@ -533,8 +545,8 @@ private struct ScanEverythingControl: View {
             return operation.step.title
         }
         return progress.completedStepIDs.count == progress.totalSteps
-            ? "Finishing Scan Everything"
-            : "Preparing scans"
+            ? "Finishing \(model.scanEverythingScope?.title ?? "operation")"
+            : "Preparing \(model.scanEverythingScope?.title ?? "operation")"
     }
 
     private func currentLocation(_ progress: ScanEverythingProgress) -> String? {
@@ -549,13 +561,17 @@ private struct ScanEverythingControl: View {
         return operations[0].currentPath
     }
 
-    private func summaryText(_ summary: ScanEverythingSummary) -> String {
+    private func summaryText(
+        _ summary: ScanEverythingSummary,
+        scope: ScanEverythingScope?
+    ) -> String {
         let total = summary.outcomes.count
         let duration = StorageFormatters.duration(summary.duration)
+        let prefix = "\(scope?.title ?? "Operation"): "
         if summary.failureCount == 0 {
-            return "Completed \(total) of \(total) steps in \(duration)"
+            return "\(prefix)completed \(total) of \(total) steps in \(duration)"
         }
-        return "Completed \(summary.completedCount) of \(total) steps in \(duration)"
+        return "\(prefix)completed \(summary.completedCount) of \(total) steps in \(duration)"
     }
 }
 

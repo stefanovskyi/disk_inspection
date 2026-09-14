@@ -21,8 +21,10 @@ struct SpaceLensApp: App {
                 Button("Scan Folder…") { model.chooseFolder() }
                     .keyboardShortcut("o", modifiers: [.command])
                     .disabled(model.isScanningEverything)
-                Button("Scan Everything…") { model.requestScanEverything() }
+                Button("Disc Scan…") { model.requestDiscScan() }
                     .disabled(model.isDiscoveringVolumes || model.isScanningEverything)
+                Button("Analysis…") { model.requestAllAnalyses() }
+                    .disabled(model.isScanningEverything)
                 Button(model.selectedSection == .storage ? "Rescan" : "Analyze Again") {
                     model.refreshCurrentSection()
                 }

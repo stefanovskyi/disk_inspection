@@ -97,6 +97,10 @@ final class AppViewModel {
         scanEverythingState.summary
     }
 
+    var scanEverythingScope: ScanEverythingScope? {
+        scanEverythingState.plan?.scope
+    }
+
     func isScanEverythingRunning(_ analysis: ScanEverythingAnalysis) -> Bool {
         scanEverythingProgress?.operation(for: .analysis(analysis)) != nil
     }
@@ -177,11 +181,28 @@ final class AppViewModel {
         }
     }
 
-    func requestScanEverything() {
+    func requestDiscScan() {
+        let plan = ScanEverythingPlan(volumes: volumes, analyses: [])
+        guard !plan.volumes.isEmpty else {
+            errorMessage = "SpaceLens did not find any local disks to scan."
+            return
+        }
+        requestScanEverything(plan)
+    }
+
+    func requestAllAnalyses() {
+        requestScanEverything(
+            ScanEverythingPlan(
+                volumes: [],
+                analyses: ScanEverythingAnalysis.allCases
+            )
+        )
+    }
+
+    private func requestScanEverything(_ plan: ScanEverythingPlan) {
         guard !isScanningEverything else { return }
-        let plan = ScanEverythingPlan(volumes: volumes)
         guard !plan.steps.isEmpty else {
-            errorMessage = "SpaceLens did not find any work to scan."
+            errorMessage = "SpaceLens did not find any analysis work to run."
             return
         }
         if fullDiskAccessChecker.status(for: plan) == .needsUserApproval {
@@ -222,6 +243,7 @@ final class AppViewModel {
 
         let startedAt = Date()
         scanEverythingState = .running(
+            plan: plan,
             startedAt: startedAt,
             progress: ScanEverythingProgress(
                 totalSteps: plan.steps.count
@@ -252,7 +274,7 @@ final class AppViewModel {
                 guard !Task.isCancelled, activeScanEverythingID == runID else { return }
                 scanEverythingTask = nil
                 activeScanEverythingID = nil
-                scanEverythingState = .completed(summary)
+                scanEverythingState = .completed(plan: plan, summary: summary)
                 scanCoordinator.finish(.scanEverything, id: runID)
                 if let firstFailure = summary.outcomes.first(where: {
                     if case .failed = $0.status { return true }
@@ -261,7 +283,7 @@ final class AppViewModel {
                     if summary.failureCount == 1 {
                         errorMessage = "\(firstFailure.step.title) failed: \(message)"
                     } else {
-                        errorMessage = "Scan Everything completed with \(summary.failureCount) problems. "
+                        errorMessage = "\(plan.scope.title) completed with \(summary.failureCount) problems. "
                             + "First: \(firstFailure.step.title) failed: \(message)"
                     }
                 }
@@ -294,12 +316,12 @@ final class AppViewModel {
         runID: UUID
     ) async {
         guard activeScanEverythingID == runID,
-              case .running(let startedAt, let currentProgress) = scanEverythingState else { return }
+              case .running(let plan, let startedAt, let currentProgress) = scanEverythingState else { return }
 
         switch event {
         case .progress(let progress):
             guard progress.overallFraction >= currentProgress.overallFraction else { return }
-            scanEverythingState = .running(startedAt: startedAt, progress: progress)
+            scanEverythingState = .running(plan: plan, startedAt: startedAt, progress: progress)
 
         case .volumeCompleted(let volume, let result):
             storeCompletedVolumeScan(result, for: volume, presentWhenSelected: true)
@@ -338,7 +360,7 @@ final class AppViewModel {
         if cachedResult(for: folder) != nil {
             viewCachedResult(at: folder.url)
         } else if isScanningEverything {
-            errorMessage = "Cancel Scan Everything before starting a folder scan."
+            errorMessage = "Cancel \(scanEverythingScope?.title ?? "the current operation") before starting a folder scan."
         } else {
             scan(folder.url)
         }

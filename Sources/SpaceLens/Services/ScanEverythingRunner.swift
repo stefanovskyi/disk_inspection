@@ -77,8 +77,8 @@ enum ScanEverythingEvent: Sendable {
     case stepFailed(step: ScanEverythingStep, message: String)
 }
 
-/// Owns all scheduling for Scan Everything. Volume scans may overlap only
-/// across device keys; analyses deliberately remain a sequential second phase.
+/// Owns scheduling for batched disk scans and analyses. Volume scans may overlap
+/// only across device keys; analyses remain sequential when requested.
 struct ScanEverythingRunner: Sendable {
     typealias EventHandler = @Sendable (ScanEverythingEvent) async -> Void
 

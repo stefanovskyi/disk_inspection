@@ -21,12 +21,26 @@ final class FullDiskAccessCheckerTests: XCTestCase {
         )
     }
 
-    func testScanEverythingNeedsApprovalEvenWithoutStartupDisk() {
+    func testExternalOnlyDiscScanDoesNotRequireFullDiskAccess() {
         let checker = FullDiskAccessChecker(accessProbe: { false })
 
         XCTAssertEqual(
             checker.status(for: ScanEverythingPlan(volumes: [externalVolume()])),
-            .needsUserApproval
+            .notRequired
+        )
+    }
+
+    func testAnalysisDoesNotRequireFullDiskAccessPreflight() {
+        let checker = FullDiskAccessChecker(accessProbe: { false })
+
+        XCTAssertEqual(
+            checker.status(
+                for: ScanEverythingPlan(
+                    volumes: [],
+                    analyses: ScanEverythingAnalysis.allCases
+                )
+            ),
+            .notRequired
         )
     }
 

@@ -31,7 +31,8 @@ final class ScanEverythingTests: XCTestCase {
         )
 
         let plan = ScanEverythingPlan(
-            volumes: [external, network, internalArchive, duplicateExternal, startup]
+            volumes: [external, network, internalArchive, duplicateExternal, startup],
+            analyses: ScanEverythingAnalysis.allCases
         )
 
         XCTAssertEqual(plan.volumes, [startup, internalArchive, external])
@@ -47,6 +48,24 @@ final class ScanEverythingTests: XCTestCase {
             ]
         )
         XCTAssertTrue(plan.includesStartupVolume)
+        XCTAssertEqual(plan.scope, .combined)
+    }
+
+    func testDiscScanAndAnalysisPlansContainOnlyTheirOwnWork() {
+        let startup = volume(name: "Macintosh HD", path: "/", uuid: "startup")
+        let discScan = ScanEverythingPlan(volumes: [startup])
+        let analysis = ScanEverythingPlan(
+            volumes: [],
+            analyses: ScanEverythingAnalysis.allCases
+        )
+
+        XCTAssertEqual(discScan.steps, [.volume(startup)])
+        XCTAssertEqual(discScan.scope, .discScan)
+        XCTAssertEqual(
+            analysis.steps,
+            ScanEverythingAnalysis.allCases.map(ScanEverythingStep.analysis)
+        )
+        XCTAssertEqual(analysis.scope, .analysis)
     }
 
     func testUnknownDeviceFallbackIsConservativeForInternalVolumes() {
@@ -233,7 +252,10 @@ final class ScanEverythingTests: XCTestCase {
         )
 
         let summary = try await runner.run(
-            plan: ScanEverythingPlan(volumes: volumes),
+            plan: ScanEverythingPlan(
+                volumes: volumes,
+                analyses: ScanEverythingAnalysis.allCases
+            ),
             requests: currentUserRequests()
         )
         let snapshot = await timeline.snapshot
@@ -241,7 +263,13 @@ final class ScanEverythingTests: XCTestCase {
         XCTAssertFalse(snapshot.analysisOverlappedVolume)
         XCTAssertEqual(snapshot.maximumActiveAnalyses, 1)
         XCTAssertEqual(snapshot.analysisOrder, ScanEverythingAnalysis.allCases.map(\.rawValue))
-        XCTAssertEqual(summary.outcomes.map(\.step), ScanEverythingPlan(volumes: volumes).steps)
+        XCTAssertEqual(
+            summary.outcomes.map(\.step),
+            ScanEverythingPlan(
+                volumes: volumes,
+                analyses: ScanEverythingAnalysis.allCases
+            ).steps
+        )
     }
 
     func testProgressShowsBothVolumesAndNeverMovesBackward() async throws {

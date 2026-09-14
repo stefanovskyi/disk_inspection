@@ -97,7 +97,10 @@ struct SpaceLensSelfTests {
             isExternal: true,
             isLocal: false
         )
-        let plan = ScanEverythingPlan(volumes: [external, network, duplicate, startup])
+        let plan = ScanEverythingPlan(
+            volumes: [external, network, duplicate, startup],
+            analyses: ScanEverythingAnalysis.allCases
+        )
 
         try expect(plan.volumes == [startup, external], "Scan Everything did not normalize volumes")
         try expect(
@@ -1535,8 +1538,17 @@ struct SpaceLensSelfTests {
             "Scan Everything did not gate its startup-disk work before scanning"
         )
         try expect(
-            denied.status(for: ScanEverythingPlan(volumes: [external])) == .needsUserApproval,
-            "Scan Everything did not gate an external-only plan before broad filesystem access"
+            denied.status(for: ScanEverythingPlan(volumes: [external])) == .notRequired,
+            "External-only Disc Scan unnecessarily requested Full Disk Access"
+        )
+        try expect(
+            denied.status(
+                for: ScanEverythingPlan(
+                    volumes: [],
+                    analyses: ScanEverythingAnalysis.allCases
+                )
+            ) == .notRequired,
+            "Analysis unnecessarily requested Full Disk Access"
         )
         try expect(
             granted.status(for: ScanEverythingPlan(volumes: [startup])) == .granted,

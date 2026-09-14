@@ -212,7 +212,7 @@ struct AppRootView: View {
             FullDiskAccessPrompt()
         }
         .alert(
-            "Scan Everything?",
+            "\(model.pendingScanEverythingPlan?.scope.title ?? "Continue")?",
             isPresented: Binding(
                 get: { model.isRequestingScanEverything },
                 set: { isPresented in
@@ -221,19 +221,14 @@ struct AppRootView: View {
             ),
             presenting: model.pendingScanEverythingPlan
         ) { _ in
-            Button("Scan Everything") {
+            Button(model.pendingScanEverythingPlan?.scope.title ?? "Continue") {
                 model.confirmScanEverything()
             }
             Button("Cancel", role: .cancel) {
                 model.cancelScanEverythingConfirmation()
             }
         } message: { plan in
-            Text(
-                "SpaceLens will scan \(plan.volumes.count) mounted local "
-                    + (plan.volumes.count == 1 ? "disk" : "disks")
-                    + " and run \(plan.analyses.count) storage analyses. "
-                    + "The operation is read-only and may take several minutes."
-            )
+            Text(batchConfirmationMessage(for: plan))
         }
         .alert(
             "No saved scan data",
@@ -383,6 +378,23 @@ struct AppRootView: View {
         )
     }
 
+    private func batchConfirmationMessage(for plan: ScanEverythingPlan) -> String {
+        switch plan.scope {
+        case .discScan:
+            return "SpaceLens will scan \(plan.volumes.count) mounted local "
+                + (plan.volumes.count == 1 ? "disk" : "disks")
+                + ". The scan is read-only and may take several minutes."
+        case .analysis:
+            return "SpaceLens will run AI Coding Tools, AI Models, and Developer Storage analysis. "
+                + "The analysis is read-only and may take several minutes."
+        case .combined:
+            return "SpaceLens will scan \(plan.volumes.count) mounted local "
+                + (plan.volumes.count == 1 ? "disk" : "disks")
+                + " and run \(plan.analyses.count) storage analyses. "
+                + "The operation is read-only and may take several minutes."
+        }
+    }
+
 }
 
 private struct FullDiskAccessPrompt: View {
@@ -408,7 +420,7 @@ private struct FullDiskAccessPrompt: View {
 
                     Text(
                         isScanEverythingRequest
-                            ? "Scan Everything needs Full Disk Access before it begins. Enable SpaceLens once in System Settings to prevent separate permission prompts for protected folders."
+                            ? "Disc Scan needs Full Disk Access before it begins. Enable SpaceLens once in System Settings so it can measure protected folders."
                             : "For a complete storage map, enable SpaceLens in System Settings. Without Full Disk Access, macOS will hide protected folders and the totals will be incomplete."
                     )
                     .font(.callout)
@@ -461,7 +473,7 @@ private struct FullDiskAccessPrompt: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
             isScanEverythingRequest
-                ? "Full Disk Access required before Scan Everything"
+                ? "Full Disk Access required before Disc Scan"
                 : "Full Disk Access recommended before scanning"
         )
     }
