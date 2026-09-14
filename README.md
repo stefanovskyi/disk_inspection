@@ -18,6 +18,20 @@ SpaceLens is a native, read-only macOS storage inspector. It maps disks and fold
 
 The chart supports hover details, click-to-drill navigation, breadcrumbs, context actions, keyboard navigation, and an accessible text alternative. Symbolic links are never followed, scans stay on the selected filesystem, and inaccessible locations do not abort the rest of a scan.
 
+## Download a release
+
+Download the latest build from [GitHub Releases](https://github.com/stefanovskyi/disk_inspection/releases/latest). Current release builds require macOS 14 or newer on Apple silicon.
+
+SpaceLens releases are currently ad-hoc signed and are not notarized. Before opening a download, compare its SHA-256 checksum with the value in the release notes:
+
+```bash
+shasum -a 256 ~/Downloads/SpaceLens-*.zip
+```
+
+After moving `SpaceLens.app` to Applications, try to open it once. If macOS blocks it and you trust the downloaded file and its checksum, open **System Settings > Privacy & Security**, scroll to **Security**, click **Open Anyway**, then confirm **Open**. Apple documents this exception process in [Open a Mac app from an unknown developer](https://support.apple.com/guide/mac-help/mh40616/mac).
+
+This exception does not make the app signed or notarized. Do not disable Gatekeeper globally. Developer ID signing and notarization are tracked in [issue #1](https://github.com/stefanovskyi/disk_inspection/issues/1).
+
 ## Analysis examples
 
 <p>

@@ -59,6 +59,25 @@ codesign --verify --deep --strict --verbose=2 dist/SpaceLens.app
 plutil -lint dist/SpaceLens.app/Contents/Info.plist
 ```
 
+## Publishing an ad-hoc release
+
+Developer ID signing and notarization are tracked in [issue #1](https://github.com/stefanovskyi/disk_inspection/issues/1) and require Apple Developer credentials. Until that work is complete, every public release must remain explicit about its security status.
+
+Before publishing an ad-hoc build:
+
+1. Run `make build`, `make test`, and `make app`.
+2. Run the `codesign` and `plutil` validation commands above.
+3. Name the archive with the version, platform, and architecture, such as `SpaceLens-1.2.0-macos-arm64.zip`.
+4. Generate its checksum with `shasum -a 256 <archive>`.
+5. State the minimum macOS version and supported architecture in the release notes.
+6. Include the checksum and this exact notice:
+
+   > This build is ad-hoc signed and is not notarized. macOS Gatekeeper may require manual approval before first launch.
+
+Do not describe a self-signed, Apple Development, or ad-hoc build as Developer ID signed, notarized, or Gatekeeper-approved. A stable local signing identity only preserves local privacy permissions; it does not establish trust on another Mac.
+
+Downloaded-build instructions belong in the release notes and in the README. Use Apple's documented **System Settings > Privacy & Security > Open Anyway** process; do not recommend disabling Gatekeeper globally or removing quarantine attributes.
+
 ## Performance benchmarks
 
 Run the optimized synthetic scanner and chart-layout fixtures:
