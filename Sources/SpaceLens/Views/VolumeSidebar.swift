@@ -232,14 +232,14 @@ struct VolumeSidebar: View {
                     if model.selectedSection == .aiModelsAndRuntimes {
                         ForEach(model.aiModelsAndRuntimes.additionalRoots) { root in
                             Button("Remove \(root.name)") {
-                                model.aiModelsAndRuntimes.removeRoot(root)
+                                model.removeAdditionalAIModelRoot(root)
                             }
                             .help(root.url.path)
                         }
                     } else if model.selectedSection == .developerStorage {
                         ForEach(model.developerStorage.projectContainers) { container in
                             Button("Remove \(container.name)") {
-                                model.developerStorage.removeProjectContainer(container)
+                                model.removeDeveloperProjectContainer(container)
                             }
                             .help(container.url.path)
                         }

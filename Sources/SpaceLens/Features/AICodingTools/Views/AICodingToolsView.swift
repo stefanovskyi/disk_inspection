@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AICodingToolsViewActions {
+    let analyze: () -> Void
     let showInFinder: (URL) -> Void
     let openInTerminal: (URL) -> Void
     let inspect: (FileNode) -> Void
@@ -116,7 +117,7 @@ struct AICodingToolsView: View {
                     .frame(maxWidth: 600)
 
                     Button {
-                        store.analyze()
+                        actions.analyze()
                     } label: {
                         Label("Analyze Coding Tools", systemImage: "play.fill")
                             .font(.headline)
@@ -200,7 +201,7 @@ struct AICodingToolsView: View {
                 .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 560)
-            Button("Try Again") { store.analyze() }
+            Button("Try Again") { actions.analyze() }
                 .buttonStyle(.borderedProminent)
                 .tint(theme.accent)
         }

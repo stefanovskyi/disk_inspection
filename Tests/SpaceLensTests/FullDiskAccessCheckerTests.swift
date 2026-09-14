@@ -12,94 +12,33 @@ final class FullDiskAccessCheckerTests: XCTestCase {
         )
     }
 
-    func testScanEverythingNeedsApprovalBeforeIncludingStartupDisk() {
-        let checker = FullDiskAccessChecker(accessProbe: { false })
+    func testStatusRerunsProbeBeforeEveryActivity() {
+        let probe = SequencedAccessProbe([false, true, false])
+        let checker = FullDiskAccessChecker(accessProbe: { probe.next() })
 
-        XCTAssertEqual(
-            checker.status(for: ScanEverythingPlan(volumes: [startupVolume()])),
-            .needsUserApproval
-        )
+        XCTAssertEqual(checker.status(), .needsUserApproval)
+        XCTAssertEqual(checker.status(), .granted)
+        XCTAssertEqual(checker.status(), .needsUserApproval)
     }
 
-    func testExternalOnlyDiscScanDoesNotRequireFullDiskAccess() {
-        let checker = FullDiskAccessChecker(accessProbe: { false })
-
-        XCTAssertEqual(
-            checker.status(for: ScanEverythingPlan(volumes: [externalVolume()])),
-            .notRequired
-        )
-    }
-
-    func testAnalysisDoesNotRequireFullDiskAccessPreflight() {
-        let checker = FullDiskAccessChecker(accessProbe: { false })
-
-        XCTAssertEqual(
-            checker.status(
-                for: ScanEverythingPlan(
-                    volumes: [],
-                    analyses: ScanEverythingAnalysis.allCases
-                )
-            ),
-            .notRequired
-        )
-    }
-
-    func testScanEverythingContinuesWhenFullDiskAccessIsGranted() {
+    func testGrantedProbeAllowsActivity() {
         let checker = FullDiskAccessChecker(accessProbe: { true })
 
-        XCTAssertEqual(
-            checker.status(for: ScanEverythingPlan(volumes: [startupVolume()])),
-            .granted
-        )
+        XCTAssertEqual(checker.status(), .granted)
+    }
+}
+
+private final class SequencedAccessProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var results: [Bool]
+
+    init(_ results: [Bool]) {
+        self.results = results
     }
 
-    func testWholeDiskScanNeedsApprovalWhenProtectedProbeFails() {
-        let checker = FullDiskAccessChecker(accessProbe: { false })
-
-        XCTAssertEqual(
-            checker.status(for: URL(fileURLWithPath: "/")),
-            .needsUserApproval
-        )
-    }
-
-    func testWholeDiskScanContinuesWhenProtectedProbeSucceeds() {
-        let checker = FullDiskAccessChecker(accessProbe: { true })
-
-        XCTAssertEqual(checker.status(for: URL(fileURLWithPath: "/")), .granted)
-    }
-
-    func testFolderScanDoesNotRequireFullDiskAccess() {
-        let checker = FullDiskAccessChecker(accessProbe: { false })
-
-        XCTAssertEqual(
-            checker.status(for: URL(fileURLWithPath: "/Users/example/Documents")),
-            .notRequired
-        )
-    }
-
-    private func startupVolume() -> VolumeInfo {
-        VolumeInfo(
-            url: URL(fileURLWithPath: "/", isDirectory: true),
-            name: "Macintosh HD",
-            totalCapacity: 100,
-            availableCapacity: 50,
-            isExternal: false,
-            isReadOnly: false,
-            uuid: "startup",
-            isLocal: true
-        )
-    }
-
-    private func externalVolume() -> VolumeInfo {
-        VolumeInfo(
-            url: URL(fileURLWithPath: "/Volumes/External", isDirectory: true),
-            name: "External",
-            totalCapacity: 100,
-            availableCapacity: 50,
-            isExternal: true,
-            isReadOnly: false,
-            uuid: "external",
-            isLocal: true
-        )
+    func next() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return results.isEmpty ? false : results.removeFirst()
     }
 }

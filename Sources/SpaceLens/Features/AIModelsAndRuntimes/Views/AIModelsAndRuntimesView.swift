@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AIModelsViewActions {
+    let analyze: () -> Void
     let showInFinder: (URL) -> Void
     let openInTerminal: (URL) -> Void
     let inspectDirectory: (URL) -> Void
@@ -102,7 +103,7 @@ struct AIModelsAndRuntimesView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 640)
                     Button {
-                        store.analyze()
+                        actions.analyze()
                     } label: {
                         Label("Analyze AI Models", systemImage: "play.fill")
                             .font(.headline)
@@ -185,7 +186,7 @@ struct AIModelsAndRuntimesView: View {
                 .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 560)
-            Button("Try Again") { store.analyze() }
+            Button("Try Again") { actions.analyze() }
                 .buttonStyle(.borderedProminent)
                 .tint(theme.accent)
         }

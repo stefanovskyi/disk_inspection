@@ -42,7 +42,7 @@ struct SpaceLensSelfTests {
         try await developerStorageDeduplicatesHardLinkedFiles()
         try scanCoordinatorKeepsReplacementActive()
         try scanEverythingPlanPrioritizesStartupAndSkipsNetworkVolumes()
-        try fullDiskAccessIsCheckedOnlyForWholeDiskScans()
+        try fullDiskAccessIsCheckedBeforeEveryActivity()
         try elapsedTimeFormattingIsReadable()
         try scanScopeStaysInsideTheSelectedVolume()
         try layoutPreservesHierarchyAndProportion()
@@ -1541,63 +1541,22 @@ struct SpaceLensSelfTests {
         )
     }
 
-    private static func fullDiskAccessIsCheckedOnlyForWholeDiskScans() throws {
+    private static func fullDiskAccessIsCheckedBeforeEveryActivity() throws {
         let denied = FullDiskAccessChecker(accessProbe: { false })
         let granted = FullDiskAccessChecker(accessProbe: { true })
         let exampleHome = URL(fileURLWithPath: "/Users/example", isDirectory: true)
-        let startup = VolumeInfo(
-            url: URL(fileURLWithPath: "/", isDirectory: true),
-            name: "Macintosh HD",
-            totalCapacity: 100,
-            availableCapacity: 50,
-            isExternal: false,
-            isReadOnly: false,
-            uuid: "startup",
-            isLocal: true
-        )
-        let external = VolumeInfo(
-            url: URL(fileURLWithPath: "/Volumes/External", isDirectory: true),
-            name: "External",
-            totalCapacity: 100,
-            availableCapacity: 50,
-            isExternal: true,
-            isReadOnly: false,
-            uuid: "external",
-            isLocal: true
-        )
 
         try expect(
-            denied.status(for: URL(fileURLWithPath: "/")) == .needsUserApproval,
-            "Whole-disk scan did not request Full Disk Access"
+            denied.status() == .needsUserApproval,
+            "A scan or analysis did not request Full Disk Access"
         )
         try expect(
-            granted.status(for: URL(fileURLWithPath: "/")) == .granted,
-            "Whole-disk scan ignored available Full Disk Access"
+            granted.status() == .granted,
+            "A scan or analysis ignored available Full Disk Access"
         )
         try expect(
-            denied.status(for: URL(fileURLWithPath: "/Users/example/Documents")) == .notRequired,
-            "Folder scan unnecessarily requested Full Disk Access"
-        )
-        try expect(
-            denied.status(for: ScanEverythingPlan(volumes: [startup])) == .needsUserApproval,
-            "Scan Everything did not gate its startup-disk work before scanning"
-        )
-        try expect(
-            denied.status(for: ScanEverythingPlan(volumes: [external])) == .notRequired,
-            "External-only Disc Scan unnecessarily requested Full Disk Access"
-        )
-        try expect(
-            denied.status(
-                for: ScanEverythingPlan(
-                    volumes: [],
-                    analyses: ScanEverythingAnalysis.allCases
-                )
-            ) == .notRequired,
-            "Analysis unnecessarily requested Full Disk Access"
-        )
-        try expect(
-            granted.status(for: ScanEverythingPlan(volumes: [startup])) == .granted,
-            "Scan Everything ignored existing Full Disk Access"
+            denied.status() == .needsUserApproval,
+            "Full Disk Access was not rechecked for the next activity"
         )
         try expect(
             FullDiskAccessChecker.protectedDatabaseURL(homeDirectory: exampleHome).path

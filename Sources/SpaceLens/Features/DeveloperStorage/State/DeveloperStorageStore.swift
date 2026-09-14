@@ -63,12 +63,10 @@ final class DeveloperStorageStore {
         if !projectContainers.contains(container) {
             projectContainers.append(container)
         }
-        if state.report != nil { analyze() }
     }
 
     func removeProjectContainer(_ container: DeveloperProjectContainer) {
         projectContainers.removeAll { $0.id == container.id }
-        if state.isRunning || state.report != nil { analyze() }
     }
 
     func analyze() {

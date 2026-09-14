@@ -96,7 +96,7 @@ struct BenchmarkConfiguration {
                 || $0 == "full-disk-live-preview"
                 || $0 == "full-disk-counts-only"
         })
-            ? FullDiskAccessChecker().status(for: URL(fileURLWithPath: "/")) == .granted
+            ? FullDiskAccessChecker().status() == .granted
             : nil
         return BenchmarkConfiguration(
             iterations: try positiveInteger("SPACELENS_BENCHMARK_ITERATIONS", default: 3, environment: environment),

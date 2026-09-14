@@ -1,7 +1,6 @@
 import Foundation
 
 enum FullDiskAccessStatus: Equatable, Sendable {
-    case notRequired
     case granted
     case needsUserApproval
 }
@@ -17,19 +16,8 @@ struct FullDiskAccessChecker: Sendable {
         }
     }
 
-    func status(for scanURL: URL) -> FullDiskAccessStatus {
-        guard scanURL.standardizedFileURL.path == "/" else {
-            return .notRequired
-        }
-        return currentStatus
-    }
-
-    func status(for plan: ScanEverythingPlan) -> FullDiskAccessStatus {
-        guard plan.includesStartupVolume else { return .notRequired }
-        return currentStatus
-    }
-
-    private var currentStatus: FullDiskAccessStatus {
+    /// Re-runs the protected-file probe immediately before a scan or analysis begins.
+    func status() -> FullDiskAccessStatus {
         accessProbe() ? .granted : .needsUserApproval
     }
 

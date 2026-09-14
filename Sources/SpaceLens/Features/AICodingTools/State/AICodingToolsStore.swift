@@ -65,14 +65,10 @@ final class AICodingToolsStore {
         if !projectRoots.contains(root) {
             projectRoots.append(root)
         }
-        analyze()
     }
 
     func removeProjectRoot(_ root: AICodingProjectRoot) {
         projectRoots.removeAll { $0.id == root.id }
-        if state.isRunning || state.report != nil {
-            analyze()
-        }
     }
 
     func analyze() {

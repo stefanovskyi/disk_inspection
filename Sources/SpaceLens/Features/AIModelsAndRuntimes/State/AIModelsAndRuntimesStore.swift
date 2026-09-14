@@ -65,12 +65,10 @@ final class AIModelsAndRuntimesStore {
         if !additionalRoots.contains(root) {
             additionalRoots.append(root)
         }
-        analyze()
     }
 
     func removeRoot(_ root: AIModelsAdditionalRoot) {
         additionalRoots.removeAll { $0.id == root.id }
-        if state.isRunning || state.report != nil { analyze() }
     }
 
     func analyze() {

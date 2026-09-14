@@ -80,7 +80,7 @@ struct AppRootView: View {
                     .contextMenu {
                         ForEach(model.aiCodingTools.projectRoots) { root in
                             Button("Remove \(root.name)") {
-                                model.aiCodingTools.removeProjectRoot(root)
+                                model.removeAICodingProjectRoot(root)
                             }
                             .help(root.url.path)
                         }
@@ -141,7 +141,7 @@ struct AppRootView: View {
                     .contextMenu {
                         ForEach(model.developerStorage.projectContainers) { container in
                             Button("Remove \(container.name)") {
-                                model.developerStorage.removeProjectContainer(container)
+                                model.removeDeveloperProjectContainer(container)
                             }
                             .help(container.url.path)
                         }
@@ -205,7 +205,7 @@ struct AppRootView: View {
             isPresented: Binding(
                 get: { model.isRequestingFullDiskAccess },
                 set: { isPresented in
-                    if !isPresented { model.cancelPendingDiskScan() }
+                    if !isPresented { model.cancelPendingFullDiskOperation() }
                 }
             )
         ) {
@@ -309,6 +309,7 @@ struct AppRootView: View {
                 AICodingToolsView(
                     store: model.aiCodingTools,
                     actions: AICodingToolsViewActions(
+                        analyze: { model.analyzeAICodingTools() },
                         showInFinder: { model.showInFinder(url: $0) },
                         openInTerminal: { model.openInTerminal(url: $0) },
                         inspect: { model.inspectAICodingNode($0) }
@@ -318,6 +319,7 @@ struct AppRootView: View {
                 AIModelsAndRuntimesView(
                     store: model.aiModelsAndRuntimes,
                     actions: AIModelsViewActions(
+                        analyze: { model.analyzeAIModelsAndRuntimes() },
                         showInFinder: { model.showInFinder(url: $0) },
                         openInTerminal: { model.openInTerminal(url: $0) },
                         inspectDirectory: { model.inspectAIModelsDirectory($0) }
@@ -327,6 +329,7 @@ struct AppRootView: View {
                 DeveloperStorageView(
                     store: model.developerStorage,
                     actions: DeveloperStorageViewActions(
+                        analyze: { model.analyzeDeveloperStorage() },
                         showInFinder: { model.showInFinder(url: $0) },
                         openInTerminal: { model.openInTerminal(url: $0) },
                         inspectDirectory: { model.inspectDeveloperStorageDirectory($0) }
@@ -401,10 +404,6 @@ private struct FullDiskAccessPrompt: View {
     @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
 
-    private var isScanEverythingRequest: Bool {
-        model.isRequestingFullDiskAccessForScanEverything
-    }
-
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
 
@@ -415,13 +414,12 @@ private struct FullDiskAccessPrompt: View {
                     .accessibilityHidden(true)
 
                 VStack(spacing: 7) {
-                    Text(isScanEverythingRequest ? "Full Disk Access required" : "Full Disk Access recommended")
+                    Text("Full Disk Access required")
                         .font(.title3.weight(.semibold))
 
                     Text(
-                        isScanEverythingRequest
-                            ? "Disc Scan needs Full Disk Access before it begins. Enable SpaceLens once in System Settings so it can measure protected folders."
-                            : "For a complete storage map, enable SpaceLens in System Settings. Without Full Disk Access, macOS will hide protected folders and the totals will be incomplete."
+                        "SpaceLens checks Full Disk Access before every scan and analysis. "
+                            + "Enable it in System Settings so protected folders are not silently omitted."
                     )
                     .font(.callout)
                     .foregroundStyle(theme.secondaryText)
@@ -444,23 +442,16 @@ private struct FullDiskAccessPrompt: View {
                     .buttonStyle(.borderedProminent)
                     .tint(theme.accent)
 
-                    Text("After enabling SpaceLens, return here and access will be checked again. macOS may ask you to reopen the app.")
+                    Text("After enabling SpaceLens, return here and access will be checked again. If macOS asks you to reopen the app, start the scan or analysis again.")
                         .font(.caption2)
                         .foregroundStyle(theme.tertiaryText)
                         .multilineTextAlignment(.center)
 
                     HStack(spacing: 10) {
                         Button("Cancel") {
-                            model.cancelPendingDiskScan()
+                            model.cancelPendingFullDiskOperation()
                         }
                         .keyboardShortcut(.cancelAction)
-
-                        if !isScanEverythingRequest {
-                            Button("Scan with Current Access") {
-                                model.scanPendingDiskWithCurrentAccess()
-                            }
-                            .keyboardShortcut(.defaultAction)
-                        }
                     }
                     .buttonStyle(.bordered)
                 }
@@ -471,11 +462,7 @@ private struct FullDiskAccessPrompt: View {
         .frame(width: 470)
         .background(theme.background)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(
-            isScanEverythingRequest
-                ? "Full Disk Access required before Disc Scan"
-                : "Full Disk Access recommended before scanning"
-        )
+        .accessibilityLabel("Full Disk Access required before scanning or analysis")
     }
 }
 

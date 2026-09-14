@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct DeveloperStorageViewActions {
+    let analyze: () -> Void
     let showInFinder: (URL) -> Void
     let openInTerminal: (URL) -> Void
     let inspectDirectory: (URL) -> Void
@@ -102,7 +103,7 @@ struct DeveloperStorageView: View {
                     .foregroundStyle(theme.secondaryText)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 650)
-                    Button { store.analyze() } label: {
+                    Button { actions.analyze() } label: {
                         Label("Analyze Developer Storage", systemImage: "play.fill")
                             .font(.headline)
                             .padding(.horizontal, 8)
@@ -188,7 +189,7 @@ struct DeveloperStorageView: View {
                 .foregroundStyle(theme.secondaryText)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 560)
-            Button("Try Again") { store.analyze() }
+            Button("Try Again") { actions.analyze() }
                 .buttonStyle(.borderedProminent)
                 .tint(theme.accent)
         }

@@ -2,6 +2,12 @@ import AppKit
 import Foundation
 import Observation
 
+private enum PendingFullDiskOperation {
+    case scan(URL)
+    case scanEverything(ScanEverythingPlan)
+    case analysis(ScanEverythingAnalysis)
+}
+
 @MainActor
 @Observable
 final class AppViewModel {
@@ -17,7 +23,6 @@ final class AppViewModel {
     private(set) var progress = ScanProgress()
     private(set) var scanningURL: URL?
     private(set) var scanStartedAt: Date?
-    private(set) var pendingFullDiskScanURL: URL?
     private(set) var pendingScanEverythingPlan: ScanEverythingPlan?
     private(set) var scanEverythingState: ScanEverythingState = .idle
     private(set) var pendingRescanVolume: VolumeInfo?
@@ -43,7 +48,7 @@ final class AppViewModel {
     private var scanFallbackResult: ScanResult?
     private var activeScanID = UUID()
     private var activeScanEverythingID: UUID?
-    private var pendingFullDiskScanEverythingPlan: ScanEverythingPlan?
+    private var pendingFullDiskOperation: PendingFullDiskOperation?
     @ObservationIgnored private var volumeObserverTokens: [NSObjectProtocol] = []
     @ObservationIgnored private var activationObserverToken: NSObjectProtocol?
 
@@ -75,12 +80,7 @@ final class AppViewModel {
         navigationPath.last ?? (isScanning ? progress.previewRoot : nil)
     }
     var canNavigateBack: Bool { !isScanning && navigationPath.count > 1 }
-    var isRequestingFullDiskAccess: Bool {
-        pendingFullDiskScanURL != nil || pendingFullDiskScanEverythingPlan != nil
-    }
-    var isRequestingFullDiskAccessForScanEverything: Bool {
-        pendingFullDiskScanEverythingPlan != nil
-    }
+    var isRequestingFullDiskAccess: Bool { pendingFullDiskOperation != nil }
     var isRequestingScanEverything: Bool { pendingScanEverythingPlan != nil }
     var isRequestingRescan: Bool { pendingRescanVolume != nil }
     var isScanningEverything: Bool { scanEverythingState.isRunning }
@@ -205,20 +205,14 @@ final class AppViewModel {
             errorMessage = "SpaceLens did not find any analysis work to run."
             return
         }
-        if fullDiskAccessChecker.status(for: plan) == .needsUserApproval {
-            pendingFullDiskScanEverythingPlan = plan
-            return
-        }
+        guard verifyFullDiskAccess(for: .scanEverything(plan)) else { return }
         pendingScanEverythingPlan = plan
     }
 
     func confirmScanEverything() {
         guard let plan = pendingScanEverythingPlan else { return }
         pendingScanEverythingPlan = nil
-        if fullDiskAccessChecker.status(for: plan) == .needsUserApproval {
-            pendingFullDiskScanEverythingPlan = plan
-            return
-        }
+        guard verifyFullDiskAccess(for: .scanEverything(plan)) else { return }
         startScanEverything(plan)
     }
 
@@ -238,7 +232,7 @@ final class AppViewModel {
             self?.cancelScanEverything(expectedID: runID)
         }
         activeScanEverythingID = runID
-        pendingFullDiskScanEverythingPlan = nil
+        pendingFullDiskOperation = nil
         errorMessage = nil
 
         let startedAt = Date()
@@ -451,8 +445,7 @@ final class AppViewModel {
         cancelAnalysesPreservingReports()
         cancelScan()
         selectedSection = .storage
-        pendingFullDiskScanURL = nil
-        pendingFullDiskScanEverythingPlan = nil
+        pendingFullDiskOperation = nil
         pendingScanEverythingPlan = nil
         pendingRescanVolume = nil
         result = nil
@@ -497,36 +490,36 @@ final class AppViewModel {
             selectedVolumeOverview = volume
             updatePreviousScanPresentation()
         }
-        if fullDiskAccessChecker.status(for: url) == .needsUserApproval {
-            pendingFullDiskScanURL = url
-            return
-        }
+        guard verifyFullDiskAccess(for: .scan(url)) else { return }
         startScan(url)
     }
 
-    func scanPendingDiskWithCurrentAccess() {
-        guard pendingFullDiskScanEverythingPlan == nil else { return }
-        guard let url = pendingFullDiskScanURL else { return }
-        pendingFullDiskScanURL = nil
-        startScan(url)
+    func cancelPendingFullDiskOperation() {
+        pendingFullDiskOperation = nil
     }
 
-    func cancelPendingDiskScan() {
-        pendingFullDiskScanURL = nil
-        pendingFullDiskScanEverythingPlan = nil
-    }
+    func resumePendingOperationIfAuthorized() {
+        guard fullDiskAccessChecker.status() == .granted,
+              let operation = pendingFullDiskOperation else { return }
+        pendingFullDiskOperation = nil
 
-    func resumePendingDiskScanIfAuthorized() {
-        if let plan = pendingFullDiskScanEverythingPlan,
-           fullDiskAccessChecker.status(for: plan) == .granted {
-            pendingFullDiskScanEverythingPlan = nil
+        switch operation {
+        case .scan(let url):
+            startScan(url)
+        case .scanEverything(let plan):
             pendingScanEverythingPlan = plan
-            return
+        case .analysis(let analysis):
+            startAnalysis(analysis)
         }
-        guard let url = pendingFullDiskScanURL,
-              fullDiskAccessChecker.status(for: url) == .granted else { return }
-        pendingFullDiskScanURL = nil
-        startScan(url)
+    }
+
+    private func verifyFullDiskAccess(for operation: PendingFullDiskOperation) -> Bool {
+        guard fullDiskAccessChecker.status() == .granted else {
+            pendingFullDiskOperation = operation
+            return false
+        }
+        pendingFullDiskOperation = nil
+        return true
     }
 
     private func startScan(_ url: URL) {
@@ -773,7 +766,7 @@ final class AppViewModel {
     func analyzeAICodingTools() {
         selectedSection = .aiCodingTools
         errorMessage = nil
-        aiCodingTools.analyze()
+        requestAnalysis(.aiCodingTools)
     }
 
     func cancelAICodingToolsAnalysis() {
@@ -792,6 +785,13 @@ final class AppViewModel {
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
         aiCodingTools.addProjectRoot(url)
+        analyzeAICodingTools()
+    }
+
+    func removeAICodingProjectRoot(_ root: AICodingProjectRoot) {
+        let shouldAnalyze = aiCodingTools.isRunning || aiCodingTools.state.report != nil
+        aiCodingTools.removeProjectRoot(root)
+        if shouldAnalyze { analyzeAICodingTools() }
     }
 
     func inspectAICodingNode(_ node: FileNode) {
@@ -819,7 +819,7 @@ final class AppViewModel {
     func analyzeAIModelsAndRuntimes() {
         selectedSection = .aiModelsAndRuntimes
         errorMessage = nil
-        aiModelsAndRuntimes.analyze()
+        requestAnalysis(.aiModelsAndRuntimes)
     }
 
     func cancelAIModelsAndRuntimesAnalysis() {
@@ -838,6 +838,14 @@ final class AppViewModel {
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
         aiModelsAndRuntimes.addRoot(url)
+        analyzeAIModelsAndRuntimes()
+    }
+
+    func removeAdditionalAIModelRoot(_ root: AIModelsAdditionalRoot) {
+        let shouldAnalyze = aiModelsAndRuntimes.isRunning
+            || aiModelsAndRuntimes.state.report != nil
+        aiModelsAndRuntimes.removeRoot(root)
+        if shouldAnalyze { analyzeAIModelsAndRuntimes() }
     }
 
     func inspectAIModelsDirectory(_ url: URL) {
@@ -861,7 +869,7 @@ final class AppViewModel {
     func analyzeDeveloperStorage() {
         selectedSection = .developerStorage
         errorMessage = nil
-        developerStorage.analyze()
+        requestAnalysis(.developerStorage)
     }
 
     func cancelDeveloperStorageAnalysis() {
@@ -879,7 +887,15 @@ final class AppViewModel {
         panel.canCreateDirectories = false
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        let shouldAnalyze = developerStorage.state.report != nil
         developerStorage.addProjectContainer(url)
+        if shouldAnalyze { analyzeDeveloperStorage() }
+    }
+
+    func removeDeveloperProjectContainer(_ container: DeveloperProjectContainer) {
+        let shouldAnalyze = developerStorage.isRunning || developerStorage.state.report != nil
+        developerStorage.removeProjectContainer(container)
+        if shouldAnalyze { analyzeDeveloperStorage() }
     }
 
     func inspectDeveloperStorageDirectory(_ url: URL) {
@@ -895,6 +911,36 @@ final class AppViewModel {
         aiCodingTools.cancelPreservingReport()
         aiModelsAndRuntimes.cancelPreservingReport()
         developerStorage.cancelPreservingReport()
+    }
+
+    private func requestAnalysis(_ analysis: ScanEverythingAnalysis) {
+        guard verifyFullDiskAccess(for: .analysis(analysis)) else {
+            cancelAnalysis(analysis)
+            return
+        }
+        startAnalysis(analysis)
+    }
+
+    private func startAnalysis(_ analysis: ScanEverythingAnalysis) {
+        switch analysis {
+        case .aiCodingTools:
+            aiCodingTools.analyze()
+        case .aiModelsAndRuntimes:
+            aiModelsAndRuntimes.analyze()
+        case .developerStorage:
+            developerStorage.analyze()
+        }
+    }
+
+    private func cancelAnalysis(_ analysis: ScanEverythingAnalysis) {
+        switch analysis {
+        case .aiCodingTools:
+            aiCodingTools.cancelPreservingReport()
+        case .aiModelsAndRuntimes:
+            aiModelsAndRuntimes.cancelPreservingReport()
+        case .developerStorage:
+            developerStorage.cancelPreservingReport()
+        }
     }
 
     func openFullDiskAccessSettings() {
@@ -926,7 +972,7 @@ final class AppViewModel {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.resumePendingDiskScanIfAuthorized()
+                self?.resumePendingOperationIfAuthorized()
             }
         }
     }
