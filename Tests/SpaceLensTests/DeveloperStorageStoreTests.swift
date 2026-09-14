@@ -88,6 +88,7 @@ final class DeveloperStorageStoreTests: XCTestCase {
         let location = DeveloperStorageLocation(
             ecosystemID: ecosystem,
             scope: .shared,
+            evidence: .knownSharedPath,
             kind: .toolchains,
             name: ecosystem.displayName,
             url: url,

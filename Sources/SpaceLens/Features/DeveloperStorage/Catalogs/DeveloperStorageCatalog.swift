@@ -20,12 +20,40 @@ enum DeveloperStorageCatalog {
     ]
 
     private static let versionControlNames: Set<String> = [".git", ".hg", ".svn"]
+    private static let nodeArtifactNames: Set<String> = ["node_modules", ".next", ".turbo", ".yarn", ".pnpm-store"]
+    private static let pythonArtifactNames: Set<String> = [".venv", "venv", "env", ".tox", ".nox", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"]
+    private static let javaArtifactNames: Set<String> = ["target", "build", ".gradle"]
 
-    static func projectDescriptor(for candidate: URL, inside container: URL) -> DeveloperArtifactDescriptor? {
+    static func discoveredDescriptor(
+        for candidate: URL,
+        inside container: URL,
+        request: DeveloperStorageRequest,
+        isAutomaticContainer: Bool,
+        knownSharedRoots: [URL]
+    ) -> DeveloperArtifactDescriptor? {
         let name = candidate.lastPathComponent
         guard !versionControlNames.contains(name), contains(container, candidate) else { return nil }
+        guard !knownSharedRoots.contains(where: { contains($0, candidate) }) else { return nil }
 
-        if let node = nodeDescriptor(for: candidate, inside: container) { return node }
+        if let managedLocation = toolManagedLocation(containing: candidate, request: request),
+           let ecosystemID = ecosystemID(forArtifactNamed: name) {
+            let suffix = name == "node_modules" ? "dependencies" : "generated storage"
+            return DeveloperArtifactDescriptor(
+                ecosystemID: ecosystemID,
+                scope: .toolManaged,
+                evidence: .toolManagedPath,
+                kind: .installedTools,
+                name: "\(managedLocation.name) \(suffix)",
+                url: candidate,
+                symlinkBoundaryURL: managedLocation.url
+            )
+        }
+
+        if let node = nodeDescriptor(
+            for: candidate,
+            inside: container,
+            isAutomaticContainer: isAutomaticContainer
+        ) { return node }
         if let python = pythonDescriptor(for: candidate, inside: container) { return python }
         return javaDescriptor(for: candidate, inside: container)
     }
@@ -71,6 +99,17 @@ enum DeveloperStorageCatalog {
         add(.nodeAndWeb, .toolchains, "NVM Node versions", environmentURL("NVM_DIR", request)?.appendingPathComponent("versions/node"))
         add(.nodeAndWeb, .toolchains, "NVM Node versions", home.appendingPathComponent(".nvm/versions/node"), boundary: home)
         add(.nodeAndWeb, .sharedCaches, "NVM download cache", home.appendingPathComponent(".nvm/.cache"), boundary: home)
+        let conventionalNPrefix = home.appendingPathComponent("n", isDirectory: true)
+        let nPrefixes = [environmentURL("N_PREFIX", request)]
+            .compactMap { $0 }
+            + (existsAsDirectory(conventionalNPrefix.appendingPathComponent("n/versions/node"))
+                ? [conventionalNPrefix]
+                : [])
+        var seenNPrefixes: Set<String> = []
+        for nPrefix in nPrefixes where seenNPrefixes.insert(nPrefix.standardizedFileURL.path).inserted {
+            add(.nodeAndWeb, .toolchains, "n Node versions", nPrefix.appendingPathComponent("n/versions/node"), boundary: nPrefix)
+            add(.nodeAndWeb, .installedTools, "n global packages", nPrefix.appendingPathComponent("lib/node_modules"), boundary: nPrefix)
+        }
         add(.nodeAndWeb, .toolchains, "fnm Node versions", environmentURL("FNM_DIR", request)?.appendingPathComponent("node-versions"))
         add(.nodeAndWeb, .toolchains, "fnm Node versions", home.appendingPathComponent("Library/Application Support/fnm/node-versions"))
         let volta = environmentURL("VOLTA_HOME", request) ?? home.appendingPathComponent(".volta")
@@ -137,24 +176,48 @@ enum DeveloperStorageCatalog {
         return deduplicated(result)
     }
 
-    private static func nodeDescriptor(for candidate: URL, inside container: URL) -> DeveloperArtifactDescriptor? {
+    private static func nodeDescriptor(
+        for candidate: URL,
+        inside container: URL,
+        isAutomaticContainer: Bool
+    ) -> DeveloperArtifactDescriptor? {
         let name = candidate.lastPathComponent
-        guard ["node_modules", ".next", ".turbo", ".yarn", ".pnpm-store"].contains(name) else {
+        guard nodeArtifactNames.contains(name) else {
             return nil
         }
         let parent = candidate.deletingLastPathComponent()
-        let project: URL
-        if name == "node_modules" {
-            // A physical node_modules directory is generated developer storage
-            // even when its package manifest has since been removed.
-            project = parent
-        } else if let markedProject = nearestProjectRoot(
+        let markedProject = nearestProjectRoot(
             from: parent,
             inside: container,
-            markers: ["package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb", "bun.lock"]
-        ) {
-            project = markedProject
+            markers: nodeMarkers
+        )
+        let versionControlledProject = markedProject == nil
+            ? nearestProjectRoot(from: parent, inside: container, markers: Array(versionControlNames))
+            : nil
+        let selectedProject = !isAutomaticContainer && parent.standardizedFileURL == container.standardizedFileURL
+            ? container.standardizedFileURL
+            : nil
+        let project = markedProject ?? versionControlledProject ?? selectedProject
+        let evidence: DeveloperStorageEvidence = if markedProject != nil {
+            .projectMarker
+        } else if versionControlledProject != nil {
+            .versionControl
         } else {
+            .selectedFolder
+        }
+
+        if name == "node_modules", project == nil {
+            return .init(
+                ecosystemID: .nodeAndWeb,
+                scope: .unattributed,
+                evidence: .artifactOnly,
+                kind: .projectDependencies,
+                name: "Unattributed node_modules",
+                url: candidate,
+                symlinkBoundaryURL: container
+            )
+        }
+        guard let project else {
             return nil
         }
 
@@ -163,6 +226,7 @@ enum DeveloperStorageCatalog {
             return .init(
                 ecosystemID: .nodeAndWeb,
                 scope: .project,
+                evidence: evidence,
                 kind: .projectDependencies,
                 name: "node_modules",
                 url: candidate,
@@ -175,15 +239,15 @@ enum DeveloperStorageCatalog {
                 symlinkBoundaryURL: project
             )
         case ".next":
-            return .init(ecosystemID: .nodeAndWeb, scope: .project, kind: .buildOutputs, name: "Next.js output", url: candidate, projectURL: project, rules: [.init("cache", kind: .projectCaches)], symlinkBoundaryURL: project)
+            return .init(ecosystemID: .nodeAndWeb, scope: .project, evidence: evidence, kind: .buildOutputs, name: "Next.js output", url: candidate, projectURL: project, rules: [.init("cache", kind: .projectCaches)], symlinkBoundaryURL: project)
         case ".turbo":
-            return .init(ecosystemID: .nodeAndWeb, scope: .project, kind: .projectCaches, name: "Turbo cache", url: candidate, projectURL: project, symlinkBoundaryURL: project)
+            return .init(ecosystemID: .nodeAndWeb, scope: .project, evidence: evidence, kind: .projectCaches, name: "Turbo cache", url: candidate, projectURL: project, symlinkBoundaryURL: project)
         case ".yarn":
             let cache = candidate.appendingPathComponent("cache", isDirectory: true)
             guard existsAsDirectory(cache) else { return nil }
-            return .init(ecosystemID: .nodeAndWeb, scope: .project, kind: .projectCaches, name: "Yarn project cache", url: cache, projectURL: project, symlinkBoundaryURL: project)
+            return .init(ecosystemID: .nodeAndWeb, scope: .project, evidence: evidence, kind: .projectCaches, name: "Yarn project cache", url: cache, projectURL: project, symlinkBoundaryURL: project)
         default:
-            return .init(ecosystemID: .nodeAndWeb, scope: .project, kind: .sharedCaches, name: "Project pnpm store", url: candidate, projectURL: project, symlinkBoundaryURL: project)
+            return .init(ecosystemID: .nodeAndWeb, scope: .project, evidence: evidence, kind: .sharedCaches, name: "Project pnpm store", url: candidate, projectURL: project, symlinkBoundaryURL: project)
         }
     }
 
@@ -193,8 +257,9 @@ enum DeveloperStorageCatalog {
         if [".venv", "venv", "env"].contains(name) {
             guard exists(candidate.appendingPathComponent("pyvenv.cfg")),
                   exists(candidate.appendingPathComponent("bin/python")) else { return nil }
-            let project = nearestProjectRoot(from: parent, inside: container, markers: pythonMarkers) ?? parent
-            return .init(ecosystemID: .python, scope: .project, kind: .environments, name: "Python environment", url: candidate, projectURL: project, symlinkBoundaryURL: project)
+            let markedProject = nearestProjectRoot(from: parent, inside: container, markers: pythonMarkers)
+            let project = markedProject ?? parent
+            return .init(ecosystemID: .python, scope: .project, evidence: markedProject == nil ? .artifactSignature : .projectMarker, kind: .environments, name: "Python environment", url: candidate, projectURL: project, symlinkBoundaryURL: project)
         }
         if [".tox", ".nox"].contains(name) {
             guard let project = nearestProjectRoot(from: parent, inside: container, markers: pythonMarkers) else { return nil }
@@ -226,8 +291,50 @@ enum DeveloperStorageCatalog {
         return nil
     }
 
+    private static let nodeMarkers = ["package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb", "bun.lock"]
     private static let pythonMarkers = ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "tox.ini", "noxfile.py"]
     private static let gradleMarkers = ["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"]
+
+    private static func toolManagedLocation(
+        containing candidate: URL,
+        request: DeveloperStorageRequest
+    ) -> DeveloperManagedLocation? {
+        let home = request.homeDirectory
+        let configHome = environmentURL("XDG_CONFIG_HOME", request)
+            ?? home.appendingPathComponent(".config", isDirectory: true)
+        let locations = [
+            DeveloperManagedLocation(name: "Claude plugin", url: home.appendingPathComponent(".claude/plugins", isDirectory: true)),
+            DeveloperManagedLocation(name: "Claude installation", url: home.appendingPathComponent(".claude/local", isDirectory: true)),
+            DeveloperManagedLocation(name: "Gemini extension", url: home.appendingPathComponent(".gemini/extensions", isDirectory: true)),
+            DeveloperManagedLocation(name: "Antigravity data", url: home.appendingPathComponent(".gemini/antigravity", isDirectory: true)),
+            DeveloperManagedLocation(name: "Antigravity CLI data", url: home.appendingPathComponent(".gemini/antigravity-cli", isDirectory: true)),
+            DeveloperManagedLocation(name: "VS Code extension", url: home.appendingPathComponent(".vscode/extensions", isDirectory: true)),
+            DeveloperManagedLocation(name: "VS Code Insiders extension", url: home.appendingPathComponent(".vscode-insiders/extensions", isDirectory: true)),
+            DeveloperManagedLocation(name: "VS Code server extension", url: home.appendingPathComponent(".vscode-server/extensions", isDirectory: true)),
+            DeveloperManagedLocation(name: "Cursor extension", url: home.appendingPathComponent(".cursor/extensions", isDirectory: true)),
+            DeveloperManagedLocation(name: "Cursor server extension", url: home.appendingPathComponent(".cursor-server/extensions", isDirectory: true)),
+            DeveloperManagedLocation(name: "Kiro extension", url: home.appendingPathComponent(".kiro/extensions", isDirectory: true)),
+            DeveloperManagedLocation(name: "Kiro server extension", url: home.appendingPathComponent(".kiro-server/extensions", isDirectory: true)),
+            DeveloperManagedLocation(name: "Windsurf extension", url: home.appendingPathComponent(".windsurf/extensions", isDirectory: true)),
+            DeveloperManagedLocation(name: "Codex plugin", url: home.appendingPathComponent(".codex/plugins", isDirectory: true)),
+            DeveloperManagedLocation(name: "Antigravity extension", url: home.appendingPathComponent(".antigravity/extensions", isDirectory: true)),
+            DeveloperManagedLocation(name: "Antigravity IDE extension", url: home.appendingPathComponent(".antigravity-ide/extensions", isDirectory: true)),
+            DeveloperManagedLocation(name: "Antigravity extension", url: home.appendingPathComponent(".antigravity-server/extensions", isDirectory: true)),
+            DeveloperManagedLocation(name: "OpenCode installation", url: home.appendingPathComponent(".opencode", isDirectory: true)),
+            DeveloperManagedLocation(name: "OpenCode configuration", url: configHome.appendingPathComponent("opencode", isDirectory: true)),
+            DeveloperManagedLocation(name: "Kilo configuration", url: configHome.appendingPathComponent("kilo", isDirectory: true))
+        ]
+        return locations
+            .filter { contains($0.url, candidate) }
+            .max { $0.url.pathComponents.count < $1.url.pathComponents.count }
+    }
+
+    private static func ecosystemID(forArtifactNamed name: String) -> DeveloperEcosystemID? {
+        if nodeArtifactNames.contains(name) { return .nodeAndWeb }
+        if pythonArtifactNames.contains(name) { return .python }
+        if javaArtifactNames.contains(name) { return .javaAndJVM }
+        return nil
+    }
 
     private static func nearestProjectRoot(from start: URL, inside container: URL, markers: [String]) -> URL? {
         var candidate = start.standardizedFileURL
@@ -304,4 +411,9 @@ enum DeveloperStorageCatalog {
         if parentPath == "/" { return childPath.hasPrefix("/") }
         return childPath.hasPrefix(parentPath + "/")
     }
+}
+
+private struct DeveloperManagedLocation: Sendable {
+    let name: String
+    let url: URL
 }

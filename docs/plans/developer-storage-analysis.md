@@ -95,7 +95,8 @@ signing-identity and benchmark-comparison checks.
 Add an on-demand, read-only **Developer Storage** section that answers:
 
 1. How much storage is associated with each supported ecosystem?
-2. How much is inside explicitly selected projects versus shared machine locations?
+2. How much belongs to projects, tool-managed installations, shared machine locations, or artifacts
+   whose owner cannot be verified?
 3. Which recognized artifact kinds and physical folders account for that storage?
 4. Was any expected location unreadable, linked, timed out, or omitted by a discovery safety limit?
 
@@ -123,10 +124,10 @@ report completes, matching the other Analysis screens.
 
 The completed screen should use the established two-pane Analysis layout:
 
-- **Left pane:** the three ecosystems ranked by unique measured size, with Project and Shared
-  subtotals, item count, and coverage state.
-- **Right pane:** selected ecosystem summary; an `All / Projects / Shared` filter; storage-composition
-  pills; project groups; shared manager/toolchain groups; and expandable physical locations.
+- **Left pane:** the three ecosystems ranked by unique measured size, with Project, Tool-managed,
+  Shared, and Unattributed subtotals, item count, and coverage state.
+- **Right pane:** selected ecosystem summary; an ownership filter; storage-composition pills; project
+  groups; tool-managed, shared, and unattributed groups; and expandable physical locations.
 - **Location actions:** Show in Finder, Open in Terminal, and Inspect Storage Map. The last action
   hands a directory to the existing normal scan flow and retains the Developer Storage report.
 
@@ -231,14 +232,16 @@ must never contain ecosystem paths or matching rules.
 Suggested domain types:
 
 - `DeveloperEcosystemID`: Node.js & Web, Python, Java & JVM.
-- `DeveloperStorageScope`: project or shared.
+- `DeveloperStorageScope`: project, tool-managed, shared, or unattributed.
+- `DeveloperStorageEvidence`: the marker, selection, managed path, or artifact evidence behind the
+  ownership classification.
 - `DeveloperArtifactKind`: the common kinds defined above.
 - `DeveloperArtifactDescriptor`: ecosystem, scope, kind, standardized URL, display label, containing
   project when applicable, source/evidence, path-specific subcategory rules, and symlink boundary.
 - `DeveloperStorageLocation`: unique and referenced allocated bytes, item count, latest modification,
   status, coverage notes, and optional retained `FileNode`.
 - `DeveloperProjectReport`: recognized project root and its disjoint locations.
-- `DeveloperEcosystemReport`: project/shared totals, project reports, shared locations, and categories.
+- `DeveloperEcosystemReport`: ownership totals, project reports, non-project locations, and categories.
 - `DeveloperStorageReport`: ranked ecosystems, unique total, referenced total, dates, duration, items,
   and coverage issues.
 
@@ -375,7 +378,14 @@ Catalog and discovery tests:
 
 - Every documented default and absolute environment override resolves to the expected ecosystem,
   scope, and kind; relative overrides are ignored.
-- `node_modules` requires a nearby Node project marker; nested dependencies are pruned.
+- `node_modules` uses the nearest Node marker or version-control root; an explicitly selected folder
+  is also accepted, while markerless automatic discoveries remain unattributed.
+- Dependencies below known editor, extension, and AI-tool roots are tool-managed even when their
+  installed package includes a manifest, including Antigravity's user and IDE extension roots.
+- `N_PREFIX` runtime versions and global packages are shared locations and are not rediscovered as
+  projects.
+- Successfully measured zero-byte artifacts are omitted, while linked and incomplete locations stay
+  visible as coverage issues.
 - `.next/cache`, Turbo, and Vite override the parent artifact category without a second scan.
 - `.venv`, `venv`, and especially generic `env` are rejected without a valid environment signature.
 - A linked uv `.venv` is reported but not traversed.
@@ -425,10 +435,12 @@ plutil -lint dist/SpaceLens.app/Contents/Info.plist
 
 - **Developer Storage** appears under Analysis and never starts automatically.
 - Only Node.js & Web, Python, and Java & JVM are present in the initial catalog.
-- Known shared roots are automatic; project discovery is limited to explicit project containers.
+- Known shared roots and home-folder discovery are automatic; additional project containers are
+  explicitly selected.
 - Every project artifact has strong ecosystem evidence; common folder names alone do not create
   false positives.
-- Project and Shared storage are visibly separated and can be filtered.
+- Project, Tool-managed, Shared, and Unattributed storage are visibly separated and can be filtered.
+- Successfully measured locations with no referenced allocated bytes do not create empty result rows.
 - Unique totals use allocated bytes and device/inode de-duplication; referenced overlap is explained.
 - Missing access, symlinks, discovery truncation, and provider stalls are coverage issues, not zero.
 - No symlink is followed, no filesystem boundary is crossed, and no unbounded task-per-directory

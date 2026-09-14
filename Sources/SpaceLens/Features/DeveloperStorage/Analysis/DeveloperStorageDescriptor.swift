@@ -61,6 +61,7 @@ struct DeveloperArtifactRule: Equatable, Sendable {
 struct DeveloperArtifactDescriptor: Equatable, Sendable {
     let ecosystemID: DeveloperEcosystemID
     let scope: DeveloperStorageScope
+    let evidence: DeveloperStorageEvidence
     let kind: DeveloperArtifactKind
     let name: String
     let url: URL
@@ -71,6 +72,7 @@ struct DeveloperArtifactDescriptor: Equatable, Sendable {
     init(
         ecosystemID: DeveloperEcosystemID,
         scope: DeveloperStorageScope,
+        evidence: DeveloperStorageEvidence? = nil,
         kind: DeveloperArtifactKind,
         name: String,
         url: URL,
@@ -80,6 +82,16 @@ struct DeveloperArtifactDescriptor: Equatable, Sendable {
     ) {
         self.ecosystemID = ecosystemID
         self.scope = scope
+        if let evidence {
+            self.evidence = evidence
+        } else {
+            self.evidence = switch scope {
+            case .project: .projectMarker
+            case .toolManaged: .toolManagedPath
+            case .shared: .knownSharedPath
+            case .unattributed: .artifactOnly
+            }
+        }
         self.kind = kind
         self.name = name
         self.url = url.standardizedFileURL

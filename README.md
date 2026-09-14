@@ -15,7 +15,7 @@ SpaceLens is a native macOS app that helps you understand what is using your dis
 - Shows a ranked, accessible list alongside the chart
 - Finds installed app/CLI versions and analyzes local storage for Cursor, Claude Code, Codex, Google Antigravity, and OpenCode
 - Inventories local models and storage used by Ollama, LM Studio, llama.cpp, Hugging Face Hub, and standalone model files
-- Analyzes project artifacts and shared storage for Node.js & Web, Python, and Java & JVM development
+- Separates project, tool-managed, shared, and unattributed storage for Node.js & Web, Python, and Java & JVM development
 - Keeps completed scans available until the app quits
 - Reports protected or unreadable folders without stopping the scan
 - Opens items in Finder or Terminal from the app
@@ -83,9 +83,14 @@ Choose **Developer Storage** under **Analysis** to measure Node.js and web depen
 Python environments and tool caches, and Java/JVM build outputs, artifact repositories, and JDKs.
 Standard shared locations and project artifacts below the current user's home folder are discovered
 automatically. Use **Add Projects Folder** to include an external disk or another custom location.
-SpaceLens treats `node_modules` as direct evidence of generated project storage; ambiguous names such
-as `env`, `target`, and `build` still require ecosystem-specific marker files. Recognized artifact
-contents are skipped during the discovery pass and measured separately afterward.
+SpaceLens associates `node_modules` with the nearest manifest- or version-control-backed project root.
+An explicitly selected folder is also accepted as a project root. Dependencies inside known editor,
+extension, and AI-tool locations are labeled **Tool-managed**, while markerless dependencies remain
+measured under **Unattributed** instead of being promoted to projects. Configured `N_PREFIX` runtimes
+and global packages are reported as shared Node storage. Successfully measured artifacts that use no
+allocated storage are omitted from the ranked results; zero-byte coverage issues remain visible.
+Ambiguous names such as `env`, `target`, and `build` still require ecosystem-specific evidence.
+Recognized artifact contents are skipped during the discovery pass and measured separately afterward.
 
 Developer Storage reports unique allocated bytes separately from the size referenced by each
 location, which avoids double-counting hard-linked package data. It reads filesystem metadata and a

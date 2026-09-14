@@ -26,10 +26,38 @@ enum DeveloperEcosystemID: String, CaseIterable, Identifiable, Sendable {
 
 enum DeveloperStorageScope: String, CaseIterable, Identifiable, Sendable {
     case project
+    case toolManaged
     case shared
+    case unattributed
 
     var id: String { rawValue }
-    var displayName: String { self == .project ? "Projects" : "Shared" }
+
+    var displayName: String {
+        switch self {
+        case .project: "Projects"
+        case .toolManaged: "Tool-managed"
+        case .shared: "Shared"
+        case .unattributed: "Unattributed"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .project: "folder.fill"
+        case .toolManaged: "puzzlepiece.extension.fill"
+        case .shared: "internaldrive"
+        case .unattributed: "questionmark.folder.fill"
+        }
+    }
+
+    var scanPriority: Int {
+        switch self {
+        case .shared: 0
+        case .toolManaged: 1
+        case .project: 2
+        case .unattributed: 3
+        }
+    }
 }
 
 enum DeveloperArtifactKind: String, CaseIterable, Identifiable, Sendable {
@@ -39,6 +67,7 @@ enum DeveloperArtifactKind: String, CaseIterable, Identifiable, Sendable {
     case projectCaches
     case sharedCaches
     case toolchains
+    case installedTools
     case toolState
     case other
 
@@ -52,6 +81,7 @@ enum DeveloperArtifactKind: String, CaseIterable, Identifiable, Sendable {
         case .projectCaches: "Project caches"
         case .sharedCaches: "Shared caches & stores"
         case .toolchains: "Toolchains & runtimes"
+        case .installedTools: "Installed tools & extensions"
         case .toolState: "Tool state & diagnostics"
         case .other: "Other"
         }
@@ -65,8 +95,43 @@ enum DeveloperArtifactKind: String, CaseIterable, Identifiable, Sendable {
         case .projectCaches: "bolt.horizontal.circle"
         case .sharedCaches: "internaldrive"
         case .toolchains: "wrench.and.screwdriver"
+        case .installedTools: "puzzlepiece.extension"
         case .toolState: "waveform.path.ecg"
         case .other: "tray.full"
+        }
+    }
+}
+
+enum DeveloperStorageEvidence: String, Equatable, Sendable {
+    case projectMarker
+    case versionControl
+    case selectedFolder
+    case artifactSignature
+    case toolManagedPath
+    case knownSharedPath
+    case artifactOnly
+
+    var displayName: String {
+        switch self {
+        case .projectMarker: "Project marker"
+        case .versionControl: "Version-controlled project"
+        case .selectedFolder: "Selected project folder"
+        case .artifactSignature: "Generated artifact signature"
+        case .toolManagedPath: "Tool-managed location"
+        case .knownSharedPath: "Known shared location"
+        case .artifactOnly: "Artifact found; owner unknown"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .projectMarker: "doc.badge.gearshape"
+        case .versionControl: "arrow.triangle.branch"
+        case .selectedFolder: "folder.badge.checkmark"
+        case .artifactSignature: "checkmark.seal"
+        case .toolManagedPath: "puzzlepiece.extension"
+        case .knownSharedPath: "internaldrive"
+        case .artifactOnly: "questionmark.diamond"
         }
     }
 }
@@ -101,6 +166,7 @@ enum DeveloperStorageLocationStatus: String, Equatable, Sendable {
 struct DeveloperStorageLocation: Identifiable, Equatable, Sendable {
     let ecosystemID: DeveloperEcosystemID
     let scope: DeveloperStorageScope
+    let evidence: DeveloperStorageEvidence
     let kind: DeveloperArtifactKind
     let name: String
     let url: URL
@@ -147,8 +213,14 @@ struct DeveloperEcosystemReport: Identifiable, Equatable, Sendable {
     var projectSize: Int64 {
         locations.filter { $0.scope == .project }.reduce(0) { developerSafeAdd($0, $1.uniqueSize) }
     }
+    var toolManagedSize: Int64 {
+        locations.filter { $0.scope == .toolManaged }.reduce(0) { developerSafeAdd($0, $1.uniqueSize) }
+    }
     var sharedSize: Int64 {
         locations.filter { $0.scope == .shared }.reduce(0) { developerSafeAdd($0, $1.uniqueSize) }
+    }
+    var unattributedSize: Int64 {
+        locations.filter { $0.scope == .unattributed }.reduce(0) { developerSafeAdd($0, $1.uniqueSize) }
     }
     var projects: [DeveloperProjectReport] {
         Dictionary(grouping: locations.filter { $0.scope == .project }) {
@@ -159,6 +231,12 @@ struct DeveloperEcosystemReport: Identifiable, Equatable, Sendable {
     }
     var sharedLocations: [DeveloperStorageLocation] {
         locations.filter { $0.scope == .shared }.sorted(by: locationOrder)
+    }
+    var toolManagedLocations: [DeveloperStorageLocation] {
+        locations.filter { $0.scope == .toolManaged }.sorted(by: locationOrder)
+    }
+    var unattributedLocations: [DeveloperStorageLocation] {
+        locations.filter { $0.scope == .unattributed }.sorted(by: locationOrder)
     }
     var breakdowns: [DeveloperStorageBreakdown] {
         DeveloperArtifactKind.allCases.compactMap { kind in

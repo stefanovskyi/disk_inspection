@@ -95,7 +95,8 @@ struct DeveloperStorageView: View {
                         .foregroundStyle(theme.primaryText)
                     Text(
                         "SpaceLens automatically searches your home folder for generated dependencies, environments, "
-                            + "caches, and build outputs. Add a projects folder for external or excluded locations."
+                            + "caches, and build outputs, then separates projects, tool-managed storage, shared locations, "
+                            + "and artifacts whose owner cannot be verified. Add a projects folder for external locations."
                     )
                     .font(.body)
                     .foregroundStyle(theme.secondaryText)
@@ -262,7 +263,7 @@ struct DeveloperStorageView: View {
 
     private var progressTitle: String {
         if let ecosystem = store.progress.currentEcosystem { return "Analyzing \(ecosystem.displayName)" }
-        return "Discovering project artifacts…"
+        return "Discovering developer artifacts…"
     }
 
     private var progressMessage: String {
@@ -301,7 +302,9 @@ private struct DeveloperEcosystemRow: View {
                 Image(systemName: ecosystem.systemImage).foregroundStyle(theme.accent).frame(width: 24)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(ecosystem.displayName).font(.callout.weight(.semibold)).foregroundStyle(theme.primaryText)
-                    Text("Projects \(StorageFormatters.bytes(ecosystem.projectSize)) · Shared \(StorageFormatters.bytes(ecosystem.sharedSize))")
+                    Text("Projects \(StorageFormatters.bytes(ecosystem.projectSize)) · Tool-managed \(StorageFormatters.bytes(ecosystem.toolManagedSize))")
+                        .font(.caption2).foregroundStyle(theme.tertiaryText).lineLimit(1)
+                    Text("Shared \(StorageFormatters.bytes(ecosystem.sharedSize)) · Unattributed \(StorageFormatters.bytes(ecosystem.unattributedSize))")
                         .font(.caption2).foregroundStyle(theme.tertiaryText).lineLimit(1)
                 }
                 Spacer(minLength: 4)
@@ -333,7 +336,7 @@ struct DeveloperStorageToolbarStatus: View {
     var body: some View {
         HStack(spacing: 7) {
             ProgressView().controlSize(.small)
-            Text(progress.currentEcosystem?.displayName ?? "Discovering projects")
+            Text(progress.currentEcosystem?.displayName ?? "Discovering developer storage")
                 .font(.caption.weight(.medium)).lineLimit(1)
         }
         .accessibilityElement(children: .combine)

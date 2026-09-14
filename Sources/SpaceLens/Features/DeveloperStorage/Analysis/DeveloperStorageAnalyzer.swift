@@ -21,7 +21,11 @@ struct DeveloperStorageAnalyzer: DeveloperStorageAnalyzing, @unchecked Sendable 
     ) async throws -> DeveloperStorageReport {
         let startedAt = Date()
         var discoveryIssues = 0
-        var projectDescriptors: [DeveloperArtifactDescriptor] = []
+        var discoveredDescriptors: [DeveloperArtifactDescriptor] = []
+        let sharedDescriptors = fixedDescriptors == nil
+            ? DeveloperStorageCatalog.sharedDescriptors(for: request)
+            : []
+        let knownSharedRoots = sharedDescriptors.map(\.url)
 
         if fixedDescriptors == nil {
             let containers = request.automaticProjectContainers.map {
@@ -33,12 +37,12 @@ struct DeveloperStorageAnalyzer: DeveloperStorageAnalyzing, @unchecked Sendable 
                 try Task.checkCancellation()
                 let container = discoveryContainer.url
                 let candidates = DeveloperCandidateAccumulator()
-                let discoveredBeforeContainer = projectDescriptors.count
+                let discoveredBeforeContainer = discoveredDescriptors.count
                 onProgress(
                     DeveloperStorageProgress(
-                        currentLocationName: "Discovering project artifacts",
+                        currentLocationName: "Discovering developer artifacts",
                         currentPath: container.path,
-                        discoveredArtifacts: projectDescriptors.count
+                        discoveredArtifacts: discoveredDescriptors.count
                     )
                 )
                 do {
@@ -58,7 +62,7 @@ struct DeveloperStorageAnalyzer: DeveloperStorageAnalyzing, @unchecked Sendable 
                         onProgress: { progress in
                             onProgress(
                                 DeveloperStorageProgress(
-                                    currentLocationName: "Discovering project artifacts",
+                                    currentLocationName: "Discovering developer artifacts",
                                     currentPath: progress.currentPath,
                                     discoveredArtifacts: discoveredBeforeContainer + candidates.count,
                                     itemsScanned: progress.itemsScanned
@@ -79,18 +83,24 @@ struct DeveloperStorageAnalyzer: DeveloperStorageAnalyzing, @unchecked Sendable 
                     discoveryIssues += 1
                 }
 
-                projectDescriptors.append(contentsOf: candidates.urls.compactMap {
-                    DeveloperStorageCatalog.projectDescriptor(for: $0, inside: container)
+                discoveredDescriptors.append(contentsOf: candidates.urls.compactMap {
+                    DeveloperStorageCatalog.discoveredDescriptor(
+                        for: $0,
+                        inside: container,
+                        request: request,
+                        isAutomaticContainer: discoveryContainer.isAutomatic,
+                        knownSharedRoots: knownSharedRoots
+                    )
                 })
             }
         }
 
         let catalogDescriptors = fixedDescriptors
-            ?? DeveloperStorageCatalog.sharedDescriptors(for: request) + projectDescriptors
+            ?? sharedDescriptors + discoveredDescriptors
         let descriptors = Self.normalizedDescriptors(catalogDescriptors)
             .filter { Self.preflightStatus(for: $0) != nil }
             .sorted(by: Self.scanOrder)
-        let discoveredArtifactCount = projectDescriptors.count
+        let discoveredArtifactCount = discoveredDescriptors.count
         let accumulator = DeveloperStorageObservationAccumulator()
         var locations: [DeveloperStorageLocation] = []
 
@@ -151,23 +161,26 @@ struct DeveloperStorageAnalyzer: DeveloperStorageAnalyzing, @unchecked Sendable 
             }
 
             let metrics = locationAccumulator.snapshot
-            locations.append(
-                DeveloperStorageLocation(
-                    ecosystemID: descriptor.ecosystemID,
-                    scope: descriptor.scope,
-                    kind: descriptor.kind,
-                    name: descriptor.name,
-                    url: descriptor.url,
-                    projectURL: descriptor.projectURL,
-                    uniqueSize: metrics.uniqueBytes,
-                    referencedSize: metrics.referencedBytes,
-                    itemCount: metrics.items,
-                    latestModificationDate: metrics.latestModificationDate,
-                    status: status,
-                    root: result?.root,
-                    breakdowns: metrics.breakdowns
+            if status != .measured || metrics.referencedBytes > 0 {
+                locations.append(
+                    DeveloperStorageLocation(
+                        ecosystemID: descriptor.ecosystemID,
+                        scope: descriptor.scope,
+                        evidence: descriptor.evidence,
+                        kind: descriptor.kind,
+                        name: descriptor.name,
+                        url: descriptor.url,
+                        projectURL: descriptor.projectURL,
+                        uniqueSize: metrics.uniqueBytes,
+                        referencedSize: metrics.referencedBytes,
+                        itemCount: metrics.items,
+                        latestModificationDate: metrics.latestModificationDate,
+                        status: status,
+                        root: result?.root,
+                        breakdowns: metrics.breakdowns
+                    )
                 )
-            )
+            }
             let totals = accumulator.snapshot
             onProgress(
                 DeveloperStorageProgress(
@@ -226,7 +239,7 @@ struct DeveloperStorageAnalyzer: DeveloperStorageAnalyzing, @unchecked Sendable 
         _ left: DeveloperArtifactDescriptor,
         _ right: DeveloperArtifactDescriptor
     ) -> Bool {
-        if left.scope != right.scope { return left.scope == .shared }
+        if left.scope != right.scope { return left.scope.scanPriority < right.scope.scanPriority }
         if left.ecosystemID != right.ecosystemID {
             return left.ecosystemID.rawValue < right.ecosystemID.rawValue
         }
@@ -275,6 +288,7 @@ struct DeveloperStorageAnalyzer: DeveloperStorageAnalyzing, @unchecked Sendable 
         DeveloperStorageLocation(
             ecosystemID: descriptor.ecosystemID,
             scope: descriptor.scope,
+            evidence: descriptor.evidence,
             kind: descriptor.kind,
             name: descriptor.name,
             url: descriptor.url,

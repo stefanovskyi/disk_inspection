@@ -122,10 +122,27 @@ struct SpaceLensSelfTests {
         let projects = root.appendingPathComponent("projects", isDirectory: true)
         let project = projects.appendingPathComponent("mixed-project", isDirectory: true)
         let nodeModules = project.appendingPathComponent("node_modules", isDirectory: true)
+        let orphanModules = projects.appendingPathComponent("orphan/node_modules", isDirectory: true)
+        let extensionRoot = home.appendingPathComponent(".vscode/extensions/example.extension", isDirectory: true)
+        let extensionModules = extensionRoot.appendingPathComponent("node_modules", isDirectory: true)
+        let antigravityRoot = home.appendingPathComponent(
+            ".antigravity-ide/extensions/example.extension/out/client",
+            isDirectory: true
+        )
+        let antigravityModules = antigravityRoot.appendingPathComponent("node_modules", isDirectory: true)
+        let nPrefix = projects.appendingPathComponent("n-prefix", isDirectory: true)
+        let globalModules = nPrefix.appendingPathComponent("lib/node_modules", isDirectory: true)
+        let emptyProject = projects.appendingPathComponent("empty-project", isDirectory: true)
+        let emptyModules = emptyProject.appendingPathComponent("node_modules", isDirectory: true)
         let environment = project.appendingPathComponent(".venv", isDirectory: true)
         let mavenTarget = project.appendingPathComponent("target", isDirectory: true)
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: nodeModules, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: orphanModules, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: extensionModules, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: antigravityModules, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: globalModules, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: emptyModules, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(
             at: environment.appendingPathComponent("bin", isDirectory: true),
             withIntermediateDirectories: true
@@ -133,26 +150,50 @@ struct SpaceLensSelfTests {
         try FileManager.default.createDirectory(at: mavenTarget, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
 
+        try Data("{}".utf8).write(to: project.appendingPathComponent("package.json"))
+        try Data("{}".utf8).write(to: extensionRoot.appendingPathComponent("package.json"))
+        try Data("{}".utf8).write(to: antigravityRoot.appendingPathComponent("package.json"))
+        try Data("{}".utf8).write(to: emptyProject.appendingPathComponent("package.json"))
         try Data("[project]".utf8).write(to: project.appendingPathComponent("pyproject.toml"))
         try Data("<project/>".utf8).write(to: project.appendingPathComponent("pom.xml"))
         try Data("home = /usr/bin".utf8).write(to: environment.appendingPathComponent("pyvenv.cfg"))
         try Data("python".utf8).write(to: environment.appendingPathComponent("bin/python"))
         try Data(repeating: 0x31, count: 8_192).write(to: nodeModules.appendingPathComponent("package.bin"))
+        try Data(repeating: 0x30, count: 8_192).write(to: orphanModules.appendingPathComponent("package.bin"))
+        try Data(repeating: 0x35, count: 8_192).write(to: extensionModules.appendingPathComponent("package.bin"))
+        try Data(repeating: 0x37, count: 8_192).write(to: antigravityModules.appendingPathComponent("package.bin"))
+        try Data(repeating: 0x36, count: 8_192).write(to: globalModules.appendingPathComponent("package.bin"))
         try Data(repeating: 0x32, count: 8_192).write(to: environment.appendingPathComponent("runtime.bin"))
         try Data(repeating: 0x33, count: 8_192).write(to: mavenTarget.appendingPathComponent("classes.jar"))
         try Data(repeating: 0x34, count: 8_192).write(to: project.appendingPathComponent("source.bin"))
 
         let request = DeveloperStorageRequest(
             homeDirectory: home,
-            environment: [:],
-            automaticProjectContainers: [projects],
+            environment: ["N_PREFIX": nPrefix.path],
+            automaticProjectContainers: [home, projects],
             projectContainers: []
         )
         let report = try await DeveloperStorageAnalyzer().analyze(request: request)
+        let node = report.ecosystems.first(where: { $0.id == .nodeAndWeb })
 
         try expect(
-            report.ecosystems.first(where: { $0.id == .nodeAndWeb })?.projectSize ?? 0 > 0,
-            "Developer Storage did not automatically recognize node_modules without a manifest"
+            node?.projects.map(\.url) == [project.standardizedFileURL],
+            "Developer Storage promoted markerless node_modules to a project"
+        )
+        try expect(
+            node?.unattributedLocations.map(\.url) == [orphanModules.standardizedFileURL],
+            "Developer Storage did not retain markerless dependencies as unattributed"
+        )
+        try expect(
+            Set(node?.toolManagedLocations.map(\.url) ?? []) == Set([
+                extensionModules.standardizedFileURL,
+                antigravityModules.standardizedFileURL
+            ]),
+            "Developer Storage did not classify editor and Antigravity dependencies as tool-managed"
+        )
+        try expect(
+            node?.sharedLocations.contains(where: { $0.url == globalModules.standardizedFileURL }) == true,
+            "Developer Storage did not classify N_PREFIX global packages as shared"
         )
         try expect(
             report.ecosystems.first(where: { $0.id == .python })?.projectSize ?? 0 > 0,
@@ -162,7 +203,11 @@ struct SpaceLensSelfTests {
             report.ecosystems.first(where: { $0.id == .javaAndJVM })?.projectSize ?? 0 > 0,
             "Developer Storage did not recognize a Maven target"
         )
-        try expect(report.locationCount == 3, "Developer Storage attributed an unrecognized project path")
+        try expect(
+            node?.projects.contains(where: { $0.url == emptyProject.standardizedFileURL }) == false,
+            "Developer Storage retained an empty measured project artifact"
+        )
+        try expect(report.locationCount == 7, "Developer Storage did not preserve every ownership class")
 
         let boundedDiscovery = try await DiskScanner().scanForDirectories(
             url: projects,

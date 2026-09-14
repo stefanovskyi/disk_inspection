@@ -28,6 +28,18 @@ _Avoid_: Source, dependency tree
 A per-user or system-wide store, cache, environment collection, or toolchain outside a project.
 _Avoid_: Global location
 
+**Tool-managed location**:
+Generated dependencies or other storage owned by an installed editor, extension, or development tool rather than by a user project.
+_Avoid_: Project, shared cache
+
+**Unattributed artifact**:
+A recognized generated directory whose owning project or tool cannot be verified. It remains measured but is never presented as a project.
+_Avoid_: Unknown project, orphaned project
+
+**Ownership evidence**:
+The reason SpaceLens assigned a location to a project, tool-managed path, shared path, or unattributed storage.
+_Avoid_: Confidence score
+
 **Artifact kind**:
 The mutually exclusive storage role assigned to measured developer-storage bytes.
 _Avoid_: Type, ecosystem
