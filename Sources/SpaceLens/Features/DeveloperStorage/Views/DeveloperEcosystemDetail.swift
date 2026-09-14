@@ -358,29 +358,15 @@ private struct DeveloperStorageLocationRow: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(location.name), \(location.scope.displayName), \(location.evidence.displayName), \(StorageFormatters.bytes(location.uniqueSize)), \(location.status.displayName)")
                 .accessibilityHint(expandable ? "Expand to show the largest retained items" : "")
-                HStack(spacing: 0) {
-                    Menu {
-                        Button("Reveal in Finder") { actions.showInFinder(location.url) }
-                        Button("Open in Terminal") { actions.openInTerminal(location.url) }
-                        Button("Inspect Storage Map") { actions.inspectDirectory(location.url) }
-                    } label: {
-                        Image(systemName: "ellipsis").frame(width: 24, height: 24)
-                    }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                    .help("Location actions").accessibilityLabel("Actions for \(location.name)")
-
-                    if expandable {
-                        Button { isExpanded.toggle() } label: {
-                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(theme.tertiaryText)
-                                .frame(width: 24, height: 24)
-                        }
-                        .buttonStyle(.plain)
-                        .help(isExpanded ? "Collapse location" : "Expand location")
-                        .accessibilityLabel(isExpanded ? "Collapse \(location.name)" : "Expand \(location.name)")
-                    }
+                Menu {
+                    Button("Reveal in Finder") { actions.showInFinder(location.url) }
+                    Button("Open in Terminal") { actions.openInTerminal(location.url) }
+                    Button("Inspect Storage Map") { actions.inspectDirectory(location.url) }
+                } label: {
+                    Image(systemName: "ellipsis").frame(width: 24, height: 24)
                 }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .help("Location actions").accessibilityLabel("Actions for \(location.name)")
                 .padding(.top, 10).padding(.trailing, 9)
             }
 

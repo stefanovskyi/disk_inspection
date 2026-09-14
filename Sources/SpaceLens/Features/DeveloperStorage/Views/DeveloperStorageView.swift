@@ -301,13 +301,7 @@ private struct DeveloperEcosystemRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 9) {
                 Image(systemName: ecosystem.systemImage).foregroundStyle(theme.accent).frame(width: 24)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(ecosystem.displayName).font(.callout.weight(.semibold)).foregroundStyle(theme.primaryText)
-                    Text("Projects \(StorageFormatters.bytes(ecosystem.projectSize)) · Tool-managed \(StorageFormatters.bytes(ecosystem.toolManagedSize))")
-                        .font(.caption2).foregroundStyle(theme.tertiaryText).lineLimit(1)
-                    Text("Shared \(StorageFormatters.bytes(ecosystem.sharedSize)) · Unattributed \(StorageFormatters.bytes(ecosystem.unattributedSize))")
-                        .font(.caption2).foregroundStyle(theme.tertiaryText).lineLimit(1)
-                }
+                Text(ecosystem.displayName).font(.callout.weight(.semibold)).foregroundStyle(theme.primaryText)
                 Spacer(minLength: 4)
                 Text(StorageFormatters.bytes(ecosystem.uniqueSize))
                     .font(.caption.weight(.semibold).monospacedDigit()).foregroundStyle(theme.primaryText)
