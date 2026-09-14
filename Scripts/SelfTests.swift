@@ -270,7 +270,10 @@ struct SpaceLensSelfTests {
             AppLayoutMetrics.preferredInspectorWidth == 240,
             "Inspector should be approximately 30% narrower than its previous 340-point width"
         )
-        try expect(AppLayoutMetrics.toolsColumnWidth == 250, "Tools column should use less empty space")
+        try expect(
+            AppLayoutMetrics.analysisListColumnWidth == 250,
+            "Analysis list columns should match the narrow Tools width"
+        )
     }
 
     @MainActor

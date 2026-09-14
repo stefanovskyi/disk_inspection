@@ -220,7 +220,7 @@ struct AIModelsAndRuntimesView: View {
             }
             HStack(spacing: 12) {
                 runtimeRanking(report: report, theme: theme)
-                    .frame(width: 300)
+                    .frame(width: AppLayoutMetrics.analysisListColumnWidth)
                 Divider()
                 if let runtime = selectedRuntime(in: report) {
                     AIModelRuntimeDetail(runtime: runtime, totalSize: report.totalSize, actions: actions)

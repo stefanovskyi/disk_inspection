@@ -238,7 +238,7 @@ struct AICodingToolsView: View {
 
             HStack(spacing: 12) {
                 toolRanking(report: report, theme: theme)
-                    .frame(width: AppLayoutMetrics.toolsColumnWidth)
+                    .frame(width: AppLayoutMetrics.analysisListColumnWidth)
 
                 Divider()
 

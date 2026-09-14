@@ -210,7 +210,8 @@ struct DeveloperStorageView: View {
                 statusBanner(message: errorMessage, warning: true, theme: theme)
             }
             HStack(spacing: 12) {
-                ecosystemRanking(report: report, theme: theme).frame(width: 300)
+                ecosystemRanking(report: report, theme: theme)
+                    .frame(width: AppLayoutMetrics.analysisListColumnWidth)
                 Divider()
                 if let ecosystem = selectedEcosystem(in: report) {
                     DeveloperEcosystemDetail(ecosystem: ecosystem, totalSize: report.totalSize, actions: actions)

@@ -8,8 +8,8 @@ final class AppLayoutMetricsTests: XCTestCase {
         XCTAssertEqual(AppLayoutMetrics.minimumWindowHeight, 620)
     }
 
-    func testInspectorAndToolsColumnsUseCompactWidths() {
+    func testInspectorAndAnalysisListColumnsUseCompactWidths() {
         XCTAssertEqual(AppLayoutMetrics.preferredInspectorWidth, 240)
-        XCTAssertEqual(AppLayoutMetrics.toolsColumnWidth, 250)
+        XCTAssertEqual(AppLayoutMetrics.analysisListColumnWidth, 250)
     }
 }
