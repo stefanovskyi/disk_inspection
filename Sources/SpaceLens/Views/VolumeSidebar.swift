@@ -623,26 +623,6 @@ private struct VolumeRow: View {
                     }
                 }
 
-                if let scanEverythingProgress {
-                    HStack(spacing: 6) {
-                        Text("\(scanEverythingProgress.itemsScanned.formatted()) items")
-                        Spacer(minLength: 4)
-                        Text(StorageFormatters.bytes(scanEverythingProgress.mappedBytes))
-                    }
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(theme.tertiaryText)
-
-                    if let fraction = scanEverythingProgress.fraction {
-                        ProgressView(value: fraction)
-                            .progressViewStyle(.linear)
-                            .tint(theme.accent)
-                    } else {
-                        ProgressView()
-                            .progressViewStyle(.linear)
-                            .tint(theme.accent)
-                    }
-                }
-
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
                         Capsule().fill(theme.elevatedSurface)

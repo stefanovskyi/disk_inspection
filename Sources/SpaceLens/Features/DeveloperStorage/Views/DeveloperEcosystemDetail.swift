@@ -214,10 +214,6 @@ private struct DeveloperProjectRow: View {
                             Text(StorageFormatters.bytes(project.uniqueSize))
                                 .font(.callout.weight(.semibold).monospacedDigit())
                                 .foregroundStyle(theme.primaryText)
-                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(theme.tertiaryText)
-                                .accessibilityHidden(true)
                         }
                     }
                     .padding(.leading, 11)
