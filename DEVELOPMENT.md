@@ -13,6 +13,7 @@ Run commands from the repository root.
 make build
 make test
 make app
+make dmg
 ```
 
 `make test` is the minimum verification after changes to scanning, models, or chart layout. It uses a framework-free test harness that works with Command Line Tools; XCTest targets are also available in Xcode.
@@ -21,6 +22,14 @@ make app
 
 ```bash
 open dist/SpaceLens.app
+```
+
+`make dmg` first rebuilds the signed app, then creates `dist/SpaceLens.dmg`. The disk image uses a native Finder drag-and-drop layout with the app, an `/Applications` link, and the project-owned Retina background in `Support/Installer/`.
+
+Validate the disk image structure, embedded app signature, property list, and UDIF checksum with:
+
+```bash
+make verify-dmg
 ```
 
 You can also open `Package.swift` in Xcode and run the `SpaceLens` executable target.
@@ -65,10 +74,10 @@ Developer ID signing and notarization are tracked in [issue #1](https://github.c
 
 Before publishing an ad-hoc build:
 
-1. Run `make build`, `make test`, and `make app`.
-2. Run the `codesign` and `plutil` validation commands above.
-3. Name the archive with the version, platform, and architecture, such as `SpaceLens-1.2.0-macos-arm64.zip`.
-4. Generate its checksum with `shasum -a 256 <archive>`.
+1. Run `make build`, `make test`, and `make dmg`.
+2. Run the `codesign` and `plutil` validation commands above, then run `make verify-dmg`.
+3. Name the disk image with the version, platform, and architecture, such as `SpaceLens-1.2.0-macos-arm64.dmg`.
+4. Generate its checksum with `shasum -a 256 <disk-image>`.
 5. State the minimum macOS version and supported architecture in the release notes.
 6. Include the checksum and this exact notice:
 

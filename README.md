@@ -20,12 +20,12 @@ The chart supports hover details, click-to-drill navigation, breadcrumbs, contex
 
 ## Download a release
 
-Download the latest build from [GitHub Releases](https://github.com/stefanovskyi/disk_inspection/releases/latest). Current release builds require macOS 14 or newer on Apple silicon.
+Download the latest disk image from [GitHub Releases](https://github.com/stefanovskyi/disk_inspection/releases/latest). Current release builds require macOS 14 or newer on Apple silicon. Open the `.dmg`, then drag **SpaceLens** onto **Applications**.
 
 SpaceLens releases are currently ad-hoc signed and are not notarized. Before opening a download, compare its SHA-256 checksum with the value in the release notes:
 
 ```bash
-shasum -a 256 ~/Downloads/SpaceLens-*.zip
+shasum -a 256 ~/Downloads/SpaceLens-*.dmg
 ```
 
 After moving `SpaceLens.app` to Applications, try to open it once. If macOS blocks it and you trust the downloaded file and its checksum, open **System Settings > Privacy & Security**, scroll to **Security**, click **Open Anyway**, then confirm **Open**. Apple documents this exception process in [Open a Mac app from an unknown developer](https://support.apple.com/guide/mac-help/mh40616/mac).
@@ -48,6 +48,13 @@ Requirements: macOS 14 or newer and Swift 6 from Xcode or the Xcode Command Line
 ```bash
 make app
 open dist/SpaceLens.app
+```
+
+To build and open the native drag-and-drop installer:
+
+```bash
+make dmg
+open dist/SpaceLens.dmg
 ```
 
 SpaceLens checks for Full Disk Access before starting a scan or analysis so protected data is not silently omitted. Locally rebuilt, ad-hoc-signed apps may need permission again; [use a stable development signing identity](DEVELOPMENT.md#stable-permissions-for-local-builds) to avoid repeated prompts.

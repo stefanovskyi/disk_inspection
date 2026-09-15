@@ -1,4 +1,4 @@
-.PHONY: build test benchmark benchmark-parallelism benchmark-full benchmark-trace benchmark-compare app run clean
+.PHONY: build test benchmark benchmark-parallelism benchmark-full benchmark-trace benchmark-compare app dmg verify-dmg run clean
 
 build:
 	swift build
@@ -6,6 +6,7 @@ build:
 test:
 	./Scripts/run_self_tests.sh
 	./Scripts/test_signing_identity.sh
+	./Scripts/test_dmg_packaging.sh
 	./Scripts/test_benchmark_comparison.sh
 
 benchmark:
@@ -26,6 +27,12 @@ benchmark-compare:
 
 app:
 	./Scripts/package_app.sh
+
+dmg: app
+	./Scripts/package_dmg.sh
+
+verify-dmg:
+	./Scripts/verify_dmg.sh dist/SpaceLens.dmg
 
 run:
 	swift run SpaceLens
