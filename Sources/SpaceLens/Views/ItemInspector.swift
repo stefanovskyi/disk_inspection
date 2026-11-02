@@ -55,6 +55,8 @@ struct ItemInspector: View {
                 .font(.caption2.weight(.semibold))
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+
+                descriptionSlot(inspected: inspectedNode)
             }
             .padding(16)
 
@@ -124,6 +126,27 @@ struct ItemInspector: View {
             selectedItem = nil
         }
         .spacePanel()
+    }
+
+    /// Reserves the folder's own description height so selecting an item without
+    /// a description does not move the list under the pointer.
+    @ViewBuilder
+    private func descriptionSlot(inspected inspectedNode: FileNode) -> some View {
+        let description = inspectedNode.storageDescription
+        let reserved = node.storageDescription
+        if description != nil || reserved != nil {
+            ZStack(alignment: .topLeading) {
+                if let reserved, reserved != description {
+                    StorageItemDescriptionView(description: reserved)
+                        .hidden()
+                }
+                if let description {
+                    StorageItemDescriptionView(description: description)
+                        .id(inspectedNode.id)
+                }
+            }
+            .padding(.top, 3)
+        }
     }
 
     /// Always occupies the same width so selecting an item never shifts the header.
@@ -227,6 +250,12 @@ struct SmallerItemsInspector: View {
                     .fontDesign(.rounded)
                     .monospacedDigit()
                     .foregroundStyle(theme.primaryText)
+
+                if let inspectedItem, let description = inspectedItem.storageDescription {
+                    StorageItemDescriptionView(description: description)
+                        .id(inspectedItem.id)
+                        .padding(.top, 3)
+                }
             }
             .padding(16)
 

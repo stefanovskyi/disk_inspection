@@ -17,6 +17,7 @@ Keep the product name **SpaceLens**. The DaisyDisk screenshots supplied during i
 - `Sources/SpaceLens/ViewModels/AppViewModel.swift` — application state, navigation, scanning, and macOS actions.
 - `Sources/SpaceLens/Views/` — SwiftUI interface and interactive sunburst chart.
 - `Sources/SpaceLens/Support/` — formatting, design tokens, and the product identification in `BrandLogo`, `BrandLogoCatalog`, and `StorageItemIcon`.
+- `Sources/SpaceLens/Support/StorageItemDescription.swift` and `StorageItemDescriptionCatalog.swift` — path matching and static text explaining well-known folders in the inspector.
 - `Sources/SpaceLens/Resources/BrandLogos/` — bundled logo PNGs; regenerate them with `Scripts/generate_brand_logos.sh` from the pinned sources in `Support/BrandLogos/sources.tsv`.
 - `Tests/SpaceLensTests/` — XCTest coverage for scanner and chart layout.
 - `Scripts/run_self_tests.sh` — framework-free tests for Command Line Tools installations.
@@ -86,6 +87,7 @@ Do not hard-code this compatibility override into application source code.
 - Use SF Symbols for interface icons. Do not use emoji as icons.
 - Identify products with their real artwork: installed applications, document types, and macOS system folders use their system icon; tools, languages, services, and model publishers use a logo from `BrandLogo`. Add new logos to `sources.tsv`, and check them on light and dark surfaces. Keep SF Symbols for controls, categories, and anything without a brand.
 - Match common product names only where a tool's data is expected, as `StorageItemIcon.resolve` does. A project folder named `Cursor` or an npm package named `signal` must keep a generic icon.
+- Keep folder descriptions universal and short (200 characters at most): what the location is, what fills it, and what deleting it costs. Match by known location as `StorageItemDescription.resolve` does, so same-named project folders stay undescribed. Descriptions only inform; they must not gain delete actions. Fold text longer than three lines until clicked.
 - Load system icons off the main actor through `SystemIconLoader`; a stalled disk must not freeze the interface.
 - Support both light and dark appearances through `SpaceTheme`.
 - The chart must provide hover feedback, click-to-drill behavior, and context actions without layout shifts.

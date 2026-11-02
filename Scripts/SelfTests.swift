@@ -34,6 +34,60 @@ private func brandLogosExistForEveryCatalogEntry() throws {
     }
 }
 
+private func storageDescriptionsMatchOnlyKnownLocations() throws {
+    func safety(_ path: String, directory: Bool = true) -> StorageItemDescription.Safety? {
+        StorageItemDescription.resolve(url: URL(fileURLWithPath: path), isDirectory: directory)?.safety
+    }
+    let expectations: [(String, Bool, StorageItemDescription.Safety?)] = [
+        ("/", true, .keep),
+        ("/Applications", true, .reviewFirst),
+        ("/Users/me", true, .keep),
+        ("/Users/Shared", true, .reviewFirst),
+        ("/Users/me/.ssh", true, .keep),
+        ("/Users/me/.npm", true, .safeToClear),
+        ("/Users/me/Library/Caches", true, .safeToClear),
+        ("/Users/me/Library/Caches/com.example.app", true, .safeToClear),
+        ("/Users/me/Library/Containers/com.example.app", true, .reviewFirst),
+        ("/Users/me/Library/Keychains", true, .keep),
+        ("/Users/me/Library/Developer/Xcode/DerivedData", true, .safeToClear),
+        ("/private/var/folders", true, .keep),
+        ("/private/var/folders/ab/cd/T", true, .keep),
+        ("/var/folders", true, .keep),
+        ("/System/Volumes/Data/Users/me/Library/Caches", true, .safeToClear),
+        ("/Applications/Cursor.app", true, .reviewFirst),
+        ("/System/Applications/Mail.app", true, .keep),
+        ("/System/Library/Fonts/Thonburi.ttc", false, .keep),
+        ("/usr/local/lib/custom", true, .reviewFirst),
+        ("/Volumes/Backup", true, .reviewFirst),
+        ("/work/app/node_modules", true, .safeToClear),
+        ("/work/app/.git", true, .keep),
+        ("/Users/me/Pictures/Photos Library.photoslibrary", true, .reviewFirst),
+        ("/Users/me/Downloads/Installer.dmg", false, .reviewFirst),
+        // Same names outside their known location stay undescribed.
+        ("/work/Library", true, nil),
+        ("/work/Library/Caches", true, nil),
+        ("/work/Caches/thing", true, nil),
+        ("/Users/me/projects/Library/Caches", true, nil),
+        ("/Users/me/projects/Documents", true, nil),
+        ("/Users/me/projects/app", true, nil),
+        ("/work/node_modules", false, nil),
+        ("/work/Foo.app", false, nil),
+        ("/Users/Shared/Library", true, nil),
+    ]
+    for (path, directory, expected) in expectations {
+        let actual = safety(path, directory: directory)
+        guard actual == expected else {
+            throw SelfTestFailure.failed("Description of \(path): expected \(String(describing: expected)), got \(String(describing: actual))")
+        }
+    }
+
+    for description in StorageItemDescriptionCatalog.all {
+        guard description.text.count >= 20, description.text.count <= 200, description.text.hasSuffix(".") else {
+            throw SelfTestFailure.failed("Description is not short, complete text: \(description.text)")
+        }
+    }
+}
+
 private func brandLogosIdentifyProductsAndStorageItems() throws {
     func expect<Value: Equatable>(_ actual: Value, _ expected: Value, _ label: String) throws {
         guard actual == expected else {
@@ -183,6 +237,7 @@ struct SpaceLensSelfTests {
         try await developerStorageDeduplicatesHardLinkedFiles()
         try brandLogosExistForEveryCatalogEntry()
         try brandLogosIdentifyProductsAndStorageItems()
+        try storageDescriptionsMatchOnlyKnownLocations()
         try scanCoordinatorKeepsReplacementActive()
         try scanEverythingPlanPrioritizesStartupAndSkipsNetworkVolumes()
         try fullDiskAccessIsCheckedBeforeEveryActivity()
@@ -197,7 +252,7 @@ struct SpaceLensSelfTests {
         try fileNodeEqualityUsesImmutableArenaIdentity()
         try sessionStoreRetainsAndReplacesVolumeResults()
         try previousScanSummaryIsBoundedAndPersistent()
-        print("SpaceLens self-tests passed (39/39)")
+        print("SpaceLens self-tests passed (40/40)")
     }
 
     private static func scanEverythingPlanPrioritizesStartupAndSkipsNetworkVolumes() throws {

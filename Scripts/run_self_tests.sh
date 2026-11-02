@@ -25,6 +25,8 @@ swiftc \
     "$project_dir/Sources/SpaceLens/Support/BrandLogo.swift" \
     "$project_dir/Sources/SpaceLens/Support/BrandLogoCatalog.swift" \
     "$project_dir/Sources/SpaceLens/Support/StorageItemIcon.swift" \
+    "$project_dir/Sources/SpaceLens/Support/StorageItemDescription.swift" \
+    "$project_dir/Sources/SpaceLens/Support/StorageItemDescriptionCatalog.swift" \
     "$project_dir/Sources/SpaceLens/Support/Formatters.swift" \
     "$project_dir/Sources/SpaceLens/Support/PerformanceSignposts.swift" \
     "$project_dir/Sources/SpaceLens/Services/BulkDirectoryReader.swift" \
