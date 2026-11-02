@@ -45,6 +45,6 @@ Installation presence and storage presence remain independent in `AICodingToolRe
 
 ## Adding another coding tool
 
-Cursor, Claude Code, Codex, Google Antigravity, and OpenCode each have one catalog file that returns an `AICodingToolDefinition` containing display metadata and filesystem roots. Register a new definition in `AICodingToolsCatalog`; the analyzer, store, and views consume definition records and do not need tool-specific branches.
+Cursor, Claude Code, Codex, Google Antigravity, OpenCode, and T3 Code each have one catalog file that returns an `AICodingToolDefinition` containing display metadata and filesystem roots. Register a new definition in `AICodingToolsCatalog`; the analyzer, store, and views consume definition records and do not need tool-specific branches. Mark a root with `reportsWhenMissing: false` when it is only relevant if present, such as data from an earlier release, so it does not add a "Not found" row.
 
 Catalog changes can be developed and tested independently from view changes. Store changes can use an `AICodingToolsAnalyzing` test double, while analyzer tests can provide fixed root descriptors backed by temporary directories.

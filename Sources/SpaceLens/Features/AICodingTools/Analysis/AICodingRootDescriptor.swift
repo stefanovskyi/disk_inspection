@@ -9,6 +9,7 @@ struct AICodingRootDescriptor: Equatable, Sendable {
     let rules: [AICodingPathRule]
     let nodeDisplayNames: [String: String]
     let symlinkBoundaryURL: URL?
+    let reportsWhenMissing: Bool
 
     init(
         toolID: AICodingToolID,
@@ -18,7 +19,8 @@ struct AICodingRootDescriptor: Equatable, Sendable {
         defaultCategory: AICodingStorageCategory,
         rules: [AICodingPathRule],
         nodeDisplayNames: [String: String] = [:],
-        symlinkBoundaryURL: URL? = nil
+        symlinkBoundaryURL: URL? = nil,
+        reportsWhenMissing: Bool = true
     ) {
         self.toolID = toolID
         self.name = name
@@ -28,6 +30,7 @@ struct AICodingRootDescriptor: Equatable, Sendable {
         self.rules = rules
         self.nodeDisplayNames = Self.standardizedDisplayNames(nodeDisplayNames)
         self.symlinkBoundaryURL = symlinkBoundaryURL
+        self.reportsWhenMissing = reportsWhenMissing
     }
 
     var id: String { "\(toolID.rawValue)|\(url.standardizedFileURL.path)" }
@@ -58,7 +61,8 @@ struct AICodingRootDescriptor: Equatable, Sendable {
             defaultCategory: defaultCategory,
             rules: rules,
             nodeDisplayNames: nodeDisplayNames,
-            symlinkBoundaryURL: symlinkBoundaryURL?.standardizedFileURL
+            symlinkBoundaryURL: symlinkBoundaryURL?.standardizedFileURL,
+            reportsWhenMissing: reportsWhenMissing
         )
     }
 
@@ -91,7 +95,8 @@ struct AICodingRootDescriptor: Equatable, Sendable {
             defaultCategory: defaultCategory,
             rules: mergedRules,
             nodeDisplayNames: mergedDisplayNames,
-            symlinkBoundaryURL: symlinkBoundaryURL
+            symlinkBoundaryURL: symlinkBoundaryURL,
+            reportsWhenMissing: reportsWhenMissing
         )
     }
 

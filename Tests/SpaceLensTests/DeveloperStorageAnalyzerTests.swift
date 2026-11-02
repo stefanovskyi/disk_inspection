@@ -132,6 +132,32 @@ final class DeveloperStorageAnalyzerTests: XCTestCase {
         XCTAssertTrue(node.projects.isEmpty)
     }
 
+    func testClassifiesT3RuntimeDependenciesAsToolManaged() async throws {
+        let root = temporaryDirectory(named: "T3Runtime")
+        let home = root.appendingPathComponent("home", isDirectory: true)
+        let runtime = home.appendingPathComponent(".t3/runtime/versions/0.1.6", isDirectory: true)
+        let modules = runtime.appendingPathComponent("node_modules", isDirectory: true)
+        try FileManager.default.createDirectory(at: modules, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("{}".utf8).write(to: runtime.appendingPathComponent("package.json"))
+        try Data(repeating: 0x41, count: 8_192)
+            .write(to: modules.appendingPathComponent("dependency.bin"))
+
+        let report = try await DeveloperStorageAnalyzer().analyze(
+            request: DeveloperStorageRequest(
+                homeDirectory: home,
+                environment: [:],
+                automaticProjectContainers: [home],
+                projectContainers: []
+            )
+        )
+        let node = try XCTUnwrap(report.ecosystems.first { $0.id == .nodeAndWeb })
+        let location = try XCTUnwrap(node.locations.first { $0.url == modules })
+        XCTAssertEqual(location.scope, .toolManaged)
+        XCTAssertNil(location.projectURL)
+        XCTAssertTrue(node.projects.isEmpty)
+    }
+
     func testClassifiesAntigravityExtensionDependenciesAsToolManaged() async throws {
         let root = temporaryDirectory(named: "AntigravityExtensions")
         let home = root.appendingPathComponent("home", isDirectory: true)

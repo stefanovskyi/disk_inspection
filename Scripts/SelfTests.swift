@@ -35,6 +35,7 @@ struct SpaceLensSelfTests {
         try aiCodingAnnotationsHideInheritedContext()
         try claudeProjectDisplayNamesAreReadable()
         try openCodeCatalogResolvesXDGAndCategories()
+        try t3CodeCatalogResolvesRootsAndCategories()
         try await aiCodingInstallationsReadStaticMetadata()
         try aiCodingReportKeepsMeasuredDescendantOfUnavailableRoot()
         try await aiCodingAnalyzerSkipsLinkedRoots()
@@ -556,8 +557,8 @@ struct SpaceLensSelfTests {
         let customDataURL = customDataBase.appendingPathComponent("opencode")
 
         try expect(
-            definitions.map(\.metadata.id) == [.cursor, .claudeCode, .codex, .antigravity, .openCode],
-            "AI coding tool catalog order does not include OpenCode"
+            definitions.map(\.metadata.id) == [.cursor, .claudeCode, .codex, .antigravity, .openCode, .t3Code],
+            "AI coding tool catalog order does not include OpenCode and T3 Code"
         )
         try expect(
             roots.contains(where: {
@@ -598,6 +599,49 @@ struct SpaceLensSelfTests {
         try expect(
             !roots.contains(where: { $0.url.path.contains("/.claude") }),
             "OpenCode catalog incorrectly claims Claude compatibility data"
+        )
+    }
+
+    private static func t3CodeCatalogResolvesRootsAndCategories() throws {
+        let home = URL(fileURLWithPath: "/Users/self-test", isDirectory: true)
+        let appSupport = home.appendingPathComponent("Library/Application Support")
+        let customHome = URL(fileURLWithPath: "/Volumes/T3SelfTest", isDirectory: true)
+        let definition = T3CodeCatalog.definition(for: AICodingToolsRequest(
+            homeDirectory: home,
+            applicationSupportDirectory: appSupport,
+            environment: ["T3CODE_HOME": customHome.path],
+            projectRoots: []
+        ))
+        func root(_ url: URL) -> AICodingRootDescriptor? {
+            definition.roots.first {
+                $0.url.standardizedFileURL.path == url.standardizedFileURL.path
+            }
+        }
+
+        guard let data = root(home.appendingPathComponent(".t3")),
+              let application = root(appSupport.appendingPathComponent("t3code-v2")) else {
+            throw SelfTestFailure.failed("T3 Code default roots are missing")
+        }
+        try expect(root(customHome) != nil, "T3 Code custom home root is missing")
+        try expect(
+            data.category(for: data.url.appendingPathComponent("userdata/statev2.sqlite-wal")) == .conversations,
+            "T3 Code database sidecar was not classified as session data"
+        )
+        try expect(
+            data.category(for: data.url.appendingPathComponent("worktrees/repo/branch")) == .worktrees,
+            "T3 Code worktrees were not classified as checkouts"
+        )
+        try expect(
+            data.category(for: data.url.appendingPathComponent("userdata/logs/server.trace.ndjson")) == .logs,
+            "T3 Code logs were not classified as diagnostics"
+        )
+        try expect(
+            application.category(for: application.url.appendingPathComponent("GraphiteDawnCache/data")) == .caches,
+            "T3 Code render caches were not classified as caches"
+        )
+        try expect(
+            definition.roots.filter { !$0.reportsWhenMissing }.count == 6,
+            "T3 Code optional roots should stay hidden when absent"
         )
     }
 

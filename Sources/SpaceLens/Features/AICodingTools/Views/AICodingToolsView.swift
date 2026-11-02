@@ -109,7 +109,7 @@ struct AICodingToolsView: View {
 
                     Text(
                         "SpaceLens identifies conventional app and CLI installations for Cursor, Claude Code, "
-                            + "Codex, Google Antigravity, and OpenCode, then measures their known storage locations."
+                            + "Codex, Google Antigravity, OpenCode, and T3 Code, then measures their known storage locations."
                     )
                     .font(.body)
                     .foregroundStyle(theme.secondaryText)

@@ -5,6 +5,21 @@ struct AICodingApplicationInstallationRule: Equatable, Sendable {
     let bundleIdentifiers: [String]
     let fallbackBundleNames: [String]
     let bundledComponents: [AICodingBundledComponentRule]
+    let launcherScripts: [URL]
+
+    init(
+        displayName: String,
+        bundleIdentifiers: [String],
+        fallbackBundleNames: [String],
+        bundledComponents: [AICodingBundledComponentRule],
+        launcherScripts: [URL] = []
+    ) {
+        self.displayName = displayName
+        self.bundleIdentifiers = bundleIdentifiers
+        self.fallbackBundleNames = fallbackBundleNames
+        self.bundledComponents = bundledComponents
+        self.launcherScripts = launcherScripts
+    }
 }
 
 struct AICodingBundledComponentRule: Equatable, Sendable {
@@ -296,6 +311,71 @@ enum AICodingInstallationCatalogSupport {
                 AICodingHomebrewRule(
                     token: "opencode-desktop",
                     displayName: "OpenCode",
+                    surface: .nativeApplication,
+                    kind: .homebrewCask,
+                    commands: []
+                )
+            ]
+        )
+    }
+
+    static func t3Code(for request: AICodingToolsRequest) -> AICodingInstallationDefinition {
+        let home = request.homeDirectory
+        let t3Home = absoluteEnvironmentURL("T3CODE_HOME", request: request)
+            ?? home.appendingPathComponent(".t3")
+        let runtime = t3Home.appendingPathComponent("runtime")
+        let launcher = t3Home.appendingPathComponent("bin/t3")
+        var entryPoints = [home.appendingPathComponent(".local/bin/t3")]
+        if let installDirectory = absoluteEnvironmentURL("T3CODE_INSTALL_BIN_DIR", request: request) {
+            entryPoints.append(installDirectory.appendingPathComponent("t3"))
+        }
+        return AICodingInstallationDefinition(
+            toolID: .t3Code,
+            applications: [
+                AICodingApplicationInstallationRule(
+                    displayName: "T3 Code",
+                    bundleIdentifiers: ["com.t3tools.t3code"],
+                    fallbackBundleNames: ["T3 Code (Beta).app", "T3 Code.app", "T3 Code (Alpha).app"],
+                    bundledComponents: [],
+                    launcherScripts: [launcher]
+                ),
+                AICodingApplicationInstallationRule(
+                    displayName: "T3 Code Nightly",
+                    bundleIdentifiers: ["com.t3tools.t3code"],
+                    fallbackBundleNames: ["T3 Code (Nightly).app"],
+                    bundledComponents: [],
+                    launcherScripts: [launcher]
+                )
+            ],
+            standaloneCLIs: [
+                AICodingStandaloneInstallationRule(
+                    displayName: "T3 CLI",
+                    owningRoot: runtime,
+                    entryPoints: entryPoints,
+                    releasesDirectory: runtime.appendingPathComponent("versions"),
+                    versionStrategy: .nearestVersionComponent,
+                    installMethod: .nativeInstaller
+                )
+            ],
+            javaScriptPackages: [
+                AICodingJavaScriptPackageRule(
+                    packageName: "t3",
+                    displayName: "T3 CLI",
+                    commands: ["t3"],
+                    additionalNodeModulesRoots: []
+                )
+            ],
+            homebrew: [
+                AICodingHomebrewRule(
+                    token: "t3-code",
+                    displayName: "T3 Code",
+                    surface: .nativeApplication,
+                    kind: .homebrewCask,
+                    commands: []
+                ),
+                AICodingHomebrewRule(
+                    token: "t3-code@nightly",
+                    displayName: "T3 Code Nightly",
                     surface: .nativeApplication,
                     kind: .homebrewCask,
                     commands: []

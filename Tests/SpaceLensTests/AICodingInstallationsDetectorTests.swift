@@ -223,6 +223,78 @@ final class AICodingInstallationsDetectorTests: XCTestCase {
         XCTAssertEqual(installation.installedOrUpdatedAt?.source.kind, .homebrewReceipt)
     }
 
+    func testT3CodeReleaseChannelsAndLauncherAttachToTheirOwnApplications() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let applications = fixture.root.appendingPathComponent("Applications", isDirectory: true)
+        func makeApplication(_ name: String, version: String) throws -> URL {
+            let app = applications.appendingPathComponent(name, isDirectory: true)
+            try FileManager.default.createDirectory(
+                at: app.appendingPathComponent("Contents"),
+                withIntermediateDirectories: true
+            )
+            try writePlist([
+                "CFBundleIdentifier": "com.t3tools.t3code",
+                "CFBundleShortVersionString": version
+            ], to: app.appendingPathComponent("Contents/Info.plist"))
+            return app
+        }
+        let beta = try makeApplication("T3 Code (Beta).app", version: "0.1.6")
+        let nightly = try makeApplication("T3 Code (Nightly).app", version: "0.1.7-nightly")
+        let bin = fixture.home.appendingPathComponent(".t3/bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        try Data("#!/bin/sh\nexec '\(beta.path)/Contents/MacOS/T3 Code (Beta)' \"$@\"\n".utf8)
+            .write(to: bin.appendingPathComponent("t3"))
+
+        let result = try await AICodingInstallationsDetector().detect(
+            request: fixture.request(path: bin.path, applicationDirectories: [applications])
+        )
+        let installations = result[.t3Code] ?? []
+        let betaInstallation = try XCTUnwrap(installations.first { $0.displayName == "T3 Code" })
+        let nightlyInstallation = try XCTUnwrap(installations.first { $0.displayName == "T3 Code Nightly" })
+
+        XCTAssertEqual(installations.count, 2)
+        XCTAssertEqual(betaInstallation.rootURL.lastPathComponent, beta.lastPathComponent)
+        XCTAssertEqual(betaInstallation.version?.value, "0.1.6")
+        XCTAssertEqual(betaInstallation.entryPoints.map(\.name), ["t3"])
+        XCTAssertTrue(betaInstallation.isOnProcessPath)
+        XCTAssertEqual(nightlyInstallation.rootURL.lastPathComponent, nightly.lastPathComponent)
+        XCTAssertEqual(nightlyInstallation.version?.value, "0.1.7-nightly")
+        XCTAssertTrue(nightlyInstallation.entryPoints.isEmpty)
+    }
+
+    func testT3CommandInstallerRuntimeReportsItsVersion() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let versions = fixture.home.appendingPathComponent(".t3/runtime/versions", isDirectory: true)
+        let active = versions.appendingPathComponent("0.1.6", isDirectory: true)
+        try FileManager.default.createDirectory(at: active, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: versions.appendingPathComponent("0.1.5", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        let binary = active.appendingPathComponent("t3")
+        try Data([0x01]).write(to: binary)
+        let bin = fixture.home.appendingPathComponent(".local/bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: bin.appendingPathComponent("t3"),
+            withDestinationURL: binary
+        )
+
+        let result = try await AICodingInstallationsDetector().detect(
+            request: fixture.request(path: bin.path)
+        )
+        let installation = try XCTUnwrap(result[.t3Code]?.first)
+
+        XCTAssertEqual(result[.t3Code]?.count, 1)
+        XCTAssertEqual(installation.surface, .commandLine)
+        XCTAssertEqual(installation.displayName, "T3 CLI")
+        XCTAssertEqual(installation.version?.value, "0.1.6")
+        XCTAssertEqual(installation.retainedReleases.count, 2)
+        XCTAssertEqual(installation.retainedReleases.filter(\.isActive).map(\.version), ["0.1.6"])
+    }
+
     func testAnalyzerKeepsInstallationIndependentFromStorage() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }

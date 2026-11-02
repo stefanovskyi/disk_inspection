@@ -74,6 +74,8 @@ Google documents persistent transcripts at `<app_data_dir>/brain/<conversationId
 
 Antigravity also documents a separate browser profile, which is persistent browser state rather than merely a screenshot cache. [Separate Chrome profile](https://antigravity.google/docs/ide/separate-chrome-profile/). The local layout can reflect an older installed client than current documentation. Do not attribute all of `~/.gemini` to Antigravity or assume Gemini CLI has identical ownership.
 
+**T3 Code.** Observed directly on this Mac (version 0.1.6) and checked against the public [pingdotgg/t3code](https://github.com/pingdotgg/t3code) source and the Homebrew `t3-code` cask. `T3CODE_HOME`, defaulting to `~/.t3`, holds `userdata/` (the `statev2.sqlite` thread database, attachments, browser artifacts, logs, settings, and credentials), `worktrees/`, `caches/`, `bin/t3` (a launcher for the app's bundled CLI), and `runtime/versions/` (the standalone CLI). A development server uses `dev/` instead of `userdata/`. The Electron profile is `~/Library/Application Support/t3code-v2`; `t3code`, `T3 Code (Alpha)`, `t3code-dev`, and `T3 Code (Dev)` are earlier or development profiles. Updates download to `~/Library/Caches/t3code-updater`.
+
 **Partial measurements from this Mac.** Read-only `du -P -k -d 1 -x` and `stat` checks inspected directory metadata and allocation, without following symlinks or reading conversations, artifacts, database rows, or credential contents. Values below convert KiB output to GiB. These are separate live measurements, not an atomic snapshot or an estimate of uniquely reclaimable space.
 
 | Tool | Roots measured | Allocated size |

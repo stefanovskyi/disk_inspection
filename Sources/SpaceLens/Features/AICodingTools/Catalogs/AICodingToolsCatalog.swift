@@ -5,7 +5,8 @@ enum AICodingToolsCatalog {
             ClaudeCodeCatalog.definition(for: request),
             CodexCatalog.definition(for: request),
             AntigravityCatalog.definition(for: request),
-            OpenCodeCatalog.definition(for: request)
+            OpenCodeCatalog.definition(for: request),
+            T3CodeCatalog.definition(for: request)
         ]
     }
 
@@ -25,7 +26,8 @@ enum AICodingToolsCatalog {
             ClaudeCodeCatalog.metadata,
             CodexCatalog.metadata,
             AntigravityCatalog.metadata,
-            OpenCodeCatalog.metadata
+            OpenCodeCatalog.metadata,
+            T3CodeCatalog.metadata
         ]
     }
 

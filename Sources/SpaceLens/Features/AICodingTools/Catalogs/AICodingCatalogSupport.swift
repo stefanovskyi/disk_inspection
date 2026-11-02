@@ -47,7 +47,8 @@ enum AICodingCatalogSupport {
         defaultCategory: AICodingStorageCategory = .other,
         rules: [AICodingPathRule] = [],
         nodeDisplayNames: [String: String] = [:],
-        symlinkBoundaryURL: URL? = nil
+        symlinkBoundaryURL: URL? = nil,
+        reportsWhenMissing: Bool = true
     ) -> AICodingRootDescriptor {
         AICodingRootDescriptor(
             toolID: toolID,
@@ -57,7 +58,8 @@ enum AICodingCatalogSupport {
             defaultCategory: defaultCategory,
             rules: rules,
             nodeDisplayNames: nodeDisplayNames,
-            symlinkBoundaryURL: symlinkBoundaryURL
+            symlinkBoundaryURL: symlinkBoundaryURL,
+            reportsWhenMissing: reportsWhenMissing
         )
     }
 

@@ -84,12 +84,14 @@ struct AICodingInstallationsDetector: AICodingInstallationsDetecting, Sendable {
                 let manifestURL = bundleURL.appendingPathComponent("Contents/Info.plist")
                 guard let manifest = propertyList(at: manifestURL) else { continue }
                 let bundleIdentifier = manifest["CFBundleIdentifier"] as? String
-                let exactRule = definition.applications.first { rule in
+                let identifiedRules = definition.applications.filter { rule in
                     bundleIdentifier.map(rule.bundleIdentifiers.contains) == true
                 }
                 let fallbackRule = definition.applications.first { rule in
                     rule.fallbackBundleNames.contains(bundleURL.lastPathComponent)
                 }
+                // Release channels can share one bundle identifier and differ only by bundle name.
+                let exactRule = identifiedRules.first { $0 == fallbackRule } ?? identifiedRules.first
                 guard let rule = exactRule ?? fallbackRule else { continue }
 
                 let source = AICodingInstallationEvidenceSource(.appManifest, url: manifestURL)
@@ -164,7 +166,22 @@ struct AICodingInstallationsDetector: AICodingInstallationsDetecting, Sendable {
                 ))
             }
         }
+        for launcher in rule.launcherScripts where launcherScript(launcher, runs: bundleURL) {
+            entries.append(AICodingInstallationEntryPoint(
+                name: launcher.lastPathComponent,
+                url: launcher,
+                isOnProcessPath: pathDirectories.contains(
+                    launcher.deletingLastPathComponent().standardizedFileURL.path
+                )
+            ))
+        }
         return entries
+    }
+
+    private static func launcherScript(_ url: URL, runs bundleURL: URL) -> Bool {
+        guard let data = boundedData(at: url),
+              let script = String(data: data, encoding: .utf8) else { return false }
+        return script.contains(bundleURL.standardizedFileURL.path + "/Contents/")
     }
 
     private static func detectStandaloneCLIs(

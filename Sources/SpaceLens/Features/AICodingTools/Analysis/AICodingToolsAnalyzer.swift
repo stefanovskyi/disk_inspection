@@ -208,7 +208,9 @@ struct AICodingToolsAnalyzer: AICodingToolsAnalyzing, @unchecked Sendable {
         }
 
         return toolOrder.map { toolID in
-            let locations = descriptors.filter { $0.toolID == toolID }.map { descriptor in
+            let locations = descriptors.filter {
+                $0.toolID == toolID && ($0.reportsWhenMissing || statuses[$0.id] != .missing)
+            }.map { descriptor in
                 let categories = (aggregates[descriptor.id] ?? [:]).map { category, metrics in
                     AICodingCategoryBreakdown(
                         category: category,
@@ -323,7 +325,8 @@ struct AICodingToolsAnalyzer: AICodingToolsAnalyzing, @unchecked Sendable {
                     defaultCategory: existing.defaultCategory,
                     rules: rules,
                     nodeDisplayNames: nodeDisplayNames,
-                    symlinkBoundaryURL: existing.symlinkBoundaryURL
+                    symlinkBoundaryURL: existing.symlinkBoundaryURL,
+                    reportsWhenMissing: existing.reportsWhenMissing
                 )
             } else {
                 indicesByID[descriptor.id] = result.count

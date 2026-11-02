@@ -322,7 +322,8 @@ enum DeveloperStorageCatalog {
             DeveloperManagedLocation(name: "Antigravity extension", url: home.appendingPathComponent(".antigravity-server/extensions", isDirectory: true)),
             DeveloperManagedLocation(name: "OpenCode installation", url: home.appendingPathComponent(".opencode", isDirectory: true)),
             DeveloperManagedLocation(name: "OpenCode configuration", url: configHome.appendingPathComponent("opencode", isDirectory: true)),
-            DeveloperManagedLocation(name: "Kilo configuration", url: configHome.appendingPathComponent("kilo", isDirectory: true))
+            DeveloperManagedLocation(name: "Kilo configuration", url: configHome.appendingPathComponent("kilo", isDirectory: true)),
+            DeveloperManagedLocation(name: "T3 CLI runtime", url: (environmentURL("T3CODE_HOME", request) ?? home.appendingPathComponent(".t3", isDirectory: true)).appendingPathComponent("runtime", isDirectory: true))
         ]
         return locations
             .filter { contains($0.url, candidate) }

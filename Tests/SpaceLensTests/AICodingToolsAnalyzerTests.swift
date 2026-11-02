@@ -22,7 +22,7 @@ final class AICodingToolsAnalyzerTests: XCTestCase {
 
         XCTAssertEqual(
             definitions.map(\.metadata.id),
-            [.cursor, .claudeCode, .codex, .antigravity, .openCode]
+            [.cursor, .claudeCode, .codex, .antigravity, .openCode, .t3Code]
         )
         XCTAssertTrue(definitions.allSatisfy { definition in
             definition.roots.allSatisfy { $0.toolID == definition.metadata.id }
@@ -216,6 +216,94 @@ final class AICodingToolsAnalyzerTests: XCTestCase {
         XCTAssertEqual(paths.count { $0 == home.appendingPathComponent(".local/state/opencode").path }, 1)
         XCTAssertFalse(paths.contains(home.appendingPathComponent("relative-config/opencode").path))
         XCTAssertFalse(paths.contains(home.appendingPathComponent("relative-additional-config").path))
+    }
+
+    func testT3CodeCatalogResolvesKnownRootsAndComponentCategories() throws {
+        let home = URL(fileURLWithPath: "/Users/fixture", isDirectory: true)
+        let appSupport = home.appendingPathComponent("Library/Application Support")
+        let customHome = URL(fileURLWithPath: "/Volumes/T3Home", isDirectory: true)
+        let definition = T3CodeCatalog.definition(for: AICodingToolsRequest(
+            homeDirectory: home,
+            applicationSupportDirectory: appSupport,
+            environment: ["T3CODE_HOME": customHome.path],
+            projectRoots: []
+        ))
+        func root(_ url: URL) throws -> AICodingRootDescriptor {
+            try XCTUnwrap(definition.roots.first {
+                $0.url.standardizedFileURL.path == url.standardizedFileURL.path
+            })
+        }
+
+        XCTAssertEqual(definition.metadata.id, .t3Code)
+        XCTAssertEqual(Set(definition.roots.map { $0.url.standardizedFileURL.path }).count, definition.roots.count)
+        XCTAssertEqual(try root(customHome).rules, try root(home.appendingPathComponent(".t3")).rules)
+        XCTAssertTrue(try root(home.appendingPathComponent(".t3")).reportsWhenMissing)
+        XCTAssertTrue(try root(appSupport.appendingPathComponent("t3code-v2")).reportsWhenMissing)
+        XCTAssertFalse(try root(appSupport.appendingPathComponent("T3 Code (Alpha)")).reportsWhenMissing)
+        XCTAssertFalse(try root(home.appendingPathComponent("Library/Caches/t3code-updater")).reportsWhenMissing)
+
+        let data = try root(home.appendingPathComponent(".t3"))
+        func category(_ path: String) -> AICodingStorageCategory {
+            data.category(for: data.url.appendingPathComponent(path))
+        }
+        XCTAssertEqual(category("userdata/statev2.sqlite"), .conversations)
+        XCTAssertEqual(category("userdata/statev2.sqlite-wal"), .conversations)
+        XCTAssertEqual(category("dev/statev2.sqlite-shm"), .conversations)
+        XCTAssertEqual(category("userdata/attachments/image.png"), .artifacts)
+        XCTAssertEqual(category("userdata/browser-artifacts/capture.webm"), .artifacts)
+        XCTAssertEqual(category("userdata/logs/provider/events.log"), .logs)
+        XCTAssertEqual(category("userdata/usage-scan-cache-v10.json"), .caches)
+        XCTAssertEqual(category("userdata/model-manifest.json"), .caches)
+        XCTAssertEqual(category("userdata/secrets/server-signing-key.bin"), .configuration)
+        XCTAssertEqual(category("userdata/clerk/clerk-tokens.json"), .configuration)
+        XCTAssertEqual(category("userdata/client-settings.json"), .configuration)
+        XCTAssertEqual(category("userdata/server-runtime.json"), .other)
+        XCTAssertEqual(category("worktrees/repo/branch/file.swift"), .worktrees)
+        XCTAssertEqual(category("caches/codex.json"), .caches)
+        XCTAssertEqual(category("runtime/versions/0.1.6/t3"), .extensions)
+        XCTAssertEqual(category("bin/t3"), .extensions)
+
+        let application = try root(appSupport.appendingPathComponent("t3code-v2"))
+        XCTAssertEqual(application.category(for: application.url.appendingPathComponent("GraphiteDawnCache/a")), .caches)
+        XCTAssertEqual(application.category(for: application.url.appendingPathComponent("Cookies")), .other)
+    }
+
+    func testOptionalRootsAreReportedOnlyWhenPresent() async throws {
+        let root = temporaryDirectory(named: "OptionalRoots")
+        let present = root.appendingPathComponent("present", isDirectory: true)
+        try FileManager.default.createDirectory(at: present, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(repeating: 0x41, count: 4_096).write(to: present.appendingPathComponent("file.bin"))
+
+        let toolID = AICodingToolID(rawValue: "synthetic-agent")
+        func descriptor(_ name: String, optional: Bool) -> AICodingRootDescriptor {
+            AICodingRootDescriptor(
+                toolID: toolID,
+                name: name,
+                url: root.appendingPathComponent(name, isDirectory: true),
+                explanation: name,
+                defaultCategory: .other,
+                rules: [],
+                symlinkBoundaryURL: root,
+                reportsWhenMissing: !optional
+            )
+        }
+        let report = try await AICodingToolsAnalyzer(rootDescriptors: [
+            descriptor("present", optional: true),
+            descriptor("absent-optional", optional: true),
+            descriptor("absent-required", optional: false)
+        ]).analyze(
+            request: AICodingToolsRequest(
+                homeDirectory: root,
+                applicationSupportDirectory: root,
+                environment: [:],
+                projectRoots: []
+            )
+        )
+        let locations = try XCTUnwrap(report.tools.first { $0.id == toolID }).locations
+
+        XCTAssertEqual(Set(locations.map(\.name)), ["present", "absent-required"])
+        XCTAssertEqual(locations.first { $0.name == "absent-required" }?.status, .missing)
     }
 
     func testAnalyzerClassifiesEveryObservedItemBeforeTreeCompaction() async throws {
