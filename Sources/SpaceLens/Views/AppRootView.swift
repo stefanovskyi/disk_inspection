@@ -309,20 +309,24 @@ struct AppRootView: View {
                 )
             } else if let current = model.currentNode {
                 NavigationHeader(node: current)
-                resultContent(
-                    current: current,
-                    showsInspector: isInspectorVisible
-                )
+                FoldableScanFacts(topic: .diskStorage, source: model.storageRefreshSource) {
+                    resultContent(
+                        current: current,
+                        showsInspector: isInspectorVisible
+                    )
+                }
             } else if let volume = model.selectedVolumeOverview,
                       model.previousScanRoot == nil,
                       model.isInScanEverything(volume) {
                 ScanFactsView(topic: .diskStorage, source: .volume(volume))
             } else if let volume = model.selectedVolumeOverview {
-                DiskOverview(
-                    volume: volume,
-                    previousSummary: model.previousScanSummary,
-                    previousRoot: model.previousScanRoot
-                )
+                FoldableScanFacts(topic: .diskStorage, source: model.storageRefreshSource) {
+                    DiskOverview(
+                        volume: volume,
+                        previousSummary: model.previousScanSummary,
+                        previousRoot: model.previousScanRoot
+                    )
+                }
             } else {
                 WelcomeView()
             }

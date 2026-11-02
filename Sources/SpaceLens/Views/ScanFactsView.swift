@@ -16,6 +16,8 @@ struct ScanFactsView<Notice: View>: View {
     let topic: ScanFactTopic
     let source: ScanFactsSource
     var layout: Layout = .page
+    /// Offers to fold the page away when there are results underneath.
+    var onFold: (() -> Void)?
     @ViewBuilder let notice: () -> Notice
 
     private struct RotationKey: Hashable {
@@ -39,6 +41,18 @@ struct ScanFactsView<Notice: View>: View {
                 notice()
             }
             .padding(layout == .page ? 34 : 16)
+        }
+        .overlay(alignment: .topTrailing) {
+            if let onFold {
+                Button(action: onFold) {
+                    Label("Show Results", systemImage: "chevron.up")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Fold the facts page to see the current results")
+                .padding(12)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
@@ -197,8 +211,13 @@ struct ScanFactsView<Notice: View>: View {
 }
 
 extension ScanFactsView where Notice == EmptyView {
-    init(topic: ScanFactTopic, source: ScanFactsSource, layout: Layout = .page) {
-        self.init(topic: topic, source: source, layout: layout) { EmptyView() }
+    init(
+        topic: ScanFactTopic,
+        source: ScanFactsSource,
+        layout: Layout = .page,
+        onFold: (() -> Void)? = nil
+    ) {
+        self.init(topic: topic, source: source, layout: layout, onFold: onFold) { EmptyView() }
     }
 }
 

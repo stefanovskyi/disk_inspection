@@ -1093,6 +1093,40 @@ extension AppViewModel {
         return count
     }
 
+    /// The refresh behind results already on the storage page, if any.
+    var storageRefreshSource: ScanFactsSource? {
+        if isScanning { return result == nil ? nil : .presentedScan }
+        if let result {
+            guard let volume = volume(at: result.root.url), isInScanEverything(volume) else { return nil }
+            return .volume(volume)
+        }
+        guard let selectedVolumeOverview, isInScanEverything(selectedVolumeOverview) else { return nil }
+        return .volume(selectedVolumeOverview)
+    }
+
+    /// When the work started, or `nil` while it is queued. Reads no progress, so
+    /// callers don't redraw on every update.
+    func startedAt(for source: ScanFactsSource) -> Date? {
+        switch source {
+        case .presentedScan:
+            return presentedScan?.startedAt
+        case .volume(let volume):
+            return scanEverythingStartedAt(for: .volume(volume))
+        case .analysis(.aiCodingTools) where aiCodingTools.isRunning:
+            return aiCodingTools.startedAt
+        case .analysis(.aiModelsAndRuntimes) where aiModelsAndRuntimes.isRunning:
+            return aiModelsAndRuntimes.startedAt
+        case .analysis(.developerStorage) where developerStorage.isRunning:
+            return developerStorage.startedAt
+        case .analysis(let analysis):
+            return scanEverythingStartedAt(for: .analysis(analysis))
+        }
+    }
+
+    private func scanEverythingStartedAt(for step: ScanEverythingStep) -> Date? {
+        scanEverythingRuns.first { $0.progress.operation(for: step) != nil }?.startedAt
+    }
+
     /// The progress a facts page shows, including work running inside a batch.
     func activity(for source: ScanFactsSource) -> ScanActivity? {
         switch source {

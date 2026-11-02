@@ -194,6 +194,37 @@ final class AppViewModelScanQueueTests: XCTestCase {
         model.activities.forEach(model.cancel)
     }
 
+    func testRefreshingExistingResultsIsReportedForTheFactsPage() async throws {
+        let scanner = GatedScanner()
+        let model = makeModel(scanner: scanner)
+
+        model.inspectDeveloperStorageDirectory(folderA)
+        XCTAssertNil(model.storageRefreshSource, "A first scan has no results to cover")
+
+        await scanner.release(folderA)
+        try await waitUntil { [folderA] in !model.isScanActive(at: folderA!) }
+        XCTAssertNil(model.storageRefreshSource)
+
+        await scanner.hold(folderA)
+        model.rescan()
+        XCTAssertEqual(model.storageRefreshSource, .presentedScan)
+        XCTAssertNotNil(model.result)
+        XCTAssertNotNil(model.startedAt(for: .presentedScan))
+
+        model.activities.forEach(model.cancel)
+        XCTAssertNil(model.storageRefreshSource)
+        XCTAssertNotNil(model.result)
+    }
+
+    func testAnalysisStartTimeIsAvailableWithoutReadingProgress() {
+        let model = makeModel()
+        XCTAssertNil(model.startedAt(for: .analysis(.aiCodingTools)))
+
+        model.analyzeAICodingTools()
+        XCTAssertNotNil(model.startedAt(for: .analysis(.aiCodingTools)))
+        model.activities.forEach(model.cancel)
+    }
+
     func testAnalysisBatchSkipsAnalysisAlreadyRunning() {
         let model = makeModel()
 
@@ -228,6 +259,7 @@ private actor ScanGate {
     private var released: Set<String> = []
 
     func release(_ path: String) { released.insert(path) }
+    func hold(_ path: String) { released.remove(path) }
     func isReleased(_ path: String) -> Bool { released.contains(path) }
 }
 
@@ -236,6 +268,10 @@ private struct GatedScanner: VolumeScanning {
 
     func release(_ url: URL) async {
         await gate.release(url.standardizedFileURL.path)
+    }
+
+    func hold(_ url: URL) async {
+        await gate.hold(url.standardizedFileURL.path)
     }
 
     func scan(

@@ -11,7 +11,7 @@ SpaceLens is a native, read-only macOS storage inspector. It maps disks and fold
 
 - Scans one folder, one disk, or every mounted local disk with cancellable, bounded parallel traversal.
 - Keeps scans and analyses running while you move between pages. Two run in parallel, further requests wait in a queue, and all progress appears at the bottom of the sidebar.
-- Shows live progress and rotating facts while a page waits for its first results, with 50 sourced facts each for AI coding tools, AI models, developer storage, and disks.
+- Shows live progress and rotating facts while scans and analyses run, with 50 sourced facts each for AI coding tools, AI models, developer storage, and disks. During a refresh, fold the facts page to keep working with the current results.
 - Turns completed scans into a drill-down sunburst and ranked list, including free disk capacity and protected-item reporting.
 - Analyzes AI coding tools: Cursor, Claude Code, Codex, Google Antigravity, OpenCode, and T3 Code.
 - Identifies items at a glance with real application, document, and system-folder icons, and the logos of AI tools, model publishers, programming languages, frameworks, databases, cloud services, and developer tools. See [logo attributions](Support/BrandLogos/NOTICE.md).

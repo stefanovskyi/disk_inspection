@@ -25,6 +25,14 @@ final class ScanFactCatalogTests: XCTestCase {
         }
     }
 
+    func testFactsWaitBeforeCoveringARefreshButNotQueuedWork() {
+        let now = Date()
+        XCTAssertEqual(ScanFact.revealDelay(startedAt: now, now: now), ScanFact.revealThreshold)
+        XCTAssertEqual(ScanFact.revealDelay(startedAt: now.addingTimeInterval(-1), now: now), 2, accuracy: 0.001)
+        XCTAssertEqual(ScanFact.revealDelay(startedAt: now.addingTimeInterval(-60), now: now), 0)
+        XCTAssertEqual(ScanFact.revealDelay(startedAt: nil, now: now), 0)
+    }
+
     func testReadingTimeGrowsWithLengthWithinBounds() {
         let short = ScanFact("Short.", source: "Test")
         let long = ScanFact(String(repeating: "word ", count: 48), source: "Test")

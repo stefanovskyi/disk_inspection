@@ -490,6 +490,16 @@ struct SpaceLensSelfTests {
             }
         }
 
+        let now = Date()
+        try expect(
+            ScanFact.revealDelay(startedAt: now, now: now) == ScanFact.revealThreshold,
+            "Facts should wait before covering a refresh that just started"
+        )
+        try expect(
+            ScanFact.revealDelay(startedAt: nil, now: now) == 0,
+            "Facts should cover queued work immediately"
+        )
+
         var generator = SystemRandomNumberGenerator()
         var deck = ScanFactDeck(factCount: 50)
         for _ in 0..<3 {

@@ -49,7 +49,7 @@ struct NavigationHeader: View {
 
             Spacer(minLength: 12)
 
-            if model.isScanning {
+            if model.storageRefreshSource != nil {
                 Label("Updating", systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(theme.secondaryText)

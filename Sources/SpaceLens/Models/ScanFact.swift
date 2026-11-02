@@ -40,6 +40,15 @@ struct ScanFact: Equatable, Sendable {
         self.source = source
     }
 
+    /// A refresh must run this long before facts cover its results, so quick ones don't flicker.
+    static let revealThreshold: TimeInterval = 3
+
+    /// Seconds left before facts may cover results. Queued work has no known end, so it waits for nothing.
+    static func revealDelay(startedAt: Date?, now: Date) -> TimeInterval {
+        guard let startedAt else { return 0 }
+        return max(revealThreshold - now.timeIntervalSince(startedAt), 0)
+    }
+
     /// Long enough to read the fact unhurried, whatever its length.
     var readingDuration: TimeInterval {
         min(max(7 + Double(text.count) * 0.04, 8), 16)

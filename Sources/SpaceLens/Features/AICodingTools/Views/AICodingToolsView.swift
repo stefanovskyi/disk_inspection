@@ -28,15 +28,15 @@ struct AICodingToolsView: View {
                 }
             case .running(let previousReport):
                 if let previousReport {
-                    reportView(previousReport, theme: theme)
+                    refreshableReport { reportView(previousReport, theme: theme) }
                 } else {
                     runningState(theme: theme)
                 }
             case .completed(let report):
-                reportView(report, theme: theme)
+                refreshableReport { reportView(report, theme: theme) }
             case .failed(let message, let previousReport):
                 if let previousReport {
-                    reportView(previousReport, theme: theme, errorMessage: message)
+                    refreshableReport { reportView(previousReport, theme: theme, errorMessage: message) }
                 } else {
                     failureState(message: message, theme: theme)
                 }
@@ -143,6 +143,18 @@ struct AICodingToolsView: View {
             }
             .padding(24)
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func refreshableReport<Report: View>(
+        @ViewBuilder report: () -> Report
+    ) -> some View {
+        let report = report()
+        return FoldableScanFacts(
+            topic: .codingTools,
+            source: store.isRunning || isInBatch ? .analysis(.aiCodingTools) : nil
+        ) {
+            report
         }
     }
 
