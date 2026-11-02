@@ -239,6 +239,7 @@ struct SpaceLensSelfTests {
         try brandLogosIdentifyProductsAndStorageItems()
         try storageDescriptionsMatchOnlyKnownLocations()
         try scanCoordinatorQueuesWithoutCancellingOtherWork()
+        try scanFactsAreCompleteAndDealtWithoutRepeats()
         try scanEverythingPlanPrioritizesStartupAndSkipsNetworkVolumes()
         try fullDiskAccessIsCheckedBeforeEveryActivity()
         try elapsedTimeFormattingIsReadable()
@@ -252,7 +253,7 @@ struct SpaceLensSelfTests {
         try fileNodeEqualityUsesImmutableArenaIdentity()
         try sessionStoreRetainsAndReplacesVolumeResults()
         try previousScanSummaryIsBoundedAndPersistent()
-        print("SpaceLens self-tests passed (40/40)")
+        print("SpaceLens self-tests passed (41/41)")
     }
 
     private static func scanEverythingPlanPrioritizesStartupAndSkipsNetworkVolumes() throws {
@@ -472,6 +473,29 @@ struct SpaceLensSelfTests {
             AppLayoutMetrics.analysisListColumnWidth == 250,
             "Analysis list columns should match the narrow Tools width"
         )
+    }
+
+    private static func scanFactsAreCompleteAndDealtWithoutRepeats() throws {
+        var seen: Set<String> = []
+        for topic in ScanFactTopic.allCases {
+            let facts = ScanFactCatalog.facts(for: topic)
+            try expect(
+                facts.count == ScanFactTopic.factsPerTopic,
+                "\(topic.title) should have \(ScanFactTopic.factsPerTopic) facts, found \(facts.count)"
+            )
+            for fact in facts {
+                try expect(seen.insert(fact.text).inserted, "Duplicate fact: \(fact.text)")
+                try expect(fact.text.count <= ScanFact.maximumLength, "Fact too long: \(fact.text)")
+                try expect(!fact.source.isEmpty, "Fact has no source: \(fact.text)")
+            }
+        }
+
+        var generator = SystemRandomNumberGenerator()
+        var deck = ScanFactDeck(factCount: 50)
+        for _ in 0..<3 {
+            let round = (0..<50).map { _ in deck.deal(using: &generator) }
+            try expect(Set(round).count == 50, "A fact repeated before the deck was exhausted")
+        }
     }
 
     @MainActor

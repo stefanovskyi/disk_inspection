@@ -148,7 +148,7 @@ struct AIModelsAndRuntimesView: View {
     }
 
     private func runningState(theme: SpaceTheme) -> some View {
-        AnalysisInProgressView(title: "Analyzing AI models and runtimes") {
+        ScanFactsView(topic: .aiModels, source: .analysis(.aiModelsAndRuntimes)) {
             privacyNotice(theme: theme)
         }
     }

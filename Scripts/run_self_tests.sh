@@ -20,6 +20,7 @@ swiftc \
     "$project_dir/Sources/SpaceLens/Models/VolumeInfo.swift" \
     "$project_dir/Sources/SpaceLens/Models/ScanEverything.swift" \
     "$project_dir/Sources/SpaceLens/Models/ScanSessionStore.swift" \
+    "$project_dir/Sources/SpaceLens/Models/ScanFact.swift" \
     "$project_dir/Sources/SpaceLens/Models/SunburstLayout.swift" \
     "$project_dir/Sources/SpaceLens/Support/AppLayoutMetrics.swift" \
     "$project_dir/Sources/SpaceLens/Support/BrandLogo.swift" \
@@ -27,6 +28,7 @@ swiftc \
     "$project_dir/Sources/SpaceLens/Support/StorageItemIcon.swift" \
     "$project_dir/Sources/SpaceLens/Support/StorageItemDescription.swift" \
     "$project_dir/Sources/SpaceLens/Support/StorageItemDescriptionCatalog.swift" \
+    "$project_dir/Sources/SpaceLens/Support/ScanFactCatalog.swift" \
     "$project_dir/Sources/SpaceLens/Support/Formatters.swift" \
     "$project_dir/Sources/SpaceLens/Support/PerformanceSignposts.swift" \
     "$project_dir/Sources/SpaceLens/Services/BulkDirectoryReader.swift" \

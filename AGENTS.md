@@ -19,6 +19,7 @@ Keep the product name **SpaceLens**. The DaisyDisk screenshots supplied during i
 - `Sources/SpaceLens/Views/` — SwiftUI interface and interactive sunburst chart.
 - `Sources/SpaceLens/Support/` — formatting, design tokens, and the product identification in `BrandLogo`, `BrandLogoCatalog`, and `StorageItemIcon`.
 - `Sources/SpaceLens/Support/StorageItemDescription.swift` and `StorageItemDescriptionCatalog.swift` — path matching and static text explaining well-known folders in the inspector.
+- `Sources/SpaceLens/Support/ScanFactCatalog.swift` and `Models/ScanFact.swift` — the facts shown during scans and the deck that deals them without repeats.
 - `Sources/SpaceLens/Resources/BrandLogos/` — bundled logo PNGs; regenerate them with `Scripts/generate_brand_logos.sh` from the pinned sources in `Support/BrandLogos/sources.tsv`.
 - `Tests/SpaceLensTests/` — XCTest coverage for scanner and chart layout.
 - `Scripts/run_self_tests.sh` — framework-free tests for Command Line Tools installations.
@@ -78,7 +79,8 @@ Do not hard-code this compatibility override into application source code.
 - Scans and analyses are independent. Navigation and starting other work must never cancel them; only an explicit cancel or removing the scanned folder may. `ScanCoordinator` runs at most `defaultMaximumConcurrentActivities` at once and queues the rest in order.
 - Requesting a location or analysis that is already active follows it instead of starting a duplicate; restarting an analysis because its folders changed must cancel its own previous run so stale results cannot replace newer results. Batches skip work that is already active.
 - A finished background scan is cached but must not replace the location on screen.
-- Report all scan and analysis progress through `AppViewModel.activities`, rendered only in the panel at the bottom of the sidebar, with a cancel control per activity. Do not add progress bars or status to the toolbar or to feature pages.
+- Report all scan and analysis progress through `AppViewModel.activities`, rendered in the panel at the bottom of the sidebar with a cancel control per activity. The only other place progress may appear is `ScanFactsView`. Do not add progress to the toolbar.
+- While there is no result to show, pages show `ScanFactsView`: live progress and a rotating fact for the page's topic. A rescan over an existing report or map keeps showing that data.
 - Retain completed disk and selected-folder scans in `ScanSessionStore` for the app session. Returning home clears the current presentation, not the cache; selecting a cached location must offer view or rescan instead of scanning immediately.
 - Keep picker-selected folders in the sidebar until removed or the app quits. Removing a folder from the sidebar clears only its session entry and cached scan; it must never modify the folder on disk.
 - Retain at most `DiskScanner.retainedChildLimit` direct children per directory. Preserve byte and item totals through the synthetic `Smaller items` aggregate.
@@ -92,6 +94,7 @@ Do not hard-code this compatibility override into application source code.
 - Identify products with their real artwork: installed applications, document types, and macOS system folders use their system icon; tools, languages, services, and model publishers use a logo from `BrandLogo`. Add new logos to `sources.tsv`, and check them on light and dark surfaces. Keep SF Symbols for controls, categories, and anything without a brand.
 - Match common product names only where a tool's data is expected, as `StorageItemIcon.resolve` does. A project folder named `Cursor` or an npm package named `signal` must keep a generic icon.
 - Keep folder descriptions universal and short (200 characters at most): what the location is, what fills it, and what deleting it costs. Match by known location as `StorageItemDescription.resolve` does, so same-named project folders stay undescribed. Descriptions only inform; they must not gain delete actions. Fold text longer than three lines until clicked.
+- Keep exactly `ScanFactTopic.factsPerTopic` facts per topic, 240 characters at most, each with a source. Date any figure that can change, say when a number is an estimate or reported by a third party, and re-verify time-sensitive facts against sources before editing them. Facts only inform; they must not suggest SpaceLens deletes anything.
 - Load system icons off the main actor through `SystemIconLoader`; a stalled disk must not freeze the interface.
 - Support both light and dark appearances through `SpaceTheme`.
 - The chart must provide hover feedback, click-to-drill behavior, and context actions without layout shifts.
@@ -110,6 +113,7 @@ Add or update tests when changing:
 - scan progress or cancellation;
 - bounded parallel traversal;
 - scan queueing or scans surviving navigation;
+- fact counts, rotation, or repeat avoidance;
 - unreadable-item behavior;
 - stalled provider-directory behavior;
 - sunburst proportions, depth limits, or hierarchy;

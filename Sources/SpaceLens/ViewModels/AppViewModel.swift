@@ -70,6 +70,7 @@ final class AppViewModel {
     let aiCodingTools: AICodingToolsStore
     let aiModelsAndRuntimes: AIModelsAndRuntimesStore
     let developerStorage: DeveloperStorageStore
+    @ObservationIgnored let scanFacts = ScanFactRotation()
     var errorMessage: String?
 
     private let scanner: any VolumeScanning
@@ -1092,6 +1093,69 @@ extension AppViewModel {
         return count
     }
 
+    /// The progress a facts page shows, including work running inside a batch.
+    func activity(for source: ScanFactsSource) -> ScanActivity? {
+        switch source {
+        case .presentedScan:
+            return presentedScan.map(activity(for:))
+        case .volume(let volume):
+            return scanEverythingActivity(
+                step: .volume(volume),
+                target: .storage(path: volume.url.standardizedFileURL.path),
+                systemImage: volume.isExternal ? "externaldrive" : "internaldrive",
+                title: volume.name
+            )
+        case .analysis(.aiCodingTools) where aiCodingTools.isRunning:
+            return aiCodingToolsActivity
+        case .analysis(.aiModelsAndRuntimes) where aiModelsAndRuntimes.isRunning:
+            return aiModelsActivity
+        case .analysis(.developerStorage) where developerStorage.isRunning:
+            return developerStorageActivity
+        case .analysis(let analysis):
+            return scanEverythingActivity(
+                step: .analysis(analysis),
+                target: .analysis(analysis),
+                systemImage: "chart.bar.xaxis",
+                title: analysis.title
+            )
+        }
+    }
+
+    private func scanEverythingActivity(
+        step: ScanEverythingStep,
+        target: ScanActivity.Target,
+        systemImage: String,
+        title: String
+    ) -> ScanActivity? {
+        guard let run = scanEverythingRuns.first(where: { run in
+            run.plan.steps.contains { $0.id == step.id }
+                && !run.progress.completedStepIDs.contains(step.id)
+        }) else { return nil }
+        guard let operation = run.progress.operation(for: step) else {
+            return ScanActivity(
+                target: target,
+                systemImage: systemImage,
+                title: title,
+                status: ScanActivity.waitingStatus,
+                detail: "Queued",
+                startedAt: nil
+            )
+        }
+        return ScanActivity(
+            target: target,
+            systemImage: systemImage,
+            title: title,
+            status: step.title,
+            detail: "\(operation.itemsScanned.formatted()) items",
+            location: operation.currentLocationName,
+            currentPath: operation.currentPath,
+            fraction: operation.fraction,
+            mappedBytes: operation.mappedBytes,
+            itemsScanned: operation.itemsScanned,
+            startedAt: run.startedAt
+        )
+    }
+
     /// Everything queued or running, for the sidebar progress panel.
     var activities: [ScanActivity] {
         var activities = scanEverythingRuns.map(activity(for:))
@@ -1121,6 +1185,8 @@ extension AppViewModel {
             fraction: targetBytes > 0
                 ? min(max(Double(progress.mappedBytes) / Double(targetBytes), 0), 0.99)
                 : nil,
+            mappedBytes: progress.mappedBytes,
+            itemsScanned: progress.itemsScanned,
             startedAt: job.startedAt
         )
     }
@@ -1178,6 +1244,8 @@ extension AppViewModel {
             location: progress.currentLocationName.isEmpty ? nil : progress.currentLocationName,
             currentPath: progress.currentPath.isEmpty ? nil : progress.currentPath,
             fraction: progress.fractionCompleted,
+            mappedBytes: progress.mappedBytes,
+            itemsScanned: progress.itemsScanned,
             startedAt: aiCodingTools.startedAt
         )
     }
@@ -1199,6 +1267,8 @@ extension AppViewModel {
             location: progress.currentLocationName,
             currentPath: progress.currentPath,
             fraction: progress.fractionCompleted,
+            mappedBytes: progress.mappedBytes,
+            itemsScanned: progress.itemsScanned,
             startedAt: aiModelsAndRuntimes.startedAt
         )
     }
@@ -1220,6 +1290,8 @@ extension AppViewModel {
             location: progress.currentLocationName,
             currentPath: progress.currentPath,
             fraction: progress.fractionCompleted,
+            mappedBytes: progress.mappedBytes,
+            itemsScanned: progress.itemsScanned,
             startedAt: developerStorage.startedAt
         )
     }

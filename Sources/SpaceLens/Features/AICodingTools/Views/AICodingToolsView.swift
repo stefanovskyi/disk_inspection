@@ -147,7 +147,7 @@ struct AICodingToolsView: View {
     }
 
     private func runningState(theme: SpaceTheme) -> some View {
-        AnalysisInProgressView(title: "Analyzing AI coding tools") {
+        ScanFactsView(topic: .codingTools, source: .analysis(.aiCodingTools)) {
             metadataNotice(theme: theme)
         }
     }

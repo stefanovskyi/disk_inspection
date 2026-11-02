@@ -1,5 +1,12 @@
 import Foundation
 
+/// Which work a facts page reports on.
+enum ScanFactsSource: Equatable, Sendable {
+    case analysis(ScanEverythingAnalysis)
+    case presentedScan
+    case volume(VolumeInfo)
+}
+
 /// One scan or analysis as shown in the sidebar progress panel.
 struct ScanActivity: Identifiable, Equatable, Sendable {
     enum Target: Hashable, Sendable {
@@ -18,6 +25,8 @@ struct ScanActivity: Identifiable, Equatable, Sendable {
     var location: String?
     var currentPath: String?
     var fraction: Double?
+    var mappedBytes: Int64?
+    var itemsScanned: Int?
     /// `nil` while the activity waits for a free slot in the queue.
     let startedAt: Date?
 

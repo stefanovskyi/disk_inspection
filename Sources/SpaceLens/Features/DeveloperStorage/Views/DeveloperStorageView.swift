@@ -154,9 +154,7 @@ struct DeveloperStorageView: View {
     }
 
     private func runningState(theme: SpaceTheme) -> some View {
-        AnalysisInProgressView(title: "Analyzing developer storage") {
-            EmptyView()
-        }
+        ScanFactsView(topic: .developerStorage, source: .analysis(.developerStorage))
     }
 
     private func failureState(message: String, theme: SpaceTheme) -> some View {

@@ -216,7 +216,15 @@ struct AppRootView: View {
     @ViewBuilder
     private func resultContent(current: FileNode, showsInspector: Bool) -> some View {
         Group {
-            if showsInspector {
+            if model.isScanning && model.result == nil {
+                // The live chart stays visible while facts replace the partial inspector.
+                HStack(spacing: 12) {
+                    chartPanel(current: current)
+                    ScanFactsView(topic: .diskStorage, source: .presentedScan, layout: .panel)
+                        .frame(width: AppLayoutMetrics.scanFactsPanelWidth)
+                        .spacePanel()
+                }
+            } else if showsInspector {
                 SpaceHorizontalSplitView(
                     trailingWidth: $inspectorWidth,
                     dividerAccessibilityLabel: "Resize inspector"
@@ -305,6 +313,10 @@ struct AppRootView: View {
                     current: current,
                     showsInspector: isInspectorVisible
                 )
+            } else if let volume = model.selectedVolumeOverview,
+                      model.previousScanRoot == nil,
+                      model.isInScanEverything(volume) {
+                ScanFactsView(topic: .diskStorage, source: .volume(volume))
             } else if let volume = model.selectedVolumeOverview {
                 DiskOverview(
                     volume: volume,
