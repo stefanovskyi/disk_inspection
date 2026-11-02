@@ -23,6 +23,8 @@ swiftc \
     "$project_dir/Sources/SpaceLens/Models/SunburstLayout.swift" \
     "$project_dir/Sources/SpaceLens/Support/AppLayoutMetrics.swift" \
     "$project_dir/Sources/SpaceLens/Support/BrandLogo.swift" \
+    "$project_dir/Sources/SpaceLens/Support/BrandLogoCatalog.swift" \
+    "$project_dir/Sources/SpaceLens/Support/StorageItemIcon.swift" \
     "$project_dir/Sources/SpaceLens/Support/Formatters.swift" \
     "$project_dir/Sources/SpaceLens/Support/PerformanceSignposts.swift" \
     "$project_dir/Sources/SpaceLens/Services/BulkDirectoryReader.swift" \

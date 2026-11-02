@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Loads bundled logos once and keeps them for the app session.
 @MainActor
@@ -25,23 +26,23 @@ private enum BrandLogoImages {
     }
 }
 
-/// Resolves real application icons off the main actor. The serial queue means a
+/// Resolves real macOS icons off the main actor. The serial queue means a
 /// stalled disk can hold at most one thread and never freezes the interface.
-private final class ApplicationIconLoader: @unchecked Sendable {
-    static let shared = ApplicationIconLoader()
+private final class SystemIconLoader: @unchecked Sendable {
+    static let shared = SystemIconLoader()
 
-    private let queue = DispatchQueue(label: "SpaceLens.ApplicationIconLoader", qos: .utility)
+    private let queue = DispatchQueue(label: "SpaceLens.SystemIconLoader", qos: .utility)
     private let lock = NSLock()
-    /// A stored `nil` records that no matching application is installed.
-    private var icons: [ApplicationIconSource: NSImage?] = [:]
+    /// A stored `nil` records that macOS has no icon for that source.
+    private var icons: [SystemIconSource: NSImage?] = [:]
 
-    func cachedIcon(for source: ApplicationIconSource) -> NSImage? {
+    func cachedIcon(for source: SystemIconSource) -> NSImage? {
         lock.lock()
         defer { lock.unlock() }
         return icons[source] ?? nil
     }
 
-    func icon(for source: ApplicationIconSource) async -> NSImage? {
+    func icon(for source: SystemIconSource) async -> NSImage? {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
                 lock.lock()
@@ -52,9 +53,7 @@ private final class ApplicationIconLoader: @unchecked Sendable {
                     return
                 }
 
-                let icon = Self.applicationURL(for: source).map {
-                    NSWorkspace.shared.icon(forFile: $0.path)
-                }
+                let icon = Self.icon(for: source)
                 lock.lock()
                 icons[source] = .some(icon)
                 lock.unlock()
@@ -63,12 +62,23 @@ private final class ApplicationIconLoader: @unchecked Sendable {
         }
     }
 
-    private static func applicationURL(for source: ApplicationIconSource) -> URL? {
+    private static func icon(for source: SystemIconSource) -> NSImage? {
+        if case .fileType(let pathExtension) = source {
+            guard let type = UTType(filenameExtension: pathExtension), type.isDeclared else { return nil }
+            return NSWorkspace.shared.icon(for: type)
+        }
+        return fileURL(for: source).map { NSWorkspace.shared.icon(forFile: $0.path) }
+    }
+
+    private static func fileURL(for source: SystemIconSource) -> URL? {
         switch source {
-        case .bundle(let url):
+        case .file(let url):
             return url
         case .bundleIdentifier(let identifier):
-            return NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier)
+            return SystemIconSource.bundleIdentifierCandidates(for: identifier)
+                .lazy
+                .compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
+                .first
         case .applicationNamed(let name):
             let directories = [
                 "/Applications",
@@ -77,7 +87,11 @@ private final class ApplicationIconLoader: @unchecked Sendable {
             ]
             return directories
                 .map { URL(fileURLWithPath: $0).appendingPathComponent("\(name).app", isDirectory: true) }
-                .first { FileManager.default.fileExists(atPath: $0.path) }
+                .first { FileManager.default.fileExists(atPath: $0.path) }?
+                // Icons of symlinks, such as /Applications/Safari.app, carry an alias badge.
+                .resolvingSymlinksInPath()
+        case .fileType:
+            return nil
         }
     }
 }
@@ -159,13 +173,12 @@ struct BrandChipLabel: View {
     }
 }
 
-/// An installed application's real icon, showing `fallback` until it loads or
-/// when the application is missing.
-struct ApplicationIconImage<Fallback: View>: View {
-    let source: ApplicationIconSource
+/// A real macOS icon, showing `fallback` until it loads or when there is none.
+struct SystemIconImage<Fallback: View>: View {
+    let source: SystemIconSource
     let size: CGFloat
     @ViewBuilder let fallback: () -> Fallback
-    @State private var loaded: (source: ApplicationIconSource, icon: NSImage?)?
+    @State private var loaded: (source: SystemIconSource, icon: NSImage?)?
 
     var body: some View {
         Group {
@@ -181,18 +194,18 @@ struct ApplicationIconImage<Fallback: View>: View {
         .frame(width: size, height: size)
         .accessibilityHidden(true)
         .task(id: source) {
-            let icon = await ApplicationIconLoader.shared.icon(for: source)
+            let icon = await SystemIconLoader.shared.icon(for: source)
             loaded = (source, icon)
         }
     }
 
     private var icon: NSImage? {
         if let loaded, loaded.source == source { return loaded.icon }
-        return ApplicationIconLoader.shared.cachedIcon(for: source)
+        return SystemIconLoader.shared.cachedIcon(for: source)
     }
 }
 
-/// Identifies a scanned item by its real application icon or brand logo.
+/// Identifies a scanned item by its real macOS icon or brand logo.
 /// Logos sit slightly inside `size` because application icons include margins.
 struct StorageItemIconView<Fallback: View>: View {
     let icon: StorageItemIcon
@@ -212,8 +225,8 @@ struct StorageItemIconView<Fallback: View>: View {
 
     var body: some View {
         switch icon {
-        case .application(let source, let brand):
-            ApplicationIconImage(source: source, size: size) {
+        case .system(let source, let brand):
+            SystemIconImage(source: source, size: size) {
                 if let brand {
                     brandLogo(brand)
                 } else {

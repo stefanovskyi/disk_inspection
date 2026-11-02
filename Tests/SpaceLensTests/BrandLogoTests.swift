@@ -26,22 +26,40 @@ final class BrandLogoTests: XCTestCase {
         XCTAssertNil(BrandLogoCatalog.logo(forModelNamed: "sapphire-7b"))
     }
 
-    func testStorageItemsPreferRealApplicationIcons() {
+    func testStorageItemsPreferRealSystemIcons() {
         let app = URL(fileURLWithPath: "/Applications/Cursor.app")
         XCTAssertEqual(
             StorageItemIcon.resolve(url: app, isDirectory: true),
-            .application(.bundle(app), fallback: nil)
+            .system(.file(app), fallback: .cursor)
         )
         XCTAssertEqual(
             StorageItemIcon.resolve(
                 url: URL(fileURLWithPath: "/Users/me/Library/Application Support/Cursor"),
                 isDirectory: true
             ),
-            .application(.applicationNamed("Cursor"), fallback: .cursor)
+            .system(.applicationNamed("Cursor"), fallback: .cursor)
         )
         XCTAssertEqual(
             StorageItemIcon.resolve(url: URL(fileURLWithPath: "/work/Cursor"), isDirectory: true),
             .generic
+        )
+    }
+
+    func testProductNamesOnlyMatchWhereToolDataIsExpected() {
+        XCTAssertEqual(
+            StorageItemIcon.resolve(url: URL(fileURLWithPath: "/work/node_modules/react"), isDirectory: true),
+            .brand(.react)
+        )
+        XCTAssertEqual(
+            StorageItemIcon.resolve(url: URL(fileURLWithPath: "/work/react"), isDirectory: true),
+            .generic
+        )
+    }
+
+    func testHelpersResolveToTheirApplication() {
+        XCTAssertEqual(
+            SystemIconSource.bundleIdentifierCandidates(for: "com.tinyspeck.slackmacgap.ShipIt"),
+            ["com.tinyspeck.slackmacgap.ShipIt", "com.tinyspeck.slackmacgap", "com.tinyspeck"]
         )
     }
 }

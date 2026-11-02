@@ -219,16 +219,24 @@ private struct DeveloperProjectRow: View {
     @Binding var expandedLocationIDs: Set<String>
     let actions: DeveloperStorageViewActions
 
+    /// The project's largest recognized artifact shows its stack: Next.js over Node.js.
+    private var projectLogo: BrandLogo? {
+        let largest = project.locations.max { $0.uniqueSize < $1.uniqueSize }
+        return largest.flatMap { BrandLogoCatalog.logo(forStorageLocationNamed: $0.name) ?? $0.ecosystemID.logo }
+    }
+
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 0) {
                 Button { isExpanded.toggle() } label: {
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "folder.fill")
-                            .foregroundStyle(theme.accent)
-                            .frame(width: 22)
-                            .accessibilityHidden(true)
+                        BrandOrSymbolIcon(
+                            logo: projectLogo,
+                            systemImage: "folder.fill",
+                            size: 22,
+                            tint: theme.accent
+                        )
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 7) {
                                 Text(project.name)

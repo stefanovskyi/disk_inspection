@@ -707,10 +707,12 @@ private struct SessionFolderRow: View {
 
         HStack(spacing: 3) {
             HStack(spacing: 9) {
-                    Image(systemName: "folder.fill")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(theme.accent)
-                        .frame(width: 22)
+                    StorageItemIconView(url: folder.url, isDirectory: true, size: 22) {
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(theme.accent)
+                            .frame(width: 22)
+                    }
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(folder.name)

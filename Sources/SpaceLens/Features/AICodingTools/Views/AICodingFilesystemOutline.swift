@@ -103,12 +103,23 @@ struct AICodingLocationOutline: View {
         return root
     }
 
+    /// A measured location shows what it holds; any other status needs the warning.
+    @ViewBuilder
+    private func locationIcon(theme: SpaceTheme) -> some View {
+        let symbol = Image(systemName: statusImage(location.status))
+            .foregroundStyle(location.status.isIssue ? theme.warning : theme.accent)
+            .frame(width: 22, height: 22)
+            .accessibilityHidden(true)
+        if location.status == .measured, let logo = AICodingToolsCatalog.metadata(for: location.toolID).logo {
+            BrandLogoImage(logo: logo, size: 22)
+        } else {
+            symbol
+        }
+    }
+
     private func locationHeader(theme: SpaceTheme) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: statusImage(location.status))
-                .foregroundStyle(location.status.isIssue ? theme.warning : theme.accent)
-                .frame(width: 22, height: 22)
-                .accessibilityHidden(true)
+            locationIcon(theme: theme)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 7) {

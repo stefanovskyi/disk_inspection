@@ -106,6 +106,238 @@ struct BrandLogo: Hashable, Sendable {
     static let jupyter = Self("jupyter")
     static let cocoaPods = Self("cocoapods")
 
+    // Cloud services and platforms.
+    static let aws = Self("aws", .lightBacked)
+    static let googleCloud = Self("google-cloud")
+    static let azure = Self("azure", .lightBacked)
+    static let google = Self("google")
+    static let kubernetes = Self("kubernetes")
+    static let helm = Self("helm", .lightBacked)
+    static let terraform = Self("terraform")
+    static let vault = Self("vault")
+    static let ansible = Self("ansible", .lightBacked)
+    static let vercel = Self("vercel", .monochrome)
+    static let netlify = Self("netlify")
+    static let heroku = Self("heroku", .lightBacked)
+    static let cloudflare = Self("cloudflare")
+    static let supabase = Self("supabase")
+    static let firebase = Self("firebase")
+    static let stripe = Self("stripe")
+    static let sentry = Self("sentry", .lightBacked)
+    static let datadog = Self("datadog", .lightBacked)
+    static let postman = Self("postman")
+    static let gitHub = Self("github", .monochrome)
+    static let gitLab = Self("gitlab")
+    static let bitbucket = Self("bitbucket")
+    static let ngrok = Self("ngrok", .lightBacked)
+    static let tailscale = Self("tailscale", .monochrome)
+    static let convex = Self("convex")
+    static let wakaTime = Self("wakatime", .monochrome)
+    static let sonarQube = Self("sonarqube")
+    static let kaggle = Self("kaggle")
+
+    // Data science and Python frameworks.
+    static let streamlit = Self("streamlit")
+    static let keras = Self("keras")
+    static let tensorFlow = Self("tensorflow")
+    static let pyTorch = Self("pytorch")
+    static let numPy = Self("numpy")
+    static let pandas = Self("pandas", .lightBacked)
+    static let sciPy = Self("scipy")
+    static let matplotlib = Self("matplotlib")
+    static let scikitLearn = Self("scikit-learn")
+    static let django = Self("django", .lightBacked)
+    static let flask = Self("flask", .monochrome)
+    static let fastAPI = Self("fastapi")
+    static let langChain = Self("langchain")
+
+    // Web frameworks and tooling.
+    static let tailwind = Self("tailwindcss")
+    static let esLint = Self("eslint", .lightBacked)
+    static let prettier = Self("prettier")
+    static let vite = Self("vite")
+    static let webpack = Self("webpack")
+    static let esbuild = Self("esbuild")
+    static let svelte = Self("svelte")
+    static let angular = Self("angular")
+    static let nuxt = Self("nuxt")
+    static let electron = Self("electron")
+    static let playwright = Self("playwright")
+    static let cypress = Self("cypress")
+    static let selenium = Self("selenium")
+    static let puppeteer = Self("puppeteer")
+    static let jest = Self("jest", .lightBacked)
+    static let storybook = Self("storybook")
+    static let biome = Self("biome")
+    static let shadcn = Self("shadcn", .monochrome)
+    static let prisma = Self("prisma", .lightBacked)
+    static let drizzle = Self("drizzle", .monochrome)
+    static let graphQL = Self("graphql")
+
+    // Databases.
+    static let postgres = Self("postgresql", .lightBacked)
+    static let mySQL = Self("mysql", .lightBacked)
+    static let redis = Self("redis", .lightBacked)
+    static let mongoDB = Self("mongodb")
+    static let sqlite = Self("sqlite")
+    static let elasticsearch = Self("elasticsearch", .lightBacked)
+    static let kafka = Self("kafka", .monochrome)
+    static let rabbitMQ = Self("rabbitmq")
+    static let clickHouse = Self("clickhouse")
+    static let cassandra = Self("cassandra", .lightBacked)
+    static let mariaDB = Self("mariadb", .lightBacked)
+    static let oracle = Self("oracle", .lightBacked)
+
+    // More languages, formats, and command-line tools.
+    static let objectiveC = Self("objective-c", .lightBacked)
+    static let r = Self("r")
+    static let julia = Self("julia")
+    static let zig = Self("zig")
+    static let nim = Self("nim")
+    static let clojure = Self("clojure")
+    static let erlang = Self("erlang", .lightBacked)
+    static let ocaml = Self("ocaml")
+    static let fSharp = Self("fsharp")
+    static let visualBasic = Self("visual-basic", .lightBacked)
+    static let powerShell = Self("powershell", .lightBacked)
+    static let webAssembly = Self("wasm")
+    static let solidity = Self("solidity", .monochrome)
+    static let groovy = Self("groovy", .lightBacked)
+    static let astro = Self("astro", .lightBacked)
+    static let laTeX = Self("latex", .monochrome)
+    static let markdown = Self("markdown", .monochrome)
+    static let json = Self("json", .lightBacked)
+    static let yaml = Self("yaml", .lightBacked)
+    static let toml = Self("toml", .lightBacked)
+    static let fish = Self("fish")
+    static let zsh = Self("zsh", .monochrome)
+    static let vim = Self("vim")
+    static let neovim = Self("neovim")
+    static let emacs = Self("emacs", .lightBacked)
+    static let tmux = Self("tmux", .lightBacked)
+    static let cmake = Self("cmake", .lightBacked)
+    static let ffmpeg = Self("ffmpeg")
+    static let openSSL = Self("openssl", .lightBacked)
+    static let hugo = Self("hugo")
+    static let make = Self("make", .lightBacked)
+    static let dotNet = Self("dotnet", .lightBacked)
+    static let nginx = Self("nginx")
+    static let apache = Self("apache", .lightBacked)
+    static let linux = Self("linux")
+    static let ubuntu = Self("ubuntu")
+    static let debian = Self("debian", .lightBacked)
+
+    // Applications.
+    static let adobe = Self("adobe")
+    static let photoshop = Self("photoshop", .lightBacked)
+    static let illustrator = Self("illustrator", .lightBacked)
+    static let premierePro = Self("premiere-pro", .lightBacked)
+    static let afterEffects = Self("after-effects", .lightBacked)
+    static let figma = Self("figma")
+    static let sketch = Self("sketch")
+    static let notion = Self("notion", .lightBacked)
+    static let slack = Self("slack")
+    static let discord = Self("discord")
+    static let telegram = Self("telegram")
+    static let whatsApp = Self("whatsapp")
+    static let signal = Self("signal", .lightBacked)
+    static let zoom = Self("zoom")
+    static let spotify = Self("spotify")
+    static let chrome = Self("chrome")
+    static let firefox = Self("firefox")
+    static let safari = Self("safari")
+    static let brave = Self("brave")
+    static let arc = Self("arc", .monochrome)
+    static let vivaldi = Self("vivaldi")
+    static let opera = Self("opera")
+    static let dropbox = Self("dropbox")
+    static let googleDrive = Self("google-drive")
+    static let iCloud = Self("icloud")
+    static let mega = Self("mega")
+    static let box = Self("box")
+    static let onePassword = Self("1password")
+    static let bitwarden = Self("bitwarden")
+    static let obsidian = Self("obsidian")
+    static let raycast = Self("raycast")
+    static let iTerm2 = Self("iterm2", .monochrome)
+    static let warp = Self("warp")
+    static let ghostty = Self("ghostty")
+    static let alacritty = Self("alacritty")
+    static let zed = Self("zed", .lightBacked)
+    static let atom = Self("atom", .monochrome)
+    static let unity = Self("unity", .monochrome)
+    static let unrealEngine = Self("unreal-engine", .monochrome)
+    static let blender = Self("blender")
+    static let godot = Self("godot")
+    static let steam = Self("steam", .monochrome)
+    static let epicGames = Self("epic-games", .monochrome)
+    static let vlc = Self("vlc")
+    static let plex = Self("plex")
+    static let jellyfin = Self("jellyfin")
+    static let obsStudio = Self("obs-studio", .monochrome)
+    static let daVinciResolve = Self("davinci-resolve", .lightBacked)
+    static let audacity = Self("audacity", .lightBacked)
+    static let gimp = Self("gimp", .lightBacked)
+    static let inkscape = Self("inkscape", .lightBacked)
+    static let krita = Self("krita")
+    static let vmware = Self("vmware", .lightBacked)
+    static let virtualBox = Self("virtualbox", .lightBacked)
+    static let nordVPN = Self("nordvpn")
+    static let wireGuard = Self("wireguard", .lightBacked)
+    static let openVPN = Self("openvpn")
+    static let gitKraken = Self("gitkraken")
+    static let dataGrip = Self("datagrip", .lightBacked)
+    static let pyCharm = Self("pycharm", .lightBacked)
+    static let webStorm = Self("webstorm", .lightBacked)
+    static let cLion = Self("clion", .lightBacked)
+    static let goLand = Self("goland", .lightBacked)
+    static let phpStorm = Self("phpstorm", .lightBacked)
+    static let rider = Self("rider", .lightBacked)
+    static let rubyMine = Self("rubymine", .lightBacked)
+    static let jetBrains = Self("jetbrains")
+    static let loom = Self("loom")
+    static let anki = Self("anki")
+    static let qBittorrent = Self("qbittorrent", .lightBacked)
+    static let wireshark = Self("wireshark", .lightBacked)
+    static let libreOffice = Self("libreoffice")
+    static let gitea = Self("gitea")
+    static let sourcetree = Self("sourcetree", .lightBacked)
+    static let mpv = Self("mpv", .lightBacked)
+    static let sonarr = Self("sonarr")
+    static let lens = Self("lens")
+    static let rStudio = Self("rstudio")
+
+    // More AI tools, services, and model publishers.
+    static let kiloCode = Self("kilo-code", .monochrome)
+    static let rooCode = Self("roo-code", .monochrome)
+    static let trae = Self("trae")
+    static let qoder = Self("qoder", .lightBacked)
+    static let codeBuddy = Self("codebuddy")
+    static let cline = Self("cline", .monochrome)
+    static let goose = Self("goose", .monochrome)
+    static let openRouter = Self("openrouter")
+    static let perplexity = Self("perplexity")
+    static let xAI = Self("xai", .monochrome)
+    static let cohere = Self("cohere", .lightBacked)
+    static let miniMax = Self("minimax")
+    static let stepFun = Self("stepfun")
+    static let baichuan = Self("baichuan")
+    static let hunyuan = Self("hunyuan", .lightBacked)
+    static let tencent = Self("tencent", .lightBacked)
+    static let ibm = Self("ibm", .monochrome)
+    static let groq = Self("groq", .monochrome)
+    static let replicate = Self("replicate", .monochrome)
+    static let together = Self("together")
+    static let dify = Self("dify", .lightBacked)
+    static let n8n = Self("n8n")
+    static let modelContextProtocol = Self("mcp", .monochrome)
+    static let notebookLM = Self("notebooklm", .monochrome)
+    static let manus = Self("manus", .monochrome)
+    static let devin = Self("devin")
+    static let replit = Self("replit")
+    static let lovable = Self("lovable")
+    static let v0 = Self("v0", .monochrome)
+
     static let all: [Self] = [
         .cursor, .claudeCode, .claude, .codex, .openAI, .antigravity, .openCode, .t3Code, .gemini,
         .kiro, .windsurf, .copilot, .vsCode, .sublimeText, .intelliJ, .xcode, .androidStudio,
@@ -114,203 +346,31 @@ struct BrandLogo: Hashable, Sendable {
         .nodeJS, .python, .java, .typeScript, .javaScript, .rust, .go, .swift, .kotlin, .ruby, .php,
         .c, .cPlusPlus, .cSharp, .dart, .scala, .lua, .perl, .elixir, .haskell, .html, .css, .sass, .bash,
         .docker, .git, .gradle, .maven, .npm, .yarn, .pnpm, .bun, .deno, .nvm, .anaconda, .poetry, .uv,
-        .homebrew, .nextJS, .turborepo, .flutter, .react, .vue, .jupyter, .cocoaPods
+        .homebrew, .nextJS, .turborepo, .flutter, .react, .vue, .jupyter, .cocoaPods,
+        .aws, .googleCloud, .azure, .google, .kubernetes, .helm, .terraform, .vault, .ansible,
+        .vercel, .netlify, .heroku, .cloudflare, .supabase, .firebase, .stripe, .sentry, .datadog,
+        .postman, .gitHub, .gitLab, .bitbucket, .ngrok, .tailscale, .convex, .wakaTime, .sonarQube,
+        .kaggle, .streamlit, .keras, .tensorFlow, .pyTorch, .numPy, .pandas, .sciPy, .matplotlib,
+        .scikitLearn, .django, .flask, .fastAPI, .langChain, .tailwind, .esLint, .prettier, .vite,
+        .webpack, .esbuild, .svelte, .angular, .nuxt, .electron, .playwright, .cypress, .selenium,
+        .puppeteer, .jest, .storybook, .biome, .shadcn, .prisma, .drizzle, .graphQL, .postgres,
+        .mySQL, .redis, .mongoDB, .sqlite, .elasticsearch, .kafka, .rabbitMQ, .clickHouse, .cassandra,
+        .mariaDB, .oracle, .objectiveC, .r, .julia, .zig, .nim, .clojure, .erlang,
+        .ocaml, .fSharp, .visualBasic, .powerShell, .webAssembly, .solidity, .groovy, .astro, .laTeX,
+        .markdown, .json, .yaml, .toml, .fish, .zsh, .vim, .neovim, .emacs,
+        .tmux, .cmake, .ffmpeg, .openSSL, .hugo, .make, .dotNet, .nginx, .apache,
+        .linux, .ubuntu, .debian, .adobe, .photoshop, .illustrator, .premierePro, .afterEffects, .figma,
+        .sketch, .notion, .slack, .discord, .telegram, .whatsApp, .signal, .zoom, .spotify,
+        .chrome, .firefox, .safari, .brave, .arc, .vivaldi, .opera, .dropbox, .googleDrive,
+        .iCloud, .mega, .box, .onePassword, .bitwarden, .obsidian, .raycast, .iTerm2, .warp,
+        .ghostty, .alacritty, .zed, .atom, .unity, .unrealEngine, .blender, .godot, .steam,
+        .epicGames, .vlc, .plex, .jellyfin, .obsStudio, .daVinciResolve, .audacity, .gimp, .inkscape,
+        .krita, .vmware, .virtualBox, .nordVPN, .wireGuard, .openVPN, .gitKraken, .dataGrip, .pyCharm,
+        .webStorm, .cLion, .goLand, .phpStorm, .rider, .rubyMine, .jetBrains, .loom, .anki,
+        .qBittorrent, .wireshark, .libreOffice, .gitea, .sourcetree, .mpv, .sonarr, .lens, .rStudio,
+        .kiloCode, .rooCode, .trae, .qoder, .codeBuddy, .cline, .goose, .openRouter, .perplexity,
+        .xAI, .cohere, .miniMax, .stepFun, .baichuan, .hunyuan, .tencent, .ibm, .groq,
+        .replicate, .together, .dify, .n8n, .modelContextProtocol, .notebookLM, .manus, .devin, .replit,
+        .lovable, .v0
     ]
-}
-
-enum BrandLogoCatalog {
-    /// Whole words in a developer-storage location name, checked in order so a
-    /// specific tool wins over its language: "Gradle JDKs" is Gradle, not Java.
-    private static let storageNameRules: [(terms: Set<String>, logo: BrandLogo)] = [
-        (["claude"], .claudeCode),
-        (["cursor"], .cursor),
-        (["codex"], .codex),
-        (["antigravity"], .antigravity),
-        (["gemini"], .gemini),
-        (["kiro"], .kiro),
-        (["windsurf"], .windsurf),
-        (["vs code"], .vsCode),
-        (["opencode"], .openCode),
-        (["t3 code"], .t3Code),
-        (["gradle"], .gradle),
-        (["maven"], .maven),
-        (["npm"], .npm),
-        (["yarn"], .yarn),
-        (["pnpm"], .pnpm),
-        (["bun"], .bun),
-        (["nvm"], .nvm),
-        (["next"], .nextJS),
-        (["turbo"], .turborepo),
-        (["deno"], .deno),
-        (["node"], .nodeJS),
-        (["poetry"], .poetry),
-        (["uv"], .uv),
-        (["conda", "miniconda3", "anaconda3", "miniforge3", "mambaforge"], .anaconda),
-        (["python", "pip", "pyenv", "tox", "nox", "venv", "pycache", "pytest", "mypy", "ruff"], .python),
-        (["java", "jdk", "jdks", "openjdk", "sdkman"], .java),
-        (["homebrew"], .homebrew)
-    ]
-
-    /// Fragments of a model name that identify its publisher, checked in order.
-    private static let modelNameRules: [(fragments: [String], logo: BrandLogo)] = [
-        (["qwen"], .qwen),
-        (["gemma"], .gemma),
-        (["gemini"], .gemini),
-        (["llama"], .meta),
-        (["mistral", "mixtral", "codestral", "devstral", "pixtral"], .mistral),
-        (["deepseek"], .deepSeek),
-        (["nemotron", "nvidia"], .nvidia),
-        (["kimi", "moonshot"], .moonshot),
-        (["glm"], .zhipu),
-        (["flux"], .flux),
-        (["stable-diffusion", "stable_diffusion", "stabilityai", "sdxl"], .stability),
-        (["gpt", "whisper", "openai"], .openAI),
-        (["microsoft"], .microsoft)
-    ]
-
-    /// Exact, case-sensitive folder names: tools own these conventional locations.
-    private static let directoryLogos: [String: BrandLogo] = [
-        ".claude": .claudeCode, ".cursor": .cursor, ".cursor-server": .cursor, ".codex": .codex,
-        ".antigravity": .antigravity, ".antigravity-ide": .antigravity, ".opencode": .openCode,
-        "opencode": .openCode, ".t3": .t3Code, ".gemini": .gemini, ".kiro": .kiro, ".kiro-server": .kiro,
-        ".windsurf": .windsurf, ".copilot": .copilot, ".vscode": .vsCode, ".vscode-insiders": .vsCode,
-        ".vscode-server": .vsCode, "DerivedData": .xcode, "Xcode": .xcode, "XCTestDevices": .xcode,
-        ".android": .androidStudio, ".ollama": .ollama, ".lmstudio": .lmStudio, "huggingface": .huggingFace,
-        ".huggingface": .huggingFace,
-        "node_modules": .nodeJS, ".npm": .npm, ".nvm": .nvm, ".yarn": .yarn, ".pnpm-store": .pnpm,
-        ".bun": .bun, ".deno": .deno, ".next": .nextJS, ".turbo": .turborepo,
-        ".venv": .python, "venv": .python, "__pycache__": .python, ".pytest_cache": .python,
-        ".mypy_cache": .python, ".ruff_cache": .python, ".tox": .python, ".nox": .python, ".pyenv": .python,
-        ".conda": .anaconda, "anaconda3": .anaconda, "miniconda3": .anaconda, "miniforge3": .anaconda,
-        "mambaforge": .anaconda, ".ipython": .jupyter, ".jupyter": .jupyter,
-        ".m2": .maven, ".gradle": .gradle, ".sdkman": .java,
-        ".cargo": .rust, ".rustup": .rust, ".rbenv": .ruby, ".gem": .ruby, ".swiftpm": .swift, ".kotlin": .kotlin,
-        ".docker": .docker, ".git": .git, "Homebrew": .homebrew, "homebrew": .homebrew,
-        ".cocoapods": .cocoaPods, "CocoaPods": .cocoaPods, ".pub-cache": .dart, ".dart_tool": .dart,
-        ".flutter": .flutter, ".idea": .intelliJ
-    ]
-
-    /// Application data folders in the Library, shown when the application is not
-    /// installed. Elsewhere these names are ordinary folders, such as a project.
-    private static let applicationFolderLogos: [String: BrandLogo] = [
-        "Claude": .claude, "ChatGPT": .openAI, "Cursor": .cursor, "Antigravity": .antigravity,
-        "T3 Code": .t3Code, "Windsurf": .windsurf, "Kiro": .kiro, "Code": .vsCode,
-        "Sublime Text": .sublimeText, "JetBrains": .intelliJ, "Ollama": .ollama,
-        "LM Studio": .lmStudio, "Docker": .docker
-    ]
-
-    private static let directoryExtensionLogos: [String: BrandLogo] = [
-        "xcodeproj": .xcode, "xcworkspace": .xcode, "xcarchive": .xcode, "playground": .swift
-    ]
-
-    private static let fileNameLogos: [String: BrandLogo] = [
-        "Dockerfile": .docker, "package.json": .nodeJS, "Cargo.toml": .rust, "go.mod": .go,
-        "pyproject.toml": .python, "Podfile": .cocoaPods, "Gemfile": .ruby, "pom.xml": .maven,
-        "build.gradle": .gradle, "build.gradle.kts": .gradle
-    ]
-
-    private static let fileExtensionLogos: [String: BrandLogo] = [
-        "py": .python, "pyi": .python, "ipynb": .jupyter, "js": .javaScript, "mjs": .javaScript,
-        "cjs": .javaScript, "jsx": .react, "ts": .typeScript, "mts": .typeScript, "tsx": .react,
-        "vue": .vue, "rs": .rust, "go": .go, "swift": .swift, "java": .java, "jar": .java, "class": .java,
-        "kt": .kotlin, "kts": .kotlin, "rb": .ruby, "php": .php, "c": .c, "h": .c, "cc": .cPlusPlus,
-        "cpp": .cPlusPlus, "cxx": .cPlusPlus, "hpp": .cPlusPlus, "cs": .cSharp, "dart": .dart,
-        "scala": .scala, "lua": .lua, "pl": .perl, "pm": .perl, "ex": .elixir, "exs": .elixir,
-        "hs": .haskell, "html": .html, "htm": .html, "css": .css, "scss": .sass, "sass": .sass,
-        "sh": .bash, "bash": .bash, "zsh": .bash, "gguf": .llamaCpp
-    ]
-
-    static func logo(forApplicationFolderNamed name: String) -> BrandLogo? {
-        applicationFolderLogos[name]
-    }
-
-    static func logo(forStorageLocationNamed name: String) -> BrandLogo? {
-        let words = name.lowercased()
-            .split { !$0.isLetter && !$0.isNumber }
-            .map(String.init)
-        let phrase = " \(words.joined(separator: " ")) "
-        return storageNameRules.first { rule in
-            rule.terms.contains { phrase.contains(" \($0) ") }
-        }?.logo
-    }
-
-    static func logo(forModelNamed name: String) -> BrandLogo? {
-        let lowercased = name.lowercased()
-        if let logo = modelNameRules.first(where: { rule in
-            rule.fragments.contains { lowercased.contains($0) }
-        })?.logo {
-            return logo
-        }
-        // Phi is too short to match as a fragment: "sapphire" is not a Microsoft model.
-        let isPhi = lowercased.split { !$0.isLetter && !$0.isNumber }.contains { word in
-            word == "phi" || (word.hasPrefix("phi") && word.dropFirst(3).allSatisfy(\.isNumber))
-        }
-        return isPhi ? .microsoft : nil
-    }
-
-    static func logo(forItemNamed name: String, isDirectory: Bool) -> BrandLogo? {
-        let pathExtension = (name as NSString).pathExtension.lowercased()
-        if isDirectory {
-            return directoryLogos[name] ?? directoryExtensionLogos[pathExtension]
-        }
-        return fileNameLogos[name] ?? fileExtensionLogos[pathExtension]
-    }
-}
-
-/// Where to read the real icon of an application from Launch Services.
-enum ApplicationIconSource: Hashable, Sendable {
-    case bundle(URL)
-    case bundleIdentifier(String)
-    case applicationNamed(String)
-}
-
-/// How a scanned file or folder is identified in storage lists.
-enum StorageItemIcon: Equatable, Sendable {
-    /// The application's real icon, or the logo when that application is not installed.
-    case application(ApplicationIconSource, fallback: BrandLogo?)
-    case brand(BrandLogo)
-    case generic
-
-    /// Library folders named after the application that owns their contents.
-    private static let applicationNamedParents: Set<String> = ["Application Support", "Caches", "Logs"]
-    private static let bundleIdentifiedParents: Set<String> = [
-        "Application Scripts", "Application Support", "Caches", "Containers", "HTTPStorages",
-        "Logs", "Preferences", "Saved Application State", "WebKit"
-    ]
-    private static let bundleIdentifierSuffixes = [".plist", ".savedState", ".binarycookies"]
-    /// Application Support names that differ from the application's name.
-    private static let applicationNameAliases = ["Code": "Visual Studio Code"]
-
-    static func resolve(url: URL, isDirectory: Bool) -> Self {
-        let name = url.lastPathComponent
-        let parent = url.deletingLastPathComponent().lastPathComponent
-        let brand = BrandLogoCatalog.logo(forItemNamed: name, isDirectory: isDirectory)
-
-        if isDirectory, name.lowercased().hasSuffix(".app") {
-            return .application(.bundle(url), fallback: brand)
-        }
-        if bundleIdentifiedParents.contains(parent), let identifier = bundleIdentifier(in: name) {
-            return .application(.bundleIdentifier(identifier), fallback: brand)
-        }
-        if isDirectory, applicationNamedParents.contains(parent), !name.hasPrefix(".") {
-            return .application(
-                .applicationNamed(applicationNameAliases[name] ?? name),
-                fallback: BrandLogoCatalog.logo(forApplicationFolderNamed: name) ?? brand
-            )
-        }
-        return brand.map(Self.brand) ?? .generic
-    }
-
-    private static func bundleIdentifier(in name: String) -> String? {
-        var identifier = name
-        for suffix in bundleIdentifierSuffixes where identifier.hasSuffix(suffix) {
-            identifier.removeLast(suffix.count)
-        }
-        let components = identifier.split(separator: ".", omittingEmptySubsequences: false)
-        guard components.count >= 3, components.allSatisfy({ !$0.isEmpty }) else { return nil }
-        let isReverseDNS = identifier.allSatisfy {
-            $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_")
-        }
-        return isReverseDNS ? identifier : nil
-    }
 }

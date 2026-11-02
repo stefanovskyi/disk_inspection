@@ -45,6 +45,18 @@ enum AICodingInstallMethod: String, Equatable, Hashable, Sendable {
         case .directDownload: "Direct download"
         }
     }
+
+    var logo: BrandLogo? {
+        switch self {
+        case .appStore: .apple
+        case .homebrewFormula, .homebrewCask: .homebrew
+        case .npm: .npm
+        case .pnpm: .pnpm
+        case .yarn: .yarn
+        case .bun: .bun
+        case .mise, .nativeInstaller, .directDownload: nil
+        }
+    }
 }
 
 enum AICodingInstallationConfidence: Int, Equatable, Comparable, Sendable {

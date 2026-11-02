@@ -26,6 +26,10 @@ struct NavigationHeader: View {
                             HStack(spacing: 6) {
                                 if index == 0 {
                                     Image(systemName: "internaldrive")
+                                } else {
+                                    StorageItemIconView(url: breadcrumb.url, isDirectory: true, size: 16) {
+                                        Image(systemName: "folder")
+                                    }
                                 }
                                 Text(breadcrumb.name)
                                     .lineLimit(1)

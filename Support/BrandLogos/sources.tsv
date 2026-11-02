@@ -77,3 +77,221 @@ cocoapods	npm:simple-icons@16.36.0:icons/cocoapods.svg	#EE3322
 deno	npm:simple-icons@16.36.0:icons/deno.svg	
 sublime-text	npm:simple-icons@16.36.0:icons/sublimetext.svg	#FF9800
 intellij	npm:simple-icons@16.36.0:icons/intellijidea.svg	
+aws	npm:@lobehub/icons-static-svg@1.102.0:icons/aws-color.svg	
+google-cloud	npm:@lobehub/icons-static-svg@1.102.0:icons/googlecloud-color.svg	
+azure	npm:@lobehub/icons-static-svg@1.102.0:icons/azure-color.svg	
+google	npm:@lobehub/icons-static-svg@1.102.0:icons/google-color.svg	
+kubernetes	npm:devicon@2.18.0:icons/kubernetes/kubernetes-original.svg	
+helm	npm:devicon@2.18.0:icons/helm/helm-original.svg	
+terraform	npm:devicon@2.18.0:icons/terraform/terraform-original.svg	
+vault	npm:devicon@2.18.0:icons/vault/vault-original.svg	
+ansible	npm:devicon@2.18.0:icons/ansible/ansible-original.svg	
+vercel	npm:devicon@2.18.0:icons/vercel/vercel-original.svg	
+netlify	npm:devicon@2.18.0:icons/netlify/netlify-original.svg	
+heroku	npm:devicon@2.18.0:icons/heroku/heroku-original.svg	
+cloudflare	npm:@lobehub/icons-static-svg@1.102.0:icons/cloudflare-color.svg	
+supabase	npm:devicon@2.18.0:icons/supabase/supabase-original.svg	
+firebase	npm:devicon@2.18.0:icons/firebase/firebase-original.svg	
+stripe	npm:simple-icons@16.36.0:icons/stripe.svg	#635BFF
+sentry	npm:devicon@2.18.0:icons/sentry/sentry-original.svg	
+datadog	npm:devicon@2.18.0:icons/datadog/datadog-original.svg	
+postman	npm:devicon@2.18.0:icons/postman/postman-original.svg	
+github	npm:devicon@2.18.0:icons/github/github-original.svg	
+gitlab	npm:devicon@2.18.0:icons/gitlab/gitlab-original.svg	
+bitbucket	npm:devicon@2.18.0:icons/bitbucket/bitbucket-original.svg	
+ngrok	npm:devicon@2.18.0:icons/ngrok/ngrok-original.svg	
+tailscale	npm:simple-icons@16.36.0:icons/tailscale.svg	#242424
+convex	npm:simple-icons@16.36.0:icons/convex.svg	#EE342F
+wakatime	npm:simple-icons@16.36.0:icons/wakatime.svg	#000000
+sonarqube	npm:devicon@2.18.0:icons/sonarqube/sonarqube-original.svg	
+kaggle	npm:devicon@2.18.0:icons/kaggle/kaggle-original.svg	
+streamlit	npm:devicon@2.18.0:icons/streamlit/streamlit-original.svg	
+keras	npm:devicon@2.18.0:icons/keras/keras-original.svg	
+tensorflow	npm:devicon@2.18.0:icons/tensorflow/tensorflow-original.svg	
+pytorch	npm:devicon@2.18.0:icons/pytorch/pytorch-original.svg	
+numpy	npm:devicon@2.18.0:icons/numpy/numpy-original.svg	
+pandas	npm:devicon@2.18.0:icons/pandas/pandas-original.svg	
+scipy	npm:simple-icons@16.36.0:icons/scipy.svg	#8CAAE6
+matplotlib	npm:devicon@2.18.0:icons/matplotlib/matplotlib-original.svg	
+scikit-learn	npm:devicon@2.18.0:icons/scikitlearn/scikitlearn-original.svg	
+django	npm:devicon@2.18.0:icons/django/django-plain.svg	
+flask	npm:devicon@2.18.0:icons/flask/flask-original.svg	
+fastapi	npm:devicon@2.18.0:icons/fastapi/fastapi-original.svg	
+langchain	npm:@lobehub/icons-static-svg@1.102.0:icons/langchain-color.svg	
+tailwindcss	npm:devicon@2.18.0:icons/tailwindcss/tailwindcss-original.svg	
+eslint	npm:devicon@2.18.0:icons/eslint/eslint-original.svg	
+prettier	npm:simple-icons@16.36.0:icons/prettier.svg	#F7B93E
+vite	npm:devicon@2.18.0:icons/vite/vite-original.svg	
+webpack	npm:devicon@2.18.0:icons/webpack/webpack-original.svg	
+esbuild	npm:simple-icons@16.36.0:icons/esbuild.svg	#FFCF00
+svelte	npm:devicon@2.18.0:icons/svelte/svelte-original.svg	
+angular	npm:devicon@2.18.0:icons/angular/angular-original.svg	
+nuxt	npm:devicon@2.18.0:icons/nuxt/nuxt-original.svg	
+electron	npm:devicon@2.18.0:icons/electron/electron-original.svg	
+playwright	npm:devicon@2.18.0:icons/playwright/playwright-original.svg	
+cypress	npm:simple-icons@16.36.0:icons/cypress.svg	#69D3A7
+selenium	npm:devicon@2.18.0:icons/selenium/selenium-original.svg	
+puppeteer	npm:devicon@2.18.0:icons/puppeteer/puppeteer-original.svg	
+jest	npm:devicon@2.18.0:icons/jest/jest-plain.svg	
+storybook	npm:devicon@2.18.0:icons/storybook/storybook-original.svg	
+biome	npm:devicon@2.18.0:icons/biome/biome-original.svg	
+shadcn	npm:devicon@2.18.0:icons/shadcn/shadcn-original.svg	
+prisma	npm:devicon@2.18.0:icons/prisma/prisma-original.svg	
+drizzle	npm:simple-icons@16.36.0:icons/drizzle.svg	#C5F74F
+graphql	npm:devicon@2.18.0:icons/graphql/graphql-plain.svg	
+postgresql	npm:devicon@2.18.0:icons/postgresql/postgresql-original.svg	
+mysql	npm:devicon@2.18.0:icons/mysql/mysql-original.svg	
+redis	npm:devicon@2.18.0:icons/redis/redis-original.svg	
+mongodb	npm:devicon@2.18.0:icons/mongodb/mongodb-original.svg	
+sqlite	npm:devicon@2.18.0:icons/sqlite/sqlite-original.svg	
+elasticsearch	npm:devicon@2.18.0:icons/elasticsearch/elasticsearch-original.svg	
+kafka	npm:devicon@2.18.0:icons/apachekafka/apachekafka-original.svg	
+rabbitmq	npm:devicon@2.18.0:icons/rabbitmq/rabbitmq-original.svg	
+clickhouse	npm:devicon@2.18.0:icons/clickhouse/clickhouse-original.svg	
+cassandra	npm:devicon@2.18.0:icons/cassandra/cassandra-original.svg	
+mariadb	npm:devicon@2.18.0:icons/mariadb/mariadb-original.svg	
+oracle	npm:devicon@2.18.0:icons/oracle/oracle-original.svg	
+objective-c	npm:devicon@2.18.0:icons/objectivec/objectivec-plain.svg	
+r	npm:devicon@2.18.0:icons/r/r-original.svg	
+julia	npm:devicon@2.18.0:icons/julia/julia-original.svg	
+zig	npm:devicon@2.18.0:icons/zig/zig-original.svg	
+nim	npm:devicon@2.18.0:icons/nim/nim-original.svg	
+clojure	npm:devicon@2.18.0:icons/clojure/clojure-original.svg	
+erlang	npm:devicon@2.18.0:icons/erlang/erlang-original.svg	
+ocaml	npm:devicon@2.18.0:icons/ocaml/ocaml-original.svg	
+fsharp	npm:devicon@2.18.0:icons/fsharp/fsharp-original.svg	
+visual-basic	npm:devicon@2.18.0:icons/visualbasic/visualbasic-original.svg	
+powershell	npm:devicon@2.18.0:icons/powershell/powershell-original.svg	
+wasm	npm:devicon@2.18.0:icons/wasm/wasm-original.svg	
+solidity	npm:devicon@2.18.0:icons/solidity/solidity-original.svg	
+groovy	npm:devicon@2.18.0:icons/groovy/groovy-original.svg	
+astro	npm:devicon@2.18.0:icons/astro/astro-original.svg	
+latex	npm:devicon@2.18.0:icons/latex/latex-original.svg	
+markdown	npm:devicon@2.18.0:icons/markdown/markdown-original.svg	
+json	npm:devicon@2.18.0:icons/json/json-original.svg	
+yaml	npm:devicon@2.18.0:icons/yaml/yaml-original.svg	
+toml	npm:devicon@2.18.0:icons/toml/toml-original.svg	
+fish	npm:devicon@2.18.0:icons/fish/fish-original.svg	
+zsh	npm:devicon@2.18.0:icons/zsh/zsh-original.svg	
+vim	npm:devicon@2.18.0:icons/vim/vim-original.svg	
+neovim	npm:devicon@2.18.0:icons/neovim/neovim-original.svg	
+emacs	npm:devicon@2.18.0:icons/emacs/emacs-original.svg	
+tmux	npm:devicon@2.18.0:icons/tmux/tmux-original.svg	
+cmake	npm:devicon@2.18.0:icons/cmake/cmake-original.svg	
+ffmpeg	npm:simple-icons@16.36.0:icons/ffmpeg.svg	#007808
+openssl	npm:simple-icons@16.36.0:icons/openssl.svg	#721412
+hugo	npm:devicon@2.18.0:icons/hugo/hugo-original.svg	
+make	npm:simple-icons@16.36.0:icons/make.svg	#6D00CC
+dotnet	npm:simple-icons@16.36.0:icons/dotnet.svg	#512BD4
+nginx	npm:devicon@2.18.0:icons/nginx/nginx-original.svg	
+apache	npm:devicon@2.18.0:icons/apache/apache-original.svg	
+linux	npm:devicon@2.18.0:icons/linux/linux-original.svg	
+ubuntu	npm:devicon@2.18.0:icons/ubuntu/ubuntu-original.svg	
+debian	npm:devicon@2.18.0:icons/debian/debian-original.svg	
+adobe	npm:@lobehub/icons-static-svg@1.102.0:icons/adobe-color.svg	
+photoshop	npm:devicon@2.18.0:icons/photoshop/photoshop-original.svg	
+illustrator	npm:devicon@2.18.0:icons/illustrator/illustrator-original.svg	
+premiere-pro	npm:devicon@2.18.0:icons/premierepro/premierepro-original.svg	
+after-effects	npm:devicon@2.18.0:icons/aftereffects/aftereffects-original.svg	
+figma	npm:devicon@2.18.0:icons/figma/figma-original.svg	
+sketch	npm:devicon@2.18.0:icons/sketch/sketch-original.svg	
+notion	npm:devicon@2.18.0:icons/notion/notion-original.svg	
+slack	npm:devicon@2.18.0:icons/slack/slack-original.svg	
+discord	npm:simple-icons@16.36.0:icons/discord.svg	#5865F2
+telegram	npm:simple-icons@16.36.0:icons/telegram.svg	#26A5E4
+whatsapp	npm:simple-icons@16.36.0:icons/whatsapp.svg	#25D366
+signal	npm:simple-icons@16.36.0:icons/signal.svg	#3B45FD
+zoom	npm:simple-icons@16.36.0:icons/zoom.svg	#0B5CFF
+spotify	npm:simple-icons@16.36.0:icons/spotify.svg	#1ED760
+chrome	npm:simple-icons@16.36.0:icons/googlechrome.svg	#4285F4
+firefox	npm:devicon@2.18.0:icons/firefox/firefox-original.svg	
+safari	npm:devicon@2.18.0:icons/safari/safari-original.svg	
+brave	npm:@lobehub/icons-static-svg@1.102.0:icons/brave-color.svg	
+arc	npm:simple-icons@16.36.0:icons/arc.svg	#FCBFBD
+vivaldi	npm:simple-icons@16.36.0:icons/vivaldi.svg	#EF3939
+opera	npm:devicon@2.18.0:icons/opera/opera-original.svg	
+dropbox	npm:simple-icons@16.36.0:icons/dropbox.svg	#0061FF
+google-drive	npm:simple-icons@16.36.0:icons/googledrive.svg	#4285F4
+icloud	npm:simple-icons@16.36.0:icons/icloud.svg	#3693F3
+mega	npm:simple-icons@16.36.0:icons/mega.svg	#D9272E
+box	npm:simple-icons@16.36.0:icons/box.svg	#0061D5
+1password	npm:simple-icons@16.36.0:icons/1password.svg	#145FE4
+bitwarden	npm:simple-icons@16.36.0:icons/bitwarden.svg	#175DDC
+obsidian	npm:@lobehub/icons-static-svg@1.102.0:icons/obsidian-color.svg	
+raycast	npm:simple-icons@16.36.0:icons/raycast.svg	#FF6363
+iterm2	npm:simple-icons@16.36.0:icons/iterm2.svg	#000000
+warp	npm:simple-icons@16.36.0:icons/warp.svg	#01A4FF
+ghostty	npm:simple-icons@16.36.0:icons/ghostty.svg	#3551F3
+alacritty	npm:simple-icons@16.36.0:icons/alacritty.svg	#F46D01
+zed	npm:devicon@2.18.0:icons/zed/zed-original.svg	
+atom	npm:devicon@2.18.0:icons/atom/atom-original.svg	
+unity	npm:devicon@2.18.0:icons/unity/unity-original.svg	
+unreal-engine	npm:devicon@2.18.0:icons/unrealengine/unrealengine-original.svg	
+blender	npm:devicon@2.18.0:icons/blender/blender-original.svg	
+godot	npm:devicon@2.18.0:icons/godot/godot-original.svg	
+steam	npm:simple-icons@16.36.0:icons/steam.svg	#000000
+epic-games	npm:simple-icons@16.36.0:icons/epicgames.svg	#313131
+vlc	npm:simple-icons@16.36.0:icons/vlcmediaplayer.svg	#FF8800
+plex	npm:simple-icons@16.36.0:icons/plex.svg	#EBAF00
+jellyfin	npm:simple-icons@16.36.0:icons/jellyfin.svg	#00A4DC
+obs-studio	npm:simple-icons@16.36.0:icons/obsstudio.svg	#302E31
+davinci-resolve	npm:simple-icons@16.36.0:icons/davinciresolve.svg	#233A51
+audacity	npm:simple-icons@16.36.0:icons/audacity.svg	#0000CC
+gimp	npm:devicon@2.18.0:icons/gimp/gimp-original.svg	
+inkscape	npm:devicon@2.18.0:icons/inkscape/inkscape-original.svg	
+krita	npm:simple-icons@16.36.0:icons/krita.svg	#3BABFF
+vmware	npm:simple-icons@16.36.0:icons/vmware.svg	#607078
+virtualbox	npm:simple-icons@16.36.0:icons/virtualbox.svg	#2F61B4
+nordvpn	npm:simple-icons@16.36.0:icons/nordvpn.svg	#4687FF
+wireguard	npm:devicon@2.18.0:icons/wireguard/wireguard-original.svg	
+openvpn	npm:simple-icons@16.36.0:icons/openvpn.svg	#EA7E20
+gitkraken	npm:devicon@2.18.0:icons/gitkraken/gitkraken-original.svg	
+datagrip	npm:devicon@2.18.0:icons/datagrip/datagrip-original.svg	
+pycharm	npm:devicon@2.18.0:icons/pycharm/pycharm-original.svg	
+webstorm	npm:devicon@2.18.0:icons/webstorm/webstorm-original.svg	
+clion	npm:devicon@2.18.0:icons/clion/clion-original.svg	
+goland	npm:devicon@2.18.0:icons/goland/goland-original.svg	
+phpstorm	npm:devicon@2.18.0:icons/phpstorm/phpstorm-original.svg	
+rider	npm:devicon@2.18.0:icons/rider/rider-original.svg	
+rubymine	npm:devicon@2.18.0:icons/rubymine/rubymine-original.svg	
+jetbrains	npm:devicon@2.18.0:icons/jetbrains/jetbrains-original.svg	
+loom	npm:simple-icons@16.36.0:icons/loom.svg	#625DF5
+anki	npm:simple-icons@16.36.0:icons/anki.svg	#80C2EE
+qbittorrent	npm:simple-icons@16.36.0:icons/qbittorrent.svg	#2F67BA
+wireshark	npm:simple-icons@16.36.0:icons/wireshark.svg	#1679A7
+libreoffice	npm:simple-icons@16.36.0:icons/libreoffice.svg	#18A303
+gitea	npm:devicon@2.18.0:icons/gitea/gitea-original.svg	
+sourcetree	npm:devicon@2.18.0:icons/sourcetree/sourcetree-original.svg	
+mpv	npm:simple-icons@16.36.0:icons/mpv.svg	#691F69
+sonarr	npm:simple-icons@16.36.0:icons/sonarr.svg	#2596BE
+lens	npm:simple-icons@16.36.0:icons/lens.svg	#3D90CE
+rstudio	npm:devicon@2.18.0:icons/rstudio/rstudio-original.svg	
+kilo-code	npm:@lobehub/icons-static-svg@1.102.0:icons/kilocode.svg	
+roo-code	npm:@lobehub/icons-static-svg@1.102.0:icons/roocode.svg	
+trae	npm:@lobehub/icons-static-svg@1.102.0:icons/trae-color.svg	
+qoder	npm:@lobehub/icons-static-svg@1.102.0:icons/qoder-color.svg	
+codebuddy	npm:@lobehub/icons-static-svg@1.102.0:icons/codebuddy-color.svg	
+cline	npm:@lobehub/icons-static-svg@1.102.0:icons/cline.svg	
+goose	npm:@lobehub/icons-static-svg@1.102.0:icons/goose.svg	
+openrouter	npm:@lobehub/icons-static-svg@1.102.0:icons/openrouter-color.svg	
+perplexity	npm:@lobehub/icons-static-svg@1.102.0:icons/perplexity-color.svg	
+xai	npm:@lobehub/icons-static-svg@1.102.0:icons/xai.svg	
+cohere	npm:@lobehub/icons-static-svg@1.102.0:icons/cohere-color.svg	
+minimax	npm:@lobehub/icons-static-svg@1.102.0:icons/minimax-color.svg	
+stepfun	npm:@lobehub/icons-static-svg@1.102.0:icons/stepfun-color.svg	
+baichuan	npm:@lobehub/icons-static-svg@1.102.0:icons/baichuan-color.svg	
+hunyuan	npm:@lobehub/icons-static-svg@1.102.0:icons/hunyuan-color.svg	
+tencent	npm:@lobehub/icons-static-svg@1.102.0:icons/tencent-color.svg	
+ibm	npm:@lobehub/icons-static-svg@1.102.0:icons/ibm.svg	
+groq	npm:@lobehub/icons-static-svg@1.102.0:icons/groq.svg	
+replicate	npm:@lobehub/icons-static-svg@1.102.0:icons/replicate.svg	
+together	npm:@lobehub/icons-static-svg@1.102.0:icons/together-color.svg	
+dify	npm:@lobehub/icons-static-svg@1.102.0:icons/dify-color.svg	
+n8n	npm:@lobehub/icons-static-svg@1.102.0:icons/n8n-color.svg	
+mcp	npm:@lobehub/icons-static-svg@1.102.0:icons/mcp.svg	
+notebooklm	npm:@lobehub/icons-static-svg@1.102.0:icons/notebooklm.svg	
+manus	npm:@lobehub/icons-static-svg@1.102.0:icons/manus.svg	
+devin	npm:@lobehub/icons-static-svg@1.102.0:icons/devin-color.svg	
+replit	npm:@lobehub/icons-static-svg@1.102.0:icons/replit-color.svg	
+lovable	npm:@lobehub/icons-static-svg@1.102.0:icons/lovable-color.svg	
+v0	npm:@lobehub/icons-static-svg@1.102.0:icons/v0.svg	

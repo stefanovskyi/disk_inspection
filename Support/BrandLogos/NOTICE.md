@@ -6,8 +6,8 @@ SpaceLens shows these logos only to identify the products, languages, and tools 
 
 | Source | Used for | Licence of the collection |
 | --- | --- | --- |
-| [LobeHub Icons](https://github.com/lobehub/lobe-icons) `@lobehub/icons-static-svg` 1.102.0 | AI tools, runtimes, and model publishers | MIT |
-| [Devicon](https://github.com/devicons/devicon) 2.18.0 | Languages and developer tools | MIT |
-| [Simple Icons](https://github.com/simple-icons/simple-icons) 16.36.0 | uv, nvm, Turborepo, CocoaPods, Deno, Sublime Text, IntelliJ IDEA | CC0-1.0 |
+| [LobeHub Icons](https://github.com/lobehub/lobe-icons) `@lobehub/icons-static-svg` 1.102.0 | AI tools, runtimes, model publishers, and some services | MIT |
+| [Devicon](https://github.com/devicons/devicon) 2.18.0 | Languages, frameworks, databases, developer tools, and some applications | MIT |
+| [Simple Icons](https://github.com/simple-icons/simple-icons) 16.36.0 | Services and applications that the other collections do not cover | CC0-1.0 |
 | [T3 Code](https://github.com/pingdotgg/t3code) | T3 Code | MIT |
 | [llama.cpp](https://github.com/ggml-org/llama.cpp) | llama.cpp | MIT |

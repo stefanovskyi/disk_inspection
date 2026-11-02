@@ -206,7 +206,7 @@ struct AIModelRuntimeDetail: View {
             tint: theme.accent
         )
         if installation.kind == .application {
-            ApplicationIconImage(source: .bundle(installation.url), size: 30) { runtimeIcon }
+            SystemIconImage(source: .file(installation.url), size: 30) { runtimeIcon }
         } else {
             runtimeIcon
         }
@@ -311,10 +311,19 @@ struct AIModelRuntimeDetail: View {
             LazyVStack(spacing: 8) {
                 ForEach(runtime.locations) { location in
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: location.status.isIssue ? "exclamationmark.triangle.fill" : "folder.fill")
-                            .foregroundStyle(location.status.isIssue ? theme.warning : theme.accent)
-                            .frame(width: 24)
-                            .accessibilityHidden(true)
+                        if location.status.isIssue {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(theme.warning)
+                                .frame(width: 24)
+                                .accessibilityHidden(true)
+                        } else {
+                            BrandOrSymbolIcon(
+                                logo: runtime.logo,
+                                systemImage: "folder.fill",
+                                size: 24,
+                                tint: theme.accent
+                            )
+                        }
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 6) {
                                 Text(location.name)

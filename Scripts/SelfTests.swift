@@ -73,36 +73,83 @@ private func brandLogosIdentifyProductsAndStorageItems() throws {
     func icon(_ path: String, directory: Bool = true) -> StorageItemIcon {
         StorageItemIcon.resolve(url: URL(fileURLWithPath: path), isDirectory: directory)
     }
+    let support = "/Users/me/Library/Application Support"
     let cursor = URL(fileURLWithPath: "/Applications/Cursor.app")
-    try expect(icon(cursor.path), .application(.bundle(cursor), fallback: nil), "App bundle")
+    try expect(icon(cursor.path), .system(.file(cursor), fallback: .cursor), "App bundle")
     try expect(icon("/Users/me/.claude"), .brand(.claudeCode), "Claude home")
+    try expect(icon("/Users/me/.aws"), .brand(.aws), "Dot folder")
+    try expect(icon("/Users/me/.cache/uv"), .brand(.uv), "Tool cache folder")
+    try expect(icon("/Users/me/.config/gcloud"), .brand(.googleCloud), "Tool config folder")
     try expect(icon("/work/app/node_modules"), .brand(.nodeJS), "node_modules")
+    try expect(icon("/work/app/node_modules/react"), .brand(.react), "npm package")
+    try expect(icon("/work/app/node_modules/@supabase/auth-js"), .brand(.supabase), "Scoped npm package")
+    try expect(icon("/work/venv/lib/site-packages/torch"), .brand(.pyTorch), "Python package")
+    try expect(icon("/opt/homebrew/Cellar/python@3.14"), .brand(.python), "Versioned formula")
+    try expect(icon("/opt/homebrew/Cellar/kubernetes-cli"), .brand(.kubernetes), "Homebrew formula")
     try expect(icon("/work/main.py", directory: false), .brand(.python), "Python file")
-    try expect(icon("/work/Package.swift", directory: false), .brand(.swift), "Swift file")
-    try expect(icon("/work/notes.txt", directory: false), .generic, "Plain file")
+    try expect(icon("/work/Package.swift", directory: false), .brand(.swift), "Swift manifest")
+    try expect(icon("/work/schema.sql.tf", directory: false), .brand(.terraform), "Terraform file")
+    try expect(icon("/Users/me/.zshrc", directory: false), .brand(.zsh), "Shell config")
+    try expect(icon("/work/notes.pdf", directory: false), .system(.fileType("pdf"), fallback: nil), "Document type")
+    try expect(icon("/work/Lib.framework"), .system(.fileType("framework"), fallback: nil), "Package folder")
+    try expect(icon("/work/release.v2"), .generic, "Dotted folder is not a package")
     try expect(icon("/work/go", directory: false), .generic, "Extensionless file")
     try expect(icon("/work/Cursor"), .generic, "Same-named project folder")
-    try expect(
-        icon("/Users/me/Library/Application Support/Cursor"),
-        .application(.applicationNamed("Cursor"), fallback: .cursor),
-        "Application Support folder"
-    )
-    try expect(
-        icon("/Users/me/Library/Application Support/Code"),
-        .application(.applicationNamed("Visual Studio Code"), fallback: .vsCode),
-        "Application Support alias"
-    )
+    try expect(icon("/work/react"), .generic, "Same-named project outside packages")
+    try expect(icon("/work/node_modules/signal"), .generic, "npm package named like an application")
+    try expect(icon("/work/node_modules/box"), .generic, "npm package named like a service")
+    try expect(icon("/work/node_modules/@supabase"), .brand(.supabase), "npm scope")
+    try expect(icon("/work/share/react"), .generic, "Ordinary share folder")
+    try expect(icon("/Users/me/.local/share/uv"), .brand(.uv), "XDG data folder")
+    try expect(icon("/work/go"), .generic, "Go folder outside home")
+    try expect(icon("/Users/me/go"), .brand(.go), "Go workspace in home")
+    try expect(icon("/Users/me/Documents"), .system(.file(URL(fileURLWithPath: "/Users/me/Documents")), fallback: nil), "Home system folder")
+    try expect(icon("/work/Documents"), .generic, "Same-named ordinary folder")
+    try expect(icon("/Users/me/Library/Mail"), .system(.applicationNamed("Mail"), fallback: nil), "Library app folder")
+    try expect(icon("\(support)/Cursor"), .system(.applicationNamed("Cursor"), fallback: .cursor), "Application Support folder")
+    try expect(icon("\(support)/Claude"), .system(.applicationNamed("Claude"), fallback: .claude), "Claude desktop data")
+    try expect(icon("\(support)/Code"), .system(.applicationNamed("Visual Studio Code"), fallback: .vsCode), "Application alias")
+    try expect(icon("\(support)/Docker Desktop"), .system(.applicationNamed("Docker"), fallback: .docker), "Docker alias")
+    try expect(icon("/Applications/DaVinci Resolve"), .system(.applicationNamed("DaVinci Resolve/DaVinci Resolve"), fallback: .daVinciResolve), "Application folder")
+    try expect(icon("/Applications/Python 3.12"), .system(.applicationNamed("Python 3.12/Python 3.12"), fallback: .python), "Versioned application folder")
     try expect(
         icon("/Users/me/Library/Containers/com.tinyspeck.slackmacgap"),
-        .application(.bundleIdentifier("com.tinyspeck.slackmacgap"), fallback: nil),
+        .system(.bundleIdentifier("com.tinyspeck.slackmacgap"), fallback: .slack),
         "Container folder"
     )
     try expect(
-        icon("/Users/me/Library/Preferences/com.apple.Safari.plist", directory: false),
-        .application(.bundleIdentifier("com.apple.Safari"), fallback: nil),
+        icon("/Users/me/Library/Caches/com.hnc.Discord.ShipIt"),
+        .system(.bundleIdentifier("com.hnc.Discord.ShipIt"), fallback: .discord),
+        "Updater cache"
+    )
+    try expect(
+        icon("/Users/me/Library/Group Containers/UBF8T346G9.com.microsoft.teams"),
+        .system(.bundleIdentifier("com.microsoft.teams"), fallback: .microsoft),
+        "Team-prefixed group container"
+    )
+    try expect(
+        icon("/Users/me/Library/Group Containers/group.W5364U7YZB.io.tailscale.shared"),
+        .system(.bundleIdentifier("io.tailscale.shared"), fallback: .tailscale),
+        "App group container"
+    )
+    try expect(icon("/Users/me/Library/Group Containers/UBF8T346G9.Office"), .brand(.microsoft), "Team-only group container")
+    try expect(
+        icon("/Users/me/Library/Preferences/com.adobe.Photoshop.plist", directory: false),
+        .system(.bundleIdentifier("com.adobe.Photoshop"), fallback: .adobe),
         "Preferences file"
     )
     try expect(icon("/work/com.example.notes"), .generic, "Dotted folder outside Library")
+    try expect(icon("/Users/me/Library/Logs/warp.log", directory: false), .system(.fileType("log"), fallback: nil), "Log file is not a bundle")
+
+    try expect(
+        SystemIconSource.bundleIdentifierCandidates(for: "com.hnc.Discord.ShipIt"),
+        ["com.hnc.Discord.ShipIt", "com.hnc.Discord", "com.hnc"],
+        "Bundle identifier candidates"
+    )
+    for (name, logo) in [("Sublime Text 3", BrandLogo.sublimeText), ("python@3.14", .python), (".AWS", .aws), ("Adobe Camera Raw 15.0 Prefs", .adobe)] {
+        try expect(BrandLogoCatalog.logo(forProductNamed: name), logo, "Product \(name)")
+    }
+    try expect(BrandLogoCatalog.logo(forProductNamed: "libpng"), nil, "Unbranded library")
 }
 
 @main

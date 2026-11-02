@@ -136,7 +136,7 @@ private struct AICodingInstallationCard: View {
         )
         switch installation.surface {
         case .nativeApplication:
-            ApplicationIconImage(source: .bundle(installation.rootURL), size: 28) { toolIcon }
+            SystemIconImage(source: .file(installation.rootURL), size: 28) { toolIcon }
         case .commandLine:
             toolIcon
         }
@@ -147,7 +147,16 @@ private struct AICodingInstallationCard: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 12) {
                 if let method = installation.installMethod {
-                    Label(method.value.displayName, systemImage: "shippingbox")
+                    Label {
+                        Text(method.value.displayName)
+                    } icon: {
+                        BrandOrSymbolIcon(
+                            logo: method.value.logo,
+                            systemImage: "shippingbox",
+                            size: 14,
+                            tint: theme.tertiaryText
+                        )
+                    }
                 } else {
                     Label("Install method unknown", systemImage: "shippingbox")
                 }
