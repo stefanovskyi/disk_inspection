@@ -120,7 +120,12 @@ struct AIModelsAndRuntimesView: View {
 
                 HStack(spacing: 9) {
                     ForEach(AIModelsCatalog.supportedRuntimes) { runtime in
-                        Label(runtime.displayName, systemImage: runtime.systemImage)
+                        BrandChipLabel(
+                            title: runtime.displayName,
+                            logo: runtime.logo,
+                            systemImage: runtime.systemImage,
+                            tint: theme.accent
+                        )
                             .font(.caption.weight(.medium))
                             .foregroundStyle(theme.primaryText)
                             .padding(.horizontal, 10)
@@ -341,10 +346,7 @@ private struct AIModelRuntimeRow: View {
         let fraction = totalSize > 0 ? Double(runtime.size) / Double(totalSize) : 0
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 9) {
-                Image(systemName: runtime.systemImage)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(theme.accent)
-                    .frame(width: 24)
+                BrandOrSymbolIcon(logo: runtime.logo, systemImage: runtime.systemImage, size: 24, tint: theme.accent)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(runtime.displayName)
                         .font(.callout.weight(.semibold))

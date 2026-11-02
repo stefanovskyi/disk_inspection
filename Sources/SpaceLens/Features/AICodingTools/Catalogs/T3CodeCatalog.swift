@@ -4,7 +4,8 @@ enum T3CodeCatalog {
     static let metadata = AICodingToolMetadata(
         id: .t3Code,
         displayName: "T3 Code",
-        systemImage: "rectangle.3.group.bubble"
+        systemImage: "rectangle.3.group.bubble",
+        logo: .t3Code
     )
 
     private static let stateRules: [AICodingPathRule] = [

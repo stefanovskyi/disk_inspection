@@ -258,14 +258,24 @@ struct AICodingFilesystemNodeRow: View {
         }
     }
 
+    @ViewBuilder
+    private func nodeIcon(theme: SpaceTheme) -> some View {
+        let symbol = Image(systemName: nodeImage)
+            .foregroundStyle(node.isReadable ? theme.accent : theme.warning)
+            .frame(width: 20)
+            .accessibilityHidden(true)
+        if node.isAggregate || !node.isReadable {
+            symbol
+        } else {
+            StorageItemIconView(url: node.url, isDirectory: node.isDirectory, size: 20) { symbol }
+        }
+    }
+
     private func nodeContent(theme: SpaceTheme) -> some View {
         let annotation = location.annotation(for: node)
 
         return HStack(alignment: .center, spacing: 9) {
-            Image(systemName: nodeImage)
-                .foregroundStyle(node.isReadable ? theme.accent : theme.warning)
-                .frame(width: 20)
-                .accessibilityHidden(true)
+            nodeIcon(theme: theme)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 7) {

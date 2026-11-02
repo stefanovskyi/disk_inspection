@@ -21,6 +21,12 @@ rm -rf "$app_dir"
 mkdir -p "$contents_dir/MacOS" "$contents_dir/Resources"
 cp "$build_dir/SpaceLens" "$contents_dir/MacOS/SpaceLens"
 cp "$project_dir/Support/PrivacyInfo.xcprivacy" "$contents_dir/Resources/PrivacyInfo.xcprivacy"
+cp -R "$build_dir/SpaceLens_SpaceLens.bundle" "$contents_dir/Resources/SpaceLens_SpaceLens.bundle"
+if [[ -z "$(find "$contents_dir/Resources/SpaceLens_SpaceLens.bundle" -name cursor.png -print -quit)" ]]; then
+    echo "error: brand logos are missing from the resource bundle." >&2
+    exit 1
+fi
+cp "$project_dir/Support/BrandLogos/NOTICE.md" "$contents_dir/Resources/BrandLogosNotice.md"
 
 mkdir -p "$iconset_dir"
 for icon_size in 16 32 128 256 512; do

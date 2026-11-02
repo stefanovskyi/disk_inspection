@@ -294,7 +294,12 @@ struct AICodingToolsView: View {
     private func supportedTools(theme: SpaceTheme) -> some View {
         HStack(spacing: 10) {
             ForEach(AICodingToolsCatalog.supportedTools) { tool in
-                Label(tool.displayName, systemImage: tool.systemImage)
+                BrandChipLabel(
+                    title: tool.displayName,
+                    logo: tool.logo,
+                    systemImage: tool.systemImage,
+                    tint: theme.accent
+                )
                     .font(.callout.weight(.medium))
                     .foregroundStyle(theme.primaryText)
                     .padding(.horizontal, 12)

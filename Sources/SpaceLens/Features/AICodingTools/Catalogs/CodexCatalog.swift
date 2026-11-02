@@ -4,7 +4,8 @@ enum CodexCatalog {
     static let metadata = AICodingToolMetadata(
         id: .codex,
         displayName: "Codex",
-        systemImage: "chevron.left.forwardslash.chevron.right"
+        systemImage: "chevron.left.forwardslash.chevron.right",
+        logo: .codex
     )
 
     static func definition(for request: AICodingToolsRequest) -> AICodingToolDefinition {

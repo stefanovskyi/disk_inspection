@@ -4,7 +4,8 @@ enum CursorCatalog {
     static let metadata = AICodingToolMetadata(
         id: .cursor,
         displayName: "Cursor",
-        systemImage: "cursorarrow.rays"
+        systemImage: "cursorarrow.rays",
+        logo: .cursor
     )
 
     static func definition(for request: AICodingToolsRequest) -> AICodingToolDefinition {

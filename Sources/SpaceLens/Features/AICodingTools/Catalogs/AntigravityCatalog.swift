@@ -4,7 +4,8 @@ enum AntigravityCatalog {
     static let metadata = AICodingToolMetadata(
         id: .antigravity,
         displayName: "Google Antigravity",
-        systemImage: "sparkles"
+        systemImage: "sparkles",
+        logo: .antigravity
     )
 
     static func definition(for request: AICodingToolsRequest) -> AICodingToolDefinition {

@@ -33,9 +33,7 @@ struct DeveloperEcosystemDetail: View {
 
     private func header(theme: SpaceTheme) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: ecosystem.systemImage)
-                .font(.system(size: 25, weight: .semibold))
-                .foregroundStyle(theme.accent)
+            BrandLogoImage(logo: ecosystem.logo, size: 30)
                 .frame(width: 46, height: 46)
                 .background(theme.elevatedSurface, in: RoundedRectangle(cornerRadius: 10))
                 .accessibilityHidden(true)
@@ -333,8 +331,17 @@ private struct DeveloperStorageLocationRow: View {
             HStack(alignment: .top, spacing: 0) {
                 Button { if expandable { isExpanded.toggle() } } label: {
                     HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: location.status.isIssue ? "exclamationmark.triangle.fill" : location.scope.systemImage)
-                        .foregroundStyle(location.status.isIssue ? theme.warning : theme.accent).frame(width: 22)
+                    if location.status.isIssue {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(theme.warning).frame(width: 22)
+                    } else {
+                        BrandOrSymbolIcon(
+                            logo: BrandLogoCatalog.logo(forStorageLocationNamed: location.name),
+                            systemImage: location.scope.systemImage,
+                            size: 22,
+                            tint: theme.accent
+                        )
+                    }
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 7) {
                             Text(location.name).font(.callout.weight(.semibold)).foregroundStyle(theme.primaryText)
@@ -375,8 +382,10 @@ private struct DeveloperStorageLocationRow: View {
                 VStack(spacing: 0) {
                     ForEach(Array(root.sortedChildren.prefix(32))) { node in
                         HStack(spacing: 8) {
-                            Image(systemName: node.isDirectory ? "folder" : "doc")
-                                .foregroundStyle(theme.secondaryText).frame(width: 18)
+                            StorageItemIconView(url: node.url, isDirectory: node.isDirectory, size: 18) {
+                                Image(systemName: node.isDirectory ? "folder" : "doc")
+                                    .foregroundStyle(theme.secondaryText).frame(width: 18)
+                            }
                             Text(node.name).font(.caption).foregroundStyle(theme.primaryText).lineLimit(1)
                             Spacer()
                             Text(StorageFormatters.bytes(node.size))

@@ -4,7 +4,8 @@ enum OpenCodeCatalog {
     static let metadata = AICodingToolMetadata(
         id: .openCode,
         displayName: "OpenCode",
-        systemImage: "terminal.fill"
+        systemImage: "terminal.fill",
+        logo: .openCode
     )
 
     private static let dataRules: [AICodingPathRule] = [

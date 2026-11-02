@@ -11,10 +11,7 @@ struct AICodingToolRow: View {
 
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 7) {
-                Image(systemName: tool.systemImage)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(theme.accent)
-                    .frame(width: 22)
+                BrandOrSymbolIcon(logo: tool.logo, systemImage: tool.systemImage, size: 22, tint: theme.accent)
                 Text(tool.displayName)
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(theme.primaryText)

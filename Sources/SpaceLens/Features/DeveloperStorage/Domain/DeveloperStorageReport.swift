@@ -22,6 +22,14 @@ enum DeveloperEcosystemID: String, CaseIterable, Identifiable, Sendable {
         case .javaAndJVM: "cup.and.saucer.fill"
         }
     }
+
+    var logo: BrandLogo {
+        switch self {
+        case .nodeAndWeb: .nodeJS
+        case .python: .python
+        case .javaAndJVM: .java
+        }
+    }
 }
 
 enum DeveloperStorageScope: String, CaseIterable, Identifiable, Sendable {
@@ -206,6 +214,7 @@ struct DeveloperEcosystemReport: Identifiable, Equatable, Sendable {
     var id: DeveloperEcosystemID { ecosystemID }
     var displayName: String { ecosystemID.displayName }
     var systemImage: String { ecosystemID.systemImage }
+    var logo: BrandLogo { ecosystemID.logo }
     var uniqueSize: Int64 { locations.reduce(0) { developerSafeAdd($0, $1.uniqueSize) } }
     var referencedSize: Int64 { locations.reduce(0) { developerSafeAdd($0, $1.referencedSize) } }
     var itemCount: Int { locations.reduce(0) { developerSafeAdd($0, $1.itemCount) } }

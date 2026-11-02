@@ -119,7 +119,12 @@ struct DeveloperStorageView: View {
 
                 HStack(spacing: 9) {
                     ForEach(DeveloperEcosystemID.allCases) { ecosystem in
-                        Label(ecosystem.displayName, systemImage: ecosystem.systemImage)
+                        BrandChipLabel(
+                            title: ecosystem.displayName,
+                            logo: ecosystem.logo,
+                            systemImage: ecosystem.systemImage,
+                            tint: theme.accent
+                        )
                             .font(.caption.weight(.medium))
                             .foregroundStyle(theme.primaryText)
                             .padding(.horizontal, 10)
@@ -301,7 +306,7 @@ private struct DeveloperEcosystemRow: View {
         let fraction = totalSize > 0 ? Double(ecosystem.uniqueSize) / Double(totalSize) : 0
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 9) {
-                Image(systemName: ecosystem.systemImage).foregroundStyle(theme.accent).frame(width: 24)
+                BrandLogoImage(logo: ecosystem.logo, size: 24)
                 Text(ecosystem.displayName).font(.callout.weight(.semibold)).foregroundStyle(theme.primaryText)
                 Spacer(minLength: 4)
                 Text(StorageFormatters.bytes(ecosystem.uniqueSize))

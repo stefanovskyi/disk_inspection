@@ -100,12 +100,9 @@ private struct AICodingInstallationCard: View {
     @ViewBuilder
     private func summaryContent(theme: SpaceTheme) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: installation.surface.systemImage)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(theme.accent)
+            installationIcon(theme: theme)
                 .frame(width: 28, height: 28)
                 .background(theme.surface, in: RoundedRectangle(cornerRadius: 7))
-                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -125,6 +122,23 @@ private struct AICodingInstallationCard: View {
             }
 
             Spacer(minLength: 36)
+        }
+    }
+
+    /// Native apps show their real icon; command-line installs show the tool's logo.
+    @ViewBuilder
+    private func installationIcon(theme: SpaceTheme) -> some View {
+        let toolIcon = BrandOrSymbolIcon(
+            logo: AICodingToolsCatalog.metadata(for: installation.toolID).logo,
+            systemImage: installation.surface.systemImage,
+            size: 20,
+            tint: theme.accent
+        )
+        switch installation.surface {
+        case .nativeApplication:
+            ApplicationIconImage(source: .bundle(installation.rootURL), size: 28) { toolIcon }
+        case .commandLine:
+            toolIcon
         }
     }
 

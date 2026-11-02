@@ -22,6 +22,7 @@ struct ItemInspector: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 9) {
                 HStack(alignment: .top) {
+                    inspectedIcon(for: inspectedNode, theme: theme)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(inspectedNode.name)
                             .font(.headline)
@@ -123,6 +124,19 @@ struct ItemInspector: View {
             selectedItem = nil
         }
         .spacePanel()
+    }
+
+    /// Always occupies the same width so selecting an item never shifts the header.
+    @ViewBuilder
+    private func inspectedIcon(for inspectedNode: FileNode, theme: SpaceTheme) -> some View {
+        let symbol = Image(systemName: inspectedNode.isDirectory ? "folder.fill" : "doc.fill")
+            .font(.title3)
+            .foregroundStyle(theme.tertiaryText)
+        if inspectedNode.isAggregate || !inspectedNode.isReadable {
+            symbol.frame(width: 32, height: 32)
+        } else {
+            StorageItemIconView(url: inspectedNode.url, isDirectory: inspectedNode.isDirectory, size: 32) { symbol }
+        }
     }
 
     private func inspectorSubtitle(for inspectedNode: FileNode, childCount: Int) -> String {
@@ -286,9 +300,7 @@ private struct InspectorRow: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(color.opacity(0.13))
-                        Image(systemName: iconName)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(node.isReadable ? color : theme.warning)
+                        itemIcon(color: color, theme: theme)
                     }
                     .frame(width: 28, height: 28)
 
@@ -385,6 +397,18 @@ private struct InspectorRow: View {
             model.navigate(into: node)
         } else {
             model.showInFinder(node)
+        }
+    }
+
+    @ViewBuilder
+    private func itemIcon(color: Color, theme: SpaceTheme) -> some View {
+        let symbol = Image(systemName: iconName)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(node.isReadable ? color : theme.warning)
+        if node.isAggregate || !node.isReadable {
+            symbol
+        } else {
+            StorageItemIconView(url: node.url, isDirectory: node.isDirectory, size: 26) { symbol }
         }
     }
 

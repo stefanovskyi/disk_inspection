@@ -16,7 +16,8 @@ Keep the product name **SpaceLens**. The DaisyDisk screenshots supplied during i
 - `Sources/SpaceLens/Services/VolumeDiscovery.swift` — mounted-volume discovery.
 - `Sources/SpaceLens/ViewModels/AppViewModel.swift` — application state, navigation, scanning, and macOS actions.
 - `Sources/SpaceLens/Views/` — SwiftUI interface and interactive sunburst chart.
-- `Sources/SpaceLens/Support/` — formatting and design tokens.
+- `Sources/SpaceLens/Support/` — formatting, design tokens, and the `BrandLogo` catalog that identifies products and storage items.
+- `Sources/SpaceLens/Resources/BrandLogos/` — bundled logo PNGs; regenerate them with `Scripts/generate_brand_logos.sh` from the pinned sources in `Support/BrandLogos/sources.tsv`.
 - `Tests/SpaceLensTests/` — XCTest coverage for scanner and chart layout.
 - `Scripts/run_self_tests.sh` — framework-free tests for Command Line Tools installations.
 - `Scripts/package_app.sh` — release build, `.app` assembly, and stable-identity signing with an ad-hoc fallback.
@@ -83,6 +84,8 @@ Do not hard-code this compatibility override into application source code.
 
 - Use native SwiftUI and AppKit APIs; avoid third-party dependencies unless clearly justified.
 - Use SF Symbols for interface icons. Do not use emoji as icons.
+- Identify products with their real artwork: installed applications use their Launch Services icon, and tools, languages, and model publishers use a logo from `BrandLogo`. Add new logos to `sources.tsv` and `Support/BrandLogos/NOTICE.md`. Keep SF Symbols for controls, categories, and anything without a brand.
+- Load application icons off the main actor through `ApplicationIconLoader`; a stalled disk must not freeze the interface.
 - Support both light and dark appearances through `SpaceTheme`.
 - The chart must provide hover feedback, click-to-drill behavior, and context actions without layout shifts.
 - Color cannot be the only way to understand storage data. Maintain the ranked textual item list and accessibility labels.

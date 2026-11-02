@@ -21,6 +21,7 @@ struct AIModelRuntimeMetadata: Identifiable, Equatable, Sendable {
     let displayName: String
     let systemImage: String
     let emptyDescription: String
+    var logo: BrandLogo? = nil
 }
 
 enum AIModelsCatalog {
@@ -29,25 +30,29 @@ enum AIModelsCatalog {
             id: .ollama,
             displayName: "Ollama",
             systemImage: "shippingbox.fill",
-            emptyDescription: "No Ollama models were found in the resolved model store."
+            emptyDescription: "No Ollama models were found in the resolved model store.",
+            logo: .ollama
         ),
         .init(
             id: .lmStudio,
             displayName: "LM Studio",
             systemImage: "macwindow",
-            emptyDescription: "No GGUF or MLX models were found in the resolved LM Studio home."
+            emptyDescription: "No GGUF or MLX models were found in the resolved LM Studio home.",
+            logo: .lmStudio
         ),
         .init(
             id: .llamaCpp,
             displayName: "llama.cpp / CLI",
             systemImage: "terminal.fill",
-            emptyDescription: "llama.cpp loads arbitrary GGUF paths; models remain attributed to their storage manager."
+            emptyDescription: "llama.cpp loads arbitrary GGUF paths; models remain attributed to their storage manager.",
+            logo: .llamaCpp
         ),
         .init(
             id: .huggingFace,
             displayName: "Hugging Face Hub",
             systemImage: "externaldrive.badge.icloud",
-            emptyDescription: "No cached model repositories were found in the resolved Hub cache."
+            emptyDescription: "No cached model repositories were found in the resolved Hub cache.",
+            logo: .huggingFace
         ),
         .init(
             id: .standalone,
@@ -271,6 +276,7 @@ struct AIModelRuntimeReport: Identifiable, Equatable, Sendable {
     var id: AIModelRuntimeID { runtime.id }
     var displayName: String { runtime.displayName }
     var systemImage: String { runtime.systemImage }
+    var logo: BrandLogo? { runtime.logo }
     var size: Int64 { locations.reduce(0) { safeAdd($0, $1.size) } }
     var itemCount: Int { locations.reduce(0) { safeAdd($0, $1.itemCount) } }
     var issueCount: Int { locations.filter { $0.status.isIssue }.count }

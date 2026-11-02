@@ -12,9 +12,7 @@ struct AICodingToolDetail: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: tool.systemImage)
-                        .font(.system(size: 25, weight: .semibold))
-                        .foregroundStyle(theme.accent)
+                    BrandOrSymbolIcon(logo: tool.logo, systemImage: tool.systemImage, size: 30, tint: theme.accent)
                         .frame(width: 46, height: 46)
                         .background(theme.elevatedSurface, in: RoundedRectangle(cornerRadius: 10))
                         .accessibilityHidden(true)

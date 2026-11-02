@@ -672,8 +672,7 @@ private struct ChartHoverCard: View {
 
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 7) {
-                Image(systemName: iconName)
-                    .foregroundStyle(theme.accent)
+                hoverIcon(theme: theme)
                 Text(segment.name)
                     .font(.callout.weight(.semibold))
                     .lineLimit(1)
@@ -711,6 +710,17 @@ private struct ChartHoverCard: View {
     private var percentage: Double {
         guard rootSize > 0 else { return 0 }
         return min(max(Double(segment.size) / Double(rootSize), 0), 1)
+    }
+
+    @ViewBuilder
+    private func hoverIcon(theme: SpaceTheme) -> some View {
+        let symbol = Image(systemName: iconName)
+            .foregroundStyle(theme.accent)
+        if case .node(let node) = segment.target, !node.isAggregate {
+            StorageItemIconView(url: node.url, isDirectory: node.isDirectory, size: 20) { symbol }
+        } else {
+            symbol
+        }
     }
 
     private var iconName: String {

@@ -21,6 +21,7 @@ struct AICodingToolMetadata: Identifiable, Equatable, Sendable {
     let id: AICodingToolID
     let displayName: String
     let systemImage: String
+    var logo: BrandLogo? = nil
 
     static func fallback(for id: AICodingToolID) -> Self {
         Self(id: id, displayName: id.rawValue, systemImage: "hammer")
@@ -328,6 +329,7 @@ struct AICodingToolReport: Identifiable, Equatable, Sendable {
     var id: AICodingToolID { tool.id }
     var displayName: String { tool.displayName }
     var systemImage: String { tool.systemImage }
+    var logo: BrandLogo? { tool.logo }
 
     var size: Int64 {
         locations.reduce(0) { partial, location in

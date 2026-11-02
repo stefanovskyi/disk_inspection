@@ -12,6 +12,99 @@ enum SelfTestFailure: LocalizedError {
 
 private struct StopDirectoryStreaming: Error {}
 
+private func brandLogosExistForEveryCatalogEntry() throws {
+    let projectRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+    let directory = projectRoot.appendingPathComponent("Sources/SpaceLens/Resources/BrandLogos")
+    let bundled = Set(
+        try FileManager.default.contentsOfDirectory(atPath: directory.path)
+            .filter { $0.hasSuffix(".png") }
+            .map { String($0.dropLast(4)) }
+    )
+    let cataloged = Set(BrandLogo.all.map(\.assetName))
+    guard bundled == cataloged else {
+        throw SelfTestFailure.failed(
+            "Logo mismatch; missing PNG: \(cataloged.subtracting(bundled).sorted()), "
+                + "not cataloged: \(bundled.subtracting(cataloged).sorted())"
+        )
+    }
+    guard BrandLogo.all.count == cataloged.count else {
+        throw SelfTestFailure.failed("BrandLogo.all lists a logo more than once")
+    }
+}
+
+private func brandLogosIdentifyProductsAndStorageItems() throws {
+    func expect<Value: Equatable>(_ actual: Value, _ expected: Value, _ label: String) throws {
+        guard actual == expected else {
+            throw SelfTestFailure.failed("\(label): expected \(expected), got \(actual)")
+        }
+    }
+
+    let tools = Dictionary(uniqueKeysWithValues: AICodingToolsCatalog.supportedTools.map { ($0.id, $0.logo) })
+    try expect(tools[.cursor] ?? nil, .cursor, "Cursor tool")
+    try expect(tools[.claudeCode] ?? nil, .claudeCode, "Claude Code tool")
+    try expect(tools[.codex] ?? nil, .codex, "Codex tool")
+    try expect(tools[.antigravity] ?? nil, .antigravity, "Antigravity tool")
+    try expect(tools[.openCode] ?? nil, .openCode, "OpenCode tool")
+    try expect(tools[.t3Code] ?? nil, .t3Code, "T3 Code tool")
+    try expect(DeveloperEcosystemID.python.logo, .python, "Python ecosystem")
+
+    let locations: [(String, BrandLogo?)] = [
+        ("npm cache", .npm), ("Unattributed node_modules", .nodeJS), ("Next.js output", .nextJS),
+        ("fnm Node versions", .nodeJS), ("uv Python versions", .uv), ("miniconda3 packages", .anaconda),
+        ("Pyenv versions", .python), (".mypy_cache", .python), ("Gradle JDKs", .gradle),
+        ("Homebrew openjdk@21", .java), ("Maven target", .maven), ("SDKMAN JDKs", .java),
+        ("VS Code extension dependencies", .vsCode), ("Claude plugin dependencies", .claudeCode),
+        ("Bundled assets", nil), ("Fluvial data", nil)
+    ]
+    for (name, logo) in locations {
+        try expect(BrandLogoCatalog.logo(forStorageLocationNamed: name), logo, "Location \(name)")
+    }
+
+    let models: [(String, BrandLogo?)] = [
+        ("qwen2.5:7b", .qwen), ("mlx-community/Llama-3.3", .meta), ("google/gemma-3", .gemma),
+        ("phi4:latest", .microsoft), ("sapphire-7b", nil), ("my-finetune", nil)
+    ]
+    for (name, logo) in models {
+        try expect(BrandLogoCatalog.logo(forModelNamed: name), logo, "Model \(name)")
+    }
+
+    func icon(_ path: String, directory: Bool = true) -> StorageItemIcon {
+        StorageItemIcon.resolve(url: URL(fileURLWithPath: path), isDirectory: directory)
+    }
+    let cursor = URL(fileURLWithPath: "/Applications/Cursor.app")
+    try expect(icon(cursor.path), .application(.bundle(cursor), fallback: nil), "App bundle")
+    try expect(icon("/Users/me/.claude"), .brand(.claudeCode), "Claude home")
+    try expect(icon("/work/app/node_modules"), .brand(.nodeJS), "node_modules")
+    try expect(icon("/work/main.py", directory: false), .brand(.python), "Python file")
+    try expect(icon("/work/Package.swift", directory: false), .brand(.swift), "Swift file")
+    try expect(icon("/work/notes.txt", directory: false), .generic, "Plain file")
+    try expect(icon("/work/go", directory: false), .generic, "Extensionless file")
+    try expect(icon("/work/Cursor"), .generic, "Same-named project folder")
+    try expect(
+        icon("/Users/me/Library/Application Support/Cursor"),
+        .application(.applicationNamed("Cursor"), fallback: .cursor),
+        "Application Support folder"
+    )
+    try expect(
+        icon("/Users/me/Library/Application Support/Code"),
+        .application(.applicationNamed("Visual Studio Code"), fallback: .vsCode),
+        "Application Support alias"
+    )
+    try expect(
+        icon("/Users/me/Library/Containers/com.tinyspeck.slackmacgap"),
+        .application(.bundleIdentifier("com.tinyspeck.slackmacgap"), fallback: nil),
+        "Container folder"
+    )
+    try expect(
+        icon("/Users/me/Library/Preferences/com.apple.Safari.plist", directory: false),
+        .application(.bundleIdentifier("com.apple.Safari"), fallback: nil),
+        "Preferences file"
+    )
+    try expect(icon("/work/com.example.notes"), .generic, "Dotted folder outside Library")
+}
+
 @main
 struct SpaceLensSelfTests {
     static func main() async throws {
@@ -41,6 +134,8 @@ struct SpaceLensSelfTests {
         try await aiCodingAnalyzerSkipsLinkedRoots()
         try await developerStorageDiscoversSupportedProjectArtifacts()
         try await developerStorageDeduplicatesHardLinkedFiles()
+        try brandLogosExistForEveryCatalogEntry()
+        try brandLogosIdentifyProductsAndStorageItems()
         try scanCoordinatorKeepsReplacementActive()
         try scanEverythingPlanPrioritizesStartupAndSkipsNetworkVolumes()
         try fullDiskAccessIsCheckedBeforeEveryActivity()

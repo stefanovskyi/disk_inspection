@@ -14,6 +14,9 @@ let package = Package(
         .executableTarget(
             name: "SpaceLens",
             path: "Sources/SpaceLens",
+            resources: [
+                .copy("Resources/BrandLogos")
+            ],
             swiftSettings: [
                 .swiftLanguageMode(.v5)
             ]

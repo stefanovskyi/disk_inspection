@@ -4,7 +4,8 @@ enum ClaudeCodeCatalog {
     static let metadata = AICodingToolMetadata(
         id: .claudeCode,
         displayName: "Claude Code",
-        systemImage: "terminal"
+        systemImage: "terminal",
+        logo: .claudeCode
     )
 
     static func definition(for request: AICodingToolsRequest) -> AICodingToolDefinition {

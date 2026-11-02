@@ -33,9 +33,7 @@ struct AIModelRuntimeDetail: View {
 
     private func header(theme: SpaceTheme) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: runtime.systemImage)
-                .font(.system(size: 25, weight: .semibold))
-                .foregroundStyle(theme.accent)
+            BrandOrSymbolIcon(logo: runtime.logo, systemImage: runtime.systemImage, size: 30, tint: theme.accent)
                 .frame(width: 46, height: 46)
                 .background(theme.elevatedSurface, in: RoundedRectangle(cornerRadius: 10))
                 .accessibilityHidden(true)
@@ -88,12 +86,9 @@ struct AIModelRuntimeDetail: View {
             } else {
                 ForEach(runtime.installations) { installation in
                     HStack(spacing: 10) {
-                        Image(systemName: installation.kind.systemImage)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(theme.accent)
+                        installationIcon(installation, theme: theme)
                             .frame(width: 30, height: 30)
                             .background(theme.surface, in: RoundedRectangle(cornerRadius: 7))
-                            .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 6) {
                                 Text(installation.name)
@@ -201,6 +196,22 @@ struct AIModelRuntimeDetail: View {
         .spacePanel()
     }
 
+    /// Native apps show their real icon; other installs show the runtime's logo.
+    @ViewBuilder
+    private func installationIcon(_ installation: AIModelRuntimeInstallation, theme: SpaceTheme) -> some View {
+        let runtimeIcon = BrandOrSymbolIcon(
+            logo: runtime.logo,
+            systemImage: installation.kind.systemImage,
+            size: 20,
+            tint: theme.accent
+        )
+        if installation.kind == .application {
+            ApplicationIconImage(source: .bundle(installation.url), size: 30) { runtimeIcon }
+        } else {
+            runtimeIcon
+        }
+    }
+
     @ViewBuilder
     private func modelList(theme: SpaceTheme) -> some View {
         if runtime.models.isEmpty {
@@ -227,12 +238,15 @@ struct AIModelRuntimeDetail: View {
 
     private func modelRow(_ model: AIModelRecord, theme: SpaceTheme) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: model.format == .mlx ? "apple.logo" : "shippingbox.fill")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(theme.accent)
+            BrandOrSymbolIcon(
+                logo: BrandLogoCatalog.logo(forModelNamed: model.displayName)
+                    ?? (model.format == .mlx ? .apple : nil),
+                systemImage: "shippingbox.fill",
+                size: 20,
+                tint: theme.accent
+            )
                 .frame(width: 30, height: 30)
                 .background(theme.surface, in: RoundedRectangle(cornerRadius: 7))
-                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 7) {
