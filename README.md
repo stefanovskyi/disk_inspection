@@ -47,6 +47,24 @@ These are unedited captures of completed results from the current app build—no
 
 ## Run locally
 
+### Chart design prototype (this branch only)
+
+The `prototype/storage-map-styles` branch contains **Aurora**, **Prism**, and **Contour**,
+plus the original **Classic** chart. Open the [visual comparison](docs/prototypes/chart-styles/index.html)
+in a browser, or run the native interactive gallery:
+
+```bash
+make chart-preview
+```
+
+Use the style switcher, light/dark control, and disk/folder samples. Hover for details,
+click folders to drill down, and use the breadcrumbs to return. All values are invented
+sample data; no scan is started. Finder and Terminal menu actions are inactive in this
+gallery. Launching SpaceLens normally retains the existing interface and chart.
+
+This is a design exploration, with no selected winner yet. See the
+[prototype notes](docs/prototypes/chart-styles/README.md) for scope and reproduction.
+
 Requirements: macOS 14 or newer and Swift 6 from Xcode or the Xcode Command Line Tools.
 
 ```bash

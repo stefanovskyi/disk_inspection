@@ -5,8 +5,14 @@ struct SpaceLensApp: App {
     @State private var model = AppViewModel()
 
     var body: some Scene {
-        WindowGroup {
-            AppRootView()
+        WindowGroup(ProcessInfo.processInfo.arguments.contains("--chart-style-prototype") ? "SpaceLens · Chart style lab" : "SpaceLens") {
+            Group {
+                if ProcessInfo.processInfo.arguments.contains("--chart-style-prototype") {
+                    ChartStylePrototypeView()
+                } else {
+                    AppRootView()
+                }
+            }
                 .environment(model)
                 .frame(
                     minWidth: AppLayoutMetrics.minimumWindowWidth,

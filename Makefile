@@ -1,4 +1,4 @@
-.PHONY: build test benchmark benchmark-parallelism benchmark-full benchmark-trace benchmark-compare app dmg verify-dmg run clean
+.PHONY: build test benchmark benchmark-parallelism benchmark-full benchmark-trace benchmark-compare app dmg verify-dmg run chart-preview clean
 
 build:
 	swift build
@@ -36,6 +36,10 @@ verify-dmg:
 
 run:
 	swift run SpaceLens
+
+# Throwaway native gallery on prototype/storage-map-styles. Uses invented data only.
+chart-preview:
+	./Scripts/preview_chart_styles.sh
 
 clean:
 	swift package clean

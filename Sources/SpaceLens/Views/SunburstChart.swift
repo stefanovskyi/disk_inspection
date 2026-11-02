@@ -213,6 +213,7 @@ struct SunburstChartActions {
 
 private struct SunburstBaseLayer: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.chartPrototypeStyle) private var prototypeStyle
 
     let scene: SunburstScene
     let capacity: StorageChartCapacity
@@ -269,7 +270,16 @@ private struct SunburstBaseLayer: View {
     }
 
     private func drawSegments(context: inout GraphicsContext) {
+        let branches = scene.segments.filter { $0.depth == 0 }
         for segment in scene.segments {
+            if prototypeStyle != .classic {
+                ChartPrototypeRenderer.draw(
+                    segment, style: prototypeStyle, branches: branches, context: &context,
+                    center: metrics.center, radius: metrics.radius(forDepth: segment.depth),
+                    ringWidth: metrics.ringWidth, isDark: colorScheme == .dark
+                )
+                continue
+            }
             let angularGap = min(0.006, segment.angularSpan * 0.14)
             let radius = metrics.radius(forDepth: segment.depth)
             var arc = Path()
@@ -300,6 +310,7 @@ private struct SunburstBaseLayer: View {
 
 private struct SunburstInteractionLayer: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.chartPrototypeStyle) private var prototypeStyle
     @State private var hoveredSegmentIndex: Int?
     @State private var isHoveringFreeSpace = false
 
@@ -411,6 +422,10 @@ private struct SunburstInteractionLayer: View {
         context: inout GraphicsContext,
         theme: SpaceTheme
     ) {
+        if prototypeStyle != .classic {
+            drawPrototypeFocus(segment: segment, context: &context, theme: theme)
+            return
+        }
         let angularGap = min(0.006, segment.angularSpan * 0.14)
         let radius = metrics.radius(forDepth: segment.depth)
         var arc = Path()
@@ -443,6 +458,10 @@ private struct SunburstInteractionLayer: View {
         context: inout GraphicsContext,
         theme: SpaceTheme
     ) {
+        if prototypeStyle != .classic {
+            drawPrototypeFocus(segment: segment, context: &context, theme: theme)
+            return
+        }
         let angularGap = min(0.006, segment.angularSpan * 0.14)
         let radius = metrics.radius(forDepth: segment.depth)
         var arc = Path()
@@ -460,6 +479,26 @@ private struct SunburstInteractionLayer: View {
         )
     }
 
+    private func drawPrototypeFocus(
+        segment: SunburstSegment,
+        context: inout GraphicsContext,
+        theme: SpaceTheme
+    ) {
+        // Outline the existing tile without painting over its material or shifting it.
+        let gap = min(0.006, segment.angularSpan * 0.14)
+        let start = segment.startAngle - .pi / 2 + gap
+        let end = segment.endAngle - .pi / 2 - gap
+        let radius = metrics.radius(forDepth: segment.depth)
+        let halfWidth = max(2, metrics.ringWidth - 2.5) / 2
+        var tile = Path()
+        tile.addArc(center: metrics.center, radius: radius + halfWidth,
+                    startAngle: .radians(start), endAngle: .radians(end), clockwise: false)
+        tile.addArc(center: metrics.center, radius: radius - halfWidth,
+                    startAngle: .radians(end), endAngle: .radians(start), clockwise: true)
+        tile.closeSubpath()
+        context.stroke(tile, with: .color(theme.chartHighlight), lineWidth: 2)
+    }
+
     private func centerSummary(theme: SpaceTheme) -> some View {
         let focusedSegment = hoveredSegment ?? selectedSegment
         let displaySize = isHoveringFreeSpace
@@ -473,6 +512,13 @@ private struct SunburstInteractionLayer: View {
         return ZStack {
             Circle()
                 .fill(theme.background)
+            if prototypeStyle != .classic {
+                Circle()
+                    .fill(RadialGradient(
+                        colors: [theme.accent.opacity(0.12), theme.background],
+                        center: .topLeading, startRadius: 0, endRadius: size
+                    ))
+            }
             Circle()
                 .stroke(theme.border, lineWidth: 1)
 
