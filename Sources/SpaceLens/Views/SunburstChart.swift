@@ -67,6 +67,7 @@ struct ChartPanel: View {
 }
 
 struct SunburstChart: View {
+    @Environment(\.chartPrototypeStyle) private var prototypeStyle
     @StateObject private var sceneCache = SunburstSceneCache()
     let root: FileNode
     let volume: VolumeInfo?
@@ -108,6 +109,9 @@ struct SunburstChart: View {
             let metrics = ChartMetrics(size: proxy.size, ringCount: scene.ringCount)
 
             ZStack {
+                if prototypeStyle.isSpaceStyle {
+                    SpaceChartAtmosphere(style: prototypeStyle, center: metrics.center, outerRadius: metrics.outerRadius)
+                }
                 SunburstBaseLayer(scene: scene, capacity: capacity, metrics: metrics)
                 SunburstInteractionLayer(
                     root: root,
@@ -119,6 +123,8 @@ struct SunburstChart: View {
                     selectedItemID: selectedItemID,
                     actions: actions
                 )
+                // Hover indices belong to one root's scene, not to its replacement.
+                .id(root.id)
             }
         }
         .aspectRatio(1, contentMode: .fit)
@@ -335,10 +341,20 @@ private struct SunburstInteractionLayer: View {
             }
 
             if let hoveredSegment {
-                Canvas { context, _ in
-                    drawHover(segment: hoveredSegment, context: &context, theme: theme)
+                if prototypeStyle.isSpaceStyle {
+                    SpaceChartHoverEffect(
+                        style: prototypeStyle, segment: hoveredSegment,
+                        hue: prototypeStyle.hue(for: hoveredSegment, branches: scene.segments.filter { $0.depth == 0 }),
+                        center: metrics.center, radius: metrics.radius(forDepth: hoveredSegment.depth),
+                        hubRadius: metrics.innerRadius, ringWidth: metrics.ringWidth
+                    )
+                    .id("\(prototypeStyle.rawValue):\(hoveredSegment.id)")
+                } else {
+                    Canvas { context, _ in
+                        drawHover(segment: hoveredSegment, context: &context, theme: theme)
+                    }
+                    .allowsHitTesting(false)
                 }
-                .allowsHitTesting(false)
             }
 
             centerSummary(theme: theme)

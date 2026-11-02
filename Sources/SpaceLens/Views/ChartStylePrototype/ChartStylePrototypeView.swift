@@ -3,7 +3,9 @@ import SwiftUI
 
 // Prototype only. Run `make chart-preview`; no filesystem scan or persisted settings.
 struct ChartStylePrototypeView: View {
-    @State private var style = ChartPrototypeStyle.aurora
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @State private var style = ChartPrototypeStyle.hyperspace
+    @State private var motionEnabled = true
     @State private var lightAppearance = false
     @State private var compactDataset = false
     @State private var path = [ChartPrototypeData.disk]
@@ -22,7 +24,11 @@ struct ChartStylePrototypeView: View {
                     Text("Folder · shallow hierarchy").tag(true)
                 }
                 .labelsHidden()
-                .frame(width: 260)
+                .frame(width: 220)
+                Toggle("Motion", isOn: $motionEnabled)
+                    .toggleStyle(.switch)
+                    .disabled(systemReduceMotion)
+                    .help("Hover animations respect the macOS Reduce Motion setting")
                 Picker("Appearance", selection: $lightAppearance) {
                     Text("Dark").tag(false)
                     Text("Light").tag(true)
@@ -71,12 +77,18 @@ struct ChartStylePrototypeView: View {
                 .help("Previous style")
                 .keyboardShortcut(.leftArrow, modifiers: [])
                 Picker("Prototype", selection: $style) {
-                    ForEach(ChartPrototypeStyle.allCases) { option in
+                    ForEach(ChartPrototypeStyle.featured) { option in
                         Text(option.title).tag(option)
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 360)
+                .frame(width: 410)
+                Menu("Earlier concepts") {
+                    ForEach([ChartPrototypeStyle.aurora, .prism, .contour]) { option in
+                        Button(option.title) { style = option }
+                    }
+                }
+                .fixedSize()
                 Button { style = style.shifted(by: 1) } label: {
                     Image(systemName: "chevron.right")
                 }
@@ -94,6 +106,7 @@ struct ChartStylePrototypeView: View {
         }
         .background(SpaceTheme(colorScheme: lightAppearance ? .light : .dark).background)
         .preferredColorScheme(lightAppearance ? .light : .dark)
+        .environment(\.chartPrototypeMotionEnabled, motionEnabled && !systemReduceMotion)
         .onChange(of: compactDataset) { _, compact in
             path = [compact ? ChartPrototypeData.folder : ChartPrototypeData.disk]
             selectedItem = nil
@@ -125,6 +138,15 @@ struct ChartStylePrototypeStage: View {
     private var theme: SpaceTheme { SpaceTheme(colorScheme: colorScheme) }
 
     var body: some View {
+        if style.isSpaceStyle {
+            SpaceChartStage(style: style, root: root, volume: volume,
+                            selectedItemID: selectedItemID, actions: actions)
+        } else {
+            originalStage
+        }
+    }
+
+    private var originalStage: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
@@ -283,7 +305,7 @@ struct ChartStylePrototypeStage: View {
     }
 
     private func branchColor(_ child: FileNode, index: Int) -> Color {
-        let hues = [0.49, 0.66, 0.09, 0.91, 0.34, 0.77, 0.02, 0.56]
+        let hues = style.branchHues
         return style.color(
             hue: style == .classic ? SunburstLayout.hue(for: child.id) : hues[index % hues.count],
             depth: 0, isDark: colorScheme == .dark
@@ -316,5 +338,37 @@ enum ChartPrototypeExporter {
                 print("Rendered \(name)")
             }
         }
+        try exportSceneData(to: directory.deletingLastPathComponent().appendingPathComponent("space-scenes.json"))
+    }
+
+    private static func exportSceneData(to url: URL) throws {
+        var scenes: [String: Any] = [:]
+        func append(_ root: FileNode, volume: VolumeInfo? = nil) {
+            guard !root.children.isEmpty else { return }
+            let extent = (volume?.usedFraction ?? 1) * .pi * 2
+            let scene = SunburstScene(root: root, maxDepth: 6, angularExtent: extent,
+                                      interactionRadius: 100, policy: .interactive)
+            scenes[root.id] = [
+                "id": root.id, "name": root.name, "size": root.size,
+                "free": volume?.availableCapacity ?? 0, "extent": extent,
+                "rings": scene.ringCount,
+                "children": root.sortedChildren.map { child -> [String: Any] in
+                    ["id": child.id, "name": child.name, "size": child.size,
+                     "directory": child.isDirectory && !child.children.isEmpty]
+                },
+                "segments": scene.segments.map { segment -> [String: Any] in
+                    ["id": segment.id, "target": segment.node?.id ?? segment.id,
+                     "name": segment.name, "size": segment.size, "depth": segment.depth,
+                     "start": segment.startAngle, "end": segment.endAngle, "hue": segment.hue]
+                }
+            ]
+            for child in root.children { append(child) }
+        }
+        append(ChartPrototypeData.disk, volume: ChartPrototypeData.volume)
+        append(ChartPrototypeData.folder)
+        let document: [String: Any] = ["diskRoot": ChartPrototypeData.disk.id,
+                                       "folderRoot": ChartPrototypeData.folder.id, "scenes": scenes]
+        try JSONSerialization.data(withJSONObject: document, options: [.sortedKeys]).write(to: url)
+        print("Exported native SunburstScene geometry")
     }
 }

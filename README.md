@@ -49,16 +49,20 @@ These are unedited captures of completed results from the current app build—no
 
 ### Chart design prototype (this branch only)
 
-The `prototype/storage-map-styles` branch contains **Aurora**, **Prism**, and **Contour**,
-plus the original **Classic** chart. Open the [visual comparison](docs/prototypes/chart-styles/index.html)
-in a browser, or run the native interactive gallery:
+The `prototype/storage-map-styles` branch contains three space-console concepts:
+**Hyperspace** (holographic targeting), **Bridge** (warm amber/violet panels), and
+**Lasers** (photon traces and impact halos), plus the original **Classic** chart.
+Open the [interactive comparison](docs/prototypes/chart-styles/index.html) in a browser,
+or run the native gallery:
 
 ```bash
 make chart-preview
 ```
 
-Use the style switcher, light/dark control, and disk/folder samples. Hover for details,
-click folders to drill down, and use the breadcrumbs to return. All values are invented
+Use the style switcher, light/dark and motion controls, and disk/folder samples.
+Hover to target a sector, click folders to drill down, and use the breadcrumbs to return.
+Hover animations settle after 1.2 seconds and respect Reduce Motion. The earlier
+Aurora, Prism, and Contour options remain under **Earlier concepts**. All values are invented
 sample data; no scan is started. Finder and Terminal menu actions are inactive in this
 gallery. Launching SpaceLens normally retains the existing interface and chart.
 

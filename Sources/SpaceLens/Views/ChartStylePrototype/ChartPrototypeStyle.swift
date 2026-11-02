@@ -4,7 +4,19 @@ import SwiftUI
 // Throwaway design exploration on prototype/storage-map-styles.
 // Question: which surface treatment makes the existing sunburst easier and more enjoyable to explore?
 enum ChartPrototypeStyle: String, CaseIterable, Identifiable {
-    case classic, aurora, prism, contour
+    case classic, aurora, prism, contour, hyperspace, bridge, lasers
+
+    static let featured: [Self] = [.hyperspace, .bridge, .lasers, .classic]
+    var isSpaceStyle: Bool { [.hyperspace, .bridge, .lasers].contains(self) }
+
+    var branchHues: [Double] {
+        switch self {
+        case .hyperspace: [0.53, 0.69, 0.10, 0.90, 0.38, 0.77, 0.02, 0.56]
+        case .bridge: [0.09, 0.72, 0.98, 0.59, 0.13, 0.77, 0.02, 0.56]
+        case .lasers: [0.40, 0.92, 0.13, 0.54, 0.73, 0.77, 0.02, 0.56]
+        default: [0.49, 0.66, 0.09, 0.91, 0.34, 0.77, 0.02, 0.56]
+        }
+    }
 
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
@@ -16,6 +28,9 @@ enum ChartPrototypeStyle: String, CaseIterable, Identifiable {
         case .aurora: "Luminous bands. Soft light gives the hierarchy depth."
         case .prism: "Sculpted tiles. Crisp edges make every folder feel tangible."
         case .contour: "Quiet interiors. Fine contours trace the shape of your storage."
+        case .hyperspace: "A holographic star chart. Hover to acquire a sector."
+        case .bridge: "Warm console panels. Hover to sweep a directory."
+        case .lasers: "An energized storage core. Hover to fire a photon trace."
         }
     }
 
@@ -25,11 +40,16 @@ enum ChartPrototypeStyle: String, CaseIterable, Identifiable {
         case .aurora: "The most expressive option. Subtle bloom softens very small boundaries."
         case .prism: "The clearest separation between tiles. Strong lighting adds visual density."
         case .contour: "The calmest option. Outlines emphasize structure more than filled area."
+        case .hyperspace: "Hover: converging reticle + sector sweep. Motion settles after 1.2 seconds."
+        case .bridge: "Hover: amber sweep + illuminated sector brackets. Motion settles after 1.2 seconds."
+        case .lasers: "Hover: twin laser traces + impact halo. Motion settles after 1.2 seconds."
         }
     }
 
     func shifted(by offset: Int) -> Self {
-        Self.allCases[(index + offset + Self.allCases.count) % Self.allCases.count]
+        let options = Self.featured
+        let index = options.firstIndex(of: self) ?? 0
+        return options[(index + offset + options.count) % options.count]
     }
 
     /// Each top-level branch receives a distinct hue; all its descendants retain it.
@@ -40,7 +60,7 @@ enum ChartPrototypeStyle: String, CaseIterable, Identifiable {
         let index = branches.firstIndex {
             midpoint >= $0.startAngle && midpoint <= $0.endAngle
         } ?? 0
-        let hues = [0.49, 0.66, 0.09, 0.91, 0.34, 0.77, 0.02, 0.56]
+        let hues = branchHues
         return hues[index % hues.count]
     }
 
@@ -50,8 +70,8 @@ enum ChartPrototypeStyle: String, CaseIterable, Identifiable {
         }
         return Color(
             hue: hue,
-            saturation: isDark ? 0.72 - Double(depth) * 0.035 : 0.77,
-            brightness: isDark ? 0.78 + Double(depth) * 0.025 : 0.60 + Double(depth) * 0.018
+            saturation: self == .bridge ? 0.43 : (isDark ? 0.72 - Double(depth) * 0.035 : 0.77),
+            brightness: self == .bridge ? (isDark ? 0.96 : 0.67) : (isDark ? 0.78 + Double(depth) * 0.025 : 0.60 + Double(depth) * 0.018)
         )
     }
 }
@@ -60,7 +80,16 @@ private struct ChartPrototypeStyleKey: EnvironmentKey {
     static let defaultValue = ChartPrototypeStyle.classic
 }
 
+private struct ChartPrototypeMotionKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
 extension EnvironmentValues {
+    var chartPrototypeMotionEnabled: Bool {
+        get { self[ChartPrototypeMotionKey.self] }
+        set { self[ChartPrototypeMotionKey.self] = newValue }
+    }
+
     var chartPrototypeStyle: ChartPrototypeStyle {
         get { self[ChartPrototypeStyleKey.self] }
         set { self[ChartPrototypeStyleKey.self] = newValue }
@@ -137,6 +166,32 @@ enum ChartPrototypeRenderer {
                 arc(center: center, radius: outer - 1.4, start: start, end: end),
                 with: .color(color), lineWidth: segment.depth == 0 ? 3 : 1.8
             )
+        case .hyperspace:
+            context.fill(tile, with: .radialGradient(
+                Gradient(colors: [color.opacity(0.10), color.opacity(isDark ? 0.28 : 0.19)]),
+                center: center, startRadius: inner, endRadius: outer
+            ))
+            context.stroke(tile, with: .color(color.opacity(0.56)), lineWidth: 0.6)
+            var light = context
+            light.addFilter(.shadow(color: color.opacity(isDark ? 0.8 : 0.2), radius: 3))
+            light.stroke(arc(center: center, radius: outer - 0.9, start: start, end: end),
+                         with: .color(color), lineWidth: 1.2)
+        case .bridge:
+            context.fill(tile, with: .color(color.opacity(isDark ? 0.76 : 0.67)))
+            context.stroke(arc(center: center, radius: inner + 1.5, start: start, end: end),
+                           with: .color(color.mix(with: .white, by: 0.5)), lineWidth: 1.2)
+            context.stroke(arc(center: center, radius: outer - 1, start: start, end: end),
+                           with: .color(color.mix(with: .black, by: 0.4)), lineWidth: 1.8)
+        case .lasers:
+            context.fill(tile, with: .radialGradient(
+                Gradient(colors: [color.opacity(isDark ? 0.5 : 0.36), color.opacity(0.10)]),
+                center: center, startRadius: inner, endRadius: outer
+            ))
+            var light = context
+            light.addFilter(.shadow(color: color.opacity(isDark ? 0.9 : 0.15), radius: 4))
+            light.stroke(tile, with: .color(color.opacity(0.9)), lineWidth: 0.9)
+            light.stroke(arc(center: center, radius: inner + 1, start: start, end: end),
+                         with: .color(color.mix(with: .white, by: 0.35)), lineWidth: 1.3)
         }
     }
 
