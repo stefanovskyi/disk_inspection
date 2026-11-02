@@ -20,7 +20,7 @@ final class AIModelsAndRuntimesStoreTests: XCTestCase {
         XCTAssertNil(store.startedAt)
     }
 
-    func testStartingStorageScanCancelsRefreshAndPreservesPreviousReport() async throws {
+    func testOtherActivitiesLeaveRefreshRunningAndCancelRestoresReport() async throws {
         let report = makeReport(runtimeID: .ollama, size: 8_192)
         let analyzer = SequencedAIModelsAnalyzer(report: report)
         let coordinator = ScanCoordinator()
@@ -36,11 +36,13 @@ final class AIModelsAndRuntimesStoreTests: XCTestCase {
         try await waitUntil { store.isRunning }
 
         let storageID = UUID()
-        coordinator.begin(.storage, id: storageID) {}
+        coordinator.enqueue(.storage, id: storageID) {}
+        XCTAssertTrue(store.isRunning)
 
+        store.cancelPreservingReport()
         XCTAssertFalse(store.isRunning)
         XCTAssertEqual(store.state.report, report)
-        XCTAssertEqual(coordinator.activeActivity, .storage)
+        XCTAssertEqual(coordinator.runningActivities, [.storage])
         coordinator.finish(.storage, id: storageID)
     }
 

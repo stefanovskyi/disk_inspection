@@ -4,27 +4,6 @@ import XCTest
 
 @MainActor
 final class AICodingToolsStoreTests: XCTestCase {
-    func testCoordinatorCancelsPreviousActivityAndIgnoresItsLateFinish() {
-        let coordinator = ScanCoordinator()
-        let storageID = UUID()
-        let analysisID = UUID()
-        var storageWasCancelled = false
-
-        coordinator.begin(.storage, id: storageID) {
-            storageWasCancelled = true
-        }
-        coordinator.begin(.aiCodingTools, id: analysisID) {}
-
-        XCTAssertTrue(storageWasCancelled)
-        XCTAssertEqual(coordinator.activeActivity, .aiCodingTools)
-
-        coordinator.finish(.storage, id: storageID)
-        XCTAssertEqual(coordinator.activeActivity, .aiCodingTools)
-
-        coordinator.finish(.aiCodingTools, id: analysisID)
-        XCTAssertNil(coordinator.activeActivity)
-    }
-
     func testStorePublishesProgressCompletesAndSelectsFirstRankedTool() async throws {
         let report = makeReport(tool: .cursor, size: 64)
         let store = AICodingToolsStore(
@@ -41,7 +20,7 @@ final class AICodingToolsStoreTests: XCTestCase {
         XCTAssertNil(store.startedAt)
     }
 
-    func testStartingStorageScanCancelsRefreshAndRestoresCompletedReport() async throws {
+    func testOtherActivitiesLeaveRefreshRunningAndCancelRestoresReport() async throws {
         let report = makeReport(tool: .codex, size: 128)
         let sequence = SequencedAICodingToolsAnalyzer(report: report)
         let coordinator = ScanCoordinator()
@@ -56,13 +35,37 @@ final class AICodingToolsStoreTests: XCTestCase {
         store.analyze()
         try await waitUntil { store.isRunning }
         let storageID = UUID()
-        coordinator.begin(.storage, id: storageID) {}
+        coordinator.enqueue(.storage, id: storageID) {}
 
+        XCTAssertTrue(store.isRunning)
+        XCTAssertEqual(coordinator.runningActivities, [.aiCodingTools, .storage])
+
+        store.cancelPreservingReport()
         XCTAssertFalse(store.isRunning)
         XCTAssertEqual(store.state.report, report)
         XCTAssertNil(store.startedAt)
-        XCTAssertEqual(coordinator.activeActivity, .storage)
+        XCTAssertEqual(coordinator.runningActivities, [.storage])
         coordinator.finish(.storage, id: storageID)
+    }
+
+    func testStoreWaitsForAFreeSlotThenStarts() async throws {
+        let report = makeReport(tool: .cursor, size: 64)
+        let coordinator = ScanCoordinator(maximumConcurrentActivities: 1)
+        let store = AICodingToolsStore(
+            analyzer: ImmediateAICodingToolsAnalyzer(report: report),
+            scanCoordinator: coordinator,
+            requestFactory: fixtureRequest
+        )
+        let storageID = UUID()
+        coordinator.enqueue(.storage, id: storageID) {}
+
+        store.analyze()
+        XCTAssertTrue(store.isQueued)
+        XCTAssertNil(store.startedAt)
+
+        coordinator.finish(.storage, id: storageID)
+        try await waitUntil { !store.isRunning }
+        XCTAssertEqual(store.state.report, report)
     }
 
     private func waitUntil(

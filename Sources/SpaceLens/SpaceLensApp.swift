@@ -20,11 +20,10 @@ struct SpaceLensApp: App {
             CommandGroup(after: .newItem) {
                 Button("Scan Folder…") { model.chooseFolder() }
                     .keyboardShortcut("o", modifiers: [.command])
-                    .disabled(model.isScanningEverything)
                 Button("Disc Scan…") { model.requestDiscScan() }
-                    .disabled(model.isDiscoveringVolumes || model.isScanningEverything)
+                    .disabled(!model.canRequestDiscScan)
                 Button("Analysis…") { model.requestAllAnalyses() }
-                    .disabled(model.isScanningEverything)
+                    .disabled(!model.canRequestAllAnalyses)
                 Button(model.selectedSection == .storage ? "Rescan" : "Analyze Again") {
                     model.refreshCurrentSection()
                 }

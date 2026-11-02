@@ -44,6 +44,8 @@ final class AIModelsAndRuntimesStore {
     }
 
     var isRunning: Bool { state.isRunning }
+    /// Requested but still waiting for a free slot in the scan queue.
+    var isQueued: Bool { state.isRunning && startedAt == nil }
 
     func selectRuntime(_ id: AIModelRuntimeID) {
         selectedRuntimeID = id
@@ -72,18 +74,31 @@ final class AIModelsAndRuntimesStore {
     }
 
     func analyze() {
+        cancelPreservingReport()
         let previousReport = state.report
         let analysisID = UUID()
-        scanCoordinator.begin(.aiModelsAndRuntimes, id: analysisID) { [weak self] in
-            self?.cancelPreservingReport(expectedID: analysisID)
-        }
         activeAnalysisID = analysisID
         state = .running(previousReport: previousReport)
         progress = AIModelsProgress()
-        startedAt = Date()
+        startedAt = nil
 
-        let analyzer = analyzer
         let request = requestFactory(additionalRoots.map(\.url))
+        scanCoordinator.enqueue(.aiModelsAndRuntimes, id: analysisID) { [weak self] in
+            self?.runAnalysis(
+                id: analysisID,
+                request: request,
+                previousReport: previousReport
+            )
+        }
+    }
+
+    private func runAnalysis(
+        id analysisID: UUID,
+        request: AIModelsAndRuntimesRequest,
+        previousReport: AIModelsAndRuntimesReport?
+    ) {
+        startedAt = Date()
+        let analyzer = analyzer
         task = Task { [weak self] in
             guard let self else { return }
             let progressStore = self

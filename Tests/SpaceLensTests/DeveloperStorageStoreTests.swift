@@ -20,7 +20,7 @@ final class DeveloperStorageStoreTests: XCTestCase {
         XCTAssertNil(store.startedAt)
     }
 
-    func testReplacementScanCancelsAnalysisAndPreservesPreviousReport() async throws {
+    func testOtherActivitiesLeaveAnalysisRunningAndCancelRestoresReport() async throws {
         let report = makeReport(ecosystem: .javaAndJVM, size: 8_192)
         let coordinator = ScanCoordinator()
         let store = DeveloperStorageStore(
@@ -35,11 +35,13 @@ final class DeveloperStorageStoreTests: XCTestCase {
         try await waitUntil { store.isRunning }
 
         let storageID = UUID()
-        coordinator.begin(.storage, id: storageID) {}
+        coordinator.enqueue(.storage, id: storageID) {}
+        XCTAssertTrue(store.isRunning)
 
+        store.cancelPreservingReport()
         XCTAssertFalse(store.isRunning)
         XCTAssertEqual(store.state.report, report)
-        XCTAssertEqual(coordinator.activeActivity, .storage)
+        XCTAssertEqual(coordinator.runningActivities, [.storage])
         coordinator.finish(.storage, id: storageID)
     }
 

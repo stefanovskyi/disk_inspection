@@ -14,6 +14,7 @@ Keep the product name **SpaceLens**. The DaisyDisk screenshots supplied during i
 - `Sources/SpaceLens/Models/ScanSessionStore.swift` — in-memory scan cache and selected-folder session models keyed by standardized path.
 - `Sources/SpaceLens/Services/DiskScanner.swift` — asynchronous recursive filesystem scanner.
 - `Sources/SpaceLens/Services/VolumeDiscovery.swift` — mounted-volume discovery.
+- `Sources/SpaceLens/Services/ScanCoordinator.swift` — FIFO queue that bounds how many scans and analyses run at once.
 - `Sources/SpaceLens/ViewModels/AppViewModel.swift` — application state, navigation, scanning, and macOS actions.
 - `Sources/SpaceLens/Views/` — SwiftUI interface and interactive sunburst chart.
 - `Sources/SpaceLens/Support/` — formatting, design tokens, and the product identification in `BrandLogo`, `BrandLogoCatalog`, and `StorageItemIcon`.
@@ -74,7 +75,10 @@ Do not hard-code this compatibility override into application source code.
 - At a volume root, scale the sunburst sweep to used capacity and leave the remaining angle transparent as labeled free space. Folder-only scans use the full circle.
 - Sunburst angular width represents byte size; radial level and branch reach represent hierarchy depth. Never fill missing descendants with opaque background rings.
 - A navigation path must always start with the current scan root. Breadcrumb navigation truncates this path; drilling into a directory appends to it.
-- Starting a new scan must cancel or invalidate the previous scan so stale results cannot replace newer results.
+- Scans and analyses are independent. Navigation and starting other work must never cancel them; only an explicit cancel or removing the scanned folder may. `ScanCoordinator` runs at most `defaultMaximumConcurrentActivities` at once and queues the rest in order.
+- Requesting a location or analysis that is already active follows it instead of starting a duplicate; restarting an analysis because its folders changed must cancel its own previous run so stale results cannot replace newer results. Batches skip work that is already active.
+- A finished background scan is cached but must not replace the location on screen.
+- Report all scan and analysis progress through `AppViewModel.activities`, rendered only in the panel at the bottom of the sidebar, with a cancel control per activity. Do not add progress bars or status to the toolbar or to feature pages.
 - Retain completed disk and selected-folder scans in `ScanSessionStore` for the app session. Returning home clears the current presentation, not the cache; selecting a cached location must offer view or rescan instead of scanning immediately.
 - Keep picker-selected folders in the sidebar until removed or the app quits. Removing a folder from the sidebar clears only its session entry and cached scan; it must never modify the folder on disk.
 - Retain at most `DiskScanner.retainedChildLimit` direct children per directory. Preserve byte and item totals through the synthetic `Smaller items` aggregate.
@@ -105,6 +109,7 @@ Add or update tests when changing:
 - size aggregation and child sorting;
 - scan progress or cancellation;
 - bounded parallel traversal;
+- scan queueing or scans surviving navigation;
 - unreadable-item behavior;
 - stalled provider-directory behavior;
 - sunburst proportions, depth limits, or hierarchy;

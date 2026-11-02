@@ -157,37 +157,3 @@ struct ScanEverythingSummary: Equatable, Sendable {
         outcomes.count - completedCount
     }
 }
-
-enum ScanEverythingState: Equatable, Sendable {
-    case idle
-    case running(plan: ScanEverythingPlan, startedAt: Date, progress: ScanEverythingProgress)
-    case completed(plan: ScanEverythingPlan, summary: ScanEverythingSummary)
-    case cancelled
-
-    var isRunning: Bool {
-        if case .running = self { return true }
-        return false
-    }
-
-    var progress: ScanEverythingProgress? {
-        guard case .running(_, _, let progress) = self else { return nil }
-        return progress
-    }
-
-    var startedAt: Date? {
-        guard case .running(_, let startedAt, _) = self else { return nil }
-        return startedAt
-    }
-
-    var summary: ScanEverythingSummary? {
-        guard case .completed(_, let summary) = self else { return nil }
-        return summary
-    }
-
-    var plan: ScanEverythingPlan? {
-        switch self {
-        case .running(let plan, _, _), .completed(let plan, _): plan
-        case .idle, .cancelled: nil
-        }
-    }
-}

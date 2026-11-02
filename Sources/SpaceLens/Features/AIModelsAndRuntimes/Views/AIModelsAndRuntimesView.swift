@@ -10,6 +10,7 @@ struct AIModelsViewActions {
 struct AIModelsAndRuntimesView: View {
     @Bindable var store: AIModelsAndRuntimesStore
     @Environment(\.colorScheme) private var colorScheme
+    let isInBatch: Bool
     let actions: AIModelsViewActions
 
     var body: some View {
@@ -18,10 +19,14 @@ struct AIModelsAndRuntimesView: View {
             header(theme: theme)
             switch store.state {
             case .idle:
-                emptyState(theme: theme)
+                if isInBatch {
+                    runningState(theme: theme)
+                } else {
+                    emptyState(theme: theme)
+                }
             case .running(let previousReport):
                 if let previousReport {
-                    reportView(previousReport, theme: theme, progressMessage: progressMessage)
+                    reportView(previousReport, theme: theme)
                 } else {
                     runningState(theme: theme)
                 }
@@ -143,39 +148,9 @@ struct AIModelsAndRuntimesView: View {
     }
 
     private func runningState(theme: SpaceTheme) -> some View {
-        VStack(spacing: 18) {
-            ProgressView()
-                .controlSize(.large)
-                .accessibilityLabel("Analyzing AI models and runtimes")
-            Text(progressTitle)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(theme.primaryText)
-            Text(progressMessage)
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(theme.secondaryText)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-            if let fraction = store.progress.fractionCompleted {
-                ProgressView(value: fraction)
-                    .frame(maxWidth: 430)
-                    .tint(theme.accent)
-            }
-            HStack(spacing: 18) {
-                Label(StorageFormatters.bytes(store.progress.mappedBytes), systemImage: "externaldrive")
-                Label("\(store.progress.itemsScanned.formatted()) items", systemImage: "doc.on.doc")
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Label(elapsedText(at: context.date), systemImage: "clock")
-                }
-            }
-            .font(.callout.monospacedDigit())
-            .foregroundStyle(theme.secondaryText)
-            Button("Cancel") { store.cancelPreservingReport() }
-                .buttonStyle(.bordered)
+        AnalysisInProgressView(title: "Analyzing AI models and runtimes") {
             privacyNotice(theme: theme)
-                .padding(.top, 8)
         }
-        .padding(34)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func failureState(message: String, theme: SpaceTheme) -> some View {
@@ -202,24 +177,14 @@ struct AIModelsAndRuntimesView: View {
     private func reportView(
         _ report: AIModelsAndRuntimesReport,
         theme: SpaceTheme,
-        progressMessage: String? = nil,
         errorMessage: String? = nil
     ) -> some View {
         VStack(spacing: 0) {
-            if let progressMessage {
-                statusBanner(
-                    icon: "arrow.triangle.2.circlepath",
-                    message: progressMessage,
-                    color: theme.accent,
-                    showsProgress: true,
-                    theme: theme
-                )
-            } else if let errorMessage {
+            if let errorMessage {
                 statusBanner(
                     icon: "exclamationmark.triangle.fill",
                     message: errorMessage,
                     color: theme.warning,
-                    showsProgress: false,
                     theme: theme
                 )
             }
@@ -275,11 +240,9 @@ struct AIModelsAndRuntimesView: View {
         icon: String,
         message: String,
         color: Color,
-        showsProgress: Bool,
         theme: SpaceTheme
     ) -> some View {
         HStack(spacing: 8) {
-            if showsProgress { ProgressView().controlSize(.small) }
             Image(systemName: icon).foregroundStyle(color)
             Text(message)
                 .font(.caption.weight(.medium))
@@ -302,25 +265,6 @@ struct AIModelsAndRuntimesView: View {
         .foregroundStyle(theme.tertiaryText)
         .multilineTextAlignment(.center)
         .frame(maxWidth: 650)
-    }
-
-    private var progressTitle: String {
-        guard let runtime = store.progress.currentRuntime else { return "Preparing analysis…" }
-        return "Analyzing \(runtime.displayName)"
-    }
-
-    private var progressMessage: String {
-        var parts: [String] = []
-        if let name = store.progress.currentLocationName { parts.append(name) }
-        if store.progress.totalLocations > 0 {
-            parts.append("\(store.progress.completedLocations) of \(store.progress.totalLocations) locations")
-        }
-        if let path = store.progress.currentPath { parts.append(path) }
-        return parts.isEmpty ? "Discovering known locations" : parts.joined(separator: " · ")
-    }
-
-    private func elapsedText(at date: Date) -> String {
-        StorageFormatters.duration(date.timeIntervalSince(store.startedAt ?? date))
     }
 
     private func selectedRuntime(in report: AIModelsAndRuntimesReport) -> AIModelRuntimeReport? {
@@ -386,20 +330,5 @@ private struct AIModelRuntimeRow: View {
         .accessibilityLabel(
             "\(runtime.displayName), \(runtime.countDescription), \(StorageFormatters.bytes(runtime.size))"
         )
-    }
-}
-
-struct AIModelsToolbarStatus: View {
-    let progress: AIModelsProgress
-
-    var body: some View {
-        HStack(spacing: 7) {
-            ProgressView().controlSize(.small)
-            Text(progress.currentRuntime?.displayName ?? "Analyzing models")
-                .font(.caption.weight(.medium))
-                .lineLimit(1)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Analyzing AI models and runtimes")
     }
 }

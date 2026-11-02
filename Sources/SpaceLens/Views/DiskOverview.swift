@@ -73,6 +73,7 @@ struct DiskOverview: View {
             .buttonStyle(.borderedProminent)
             .tint(theme.accent)
             .keyboardShortcut(.defaultAction)
+            .disabled(model.isScanActive(on: volume))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

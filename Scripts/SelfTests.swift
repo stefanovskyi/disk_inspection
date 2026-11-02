@@ -238,7 +238,7 @@ struct SpaceLensSelfTests {
         try brandLogosExistForEveryCatalogEntry()
         try brandLogosIdentifyProductsAndStorageItems()
         try storageDescriptionsMatchOnlyKnownLocations()
-        try scanCoordinatorKeepsReplacementActive()
+        try scanCoordinatorQueuesWithoutCancellingOtherWork()
         try scanEverythingPlanPrioritizesStartupAndSkipsNetworkVolumes()
         try fullDiskAccessIsCheckedBeforeEveryActivity()
         try elapsedTimeFormattingIsReadable()
@@ -475,29 +475,39 @@ struct SpaceLensSelfTests {
     }
 
     @MainActor
-    private static func scanCoordinatorKeepsReplacementActive() throws {
-        let coordinator = ScanCoordinator()
+    private static func scanCoordinatorQueuesWithoutCancellingOtherWork() throws {
+        let coordinator = ScanCoordinator(maximumConcurrentActivities: 2)
         let storageID = UUID()
         let analysisID = UUID()
-        var storageWasCancelled = false
+        let batchID = UUID()
+        var started: [String] = []
 
-        coordinator.begin(.storage, id: storageID) {
-            storageWasCancelled = true
-        }
-        coordinator.begin(.aiCodingTools, id: analysisID) {}
-        try expect(storageWasCancelled, "Scan coordinator did not cancel the previous activity")
+        coordinator.enqueue(.storage, id: storageID) { started.append("storage") }
+        coordinator.enqueue(.aiCodingTools, id: analysisID) { started.append("analysis") }
+        coordinator.enqueue(.scanEverything, id: batchID) { started.append("batch") }
         try expect(
-            coordinator.activeActivity == .aiCodingTools,
-            "Scan coordinator did not retain the replacement activity"
+            started == ["storage", "analysis"],
+            "Scan coordinator did not run independent work in parallel"
         )
+        try expect(
+            coordinator.queuedActivities == [.scanEverything],
+            "Scan coordinator did not queue work beyond its limit"
+        )
+
+        coordinator.finish(.developerStorage, id: UUID())
+        try expect(started.count == 2, "A stale completion started queued work")
 
         coordinator.finish(.storage, id: storageID)
         try expect(
-            coordinator.activeActivity == .aiCodingTools,
-            "A stale completion cleared the replacement activity"
+            started == ["storage", "analysis", "batch"],
+            "Scan coordinator did not start queued work when a slot opened"
         )
         coordinator.finish(.aiCodingTools, id: analysisID)
-        try expect(coordinator.activeActivity == nil, "Scan coordinator did not finish the active work")
+        coordinator.finish(.scanEverything, id: batchID)
+        try expect(
+            coordinator.runningActivities.isEmpty && coordinator.queuedActivities.isEmpty,
+            "Scan coordinator did not finish its work"
+        )
     }
 
     private static func aiCodingAnalyzerClassifiesBeforeCompaction() async throws {

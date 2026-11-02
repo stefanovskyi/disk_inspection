@@ -48,27 +48,16 @@ struct AppRootView: View {
 
             ToolbarItemGroup(placement: .primaryAction) {
                 if model.selectedSection == .aiCodingTools {
-                    if model.aiCodingTools.isRunning {
-                        AICodingToolsToolbarStatus(progress: model.aiCodingTools.progress)
-
-                        Button {
-                            model.cancelAICodingToolsAnalysis()
-                        } label: {
-                            Label("Cancel Analysis", systemImage: "xmark.circle")
-                        }
-                        .help("Cancel AI coding tool analysis")
-                    } else {
-                        Button {
-                            model.analyzeAICodingTools()
-                        } label: {
-                            Label(
-                                model.aiCodingTools.state.report == nil ? "Analyze" : "Analyze Again",
-                                systemImage: "arrow.clockwise"
-                            )
-                        }
-                        .help("Measure AI coding tool storage")
-                        .disabled(model.isScanningEverything)
+                    Button {
+                        model.analyzeAICodingTools()
+                    } label: {
+                        Label(
+                            model.aiCodingTools.state.report == nil ? "Analyze" : "Analyze Again",
+                            systemImage: "arrow.clockwise"
+                        )
                     }
+                    .help("Measure AI coding tool storage")
+                    .disabled(model.isAnalysisActive(.aiCodingTools))
 
                     Button {
                         model.chooseAICodingProjectRoot()
@@ -76,7 +65,7 @@ struct AppRootView: View {
                         Label("Add Project Root", systemImage: "folder.badge.plus")
                     }
                     .help("Include AI tool worktrees from a project")
-                    .disabled(model.isScanningEverything)
+                    .disabled(model.isInScanEverything(.aiCodingTools))
                     .contextMenu {
                         ForEach(model.aiCodingTools.projectRoots) { root in
                             Button("Remove \(root.name)") {
@@ -86,50 +75,28 @@ struct AppRootView: View {
                         }
                     }
                 } else if model.selectedSection == .aiModelsAndRuntimes {
-                    if model.aiModelsAndRuntimes.isRunning {
-                        AIModelsToolbarStatus(progress: model.aiModelsAndRuntimes.progress)
-
-                        Button {
-                            model.cancelAIModelsAndRuntimesAnalysis()
-                        } label: {
-                            Label("Cancel Analysis", systemImage: "xmark.circle")
-                        }
-                        .help("Cancel AI model and runtime analysis")
-                    } else {
-                        Button {
-                            model.analyzeAIModelsAndRuntimes()
-                        } label: {
-                            Label(
-                                model.aiModelsAndRuntimes.state.report == nil ? "Analyze" : "Analyze Again",
-                                systemImage: "arrow.clockwise"
-                            )
-                        }
-                        .help("Measure AI model and runtime storage")
-                        .disabled(model.isScanningEverything)
+                    Button {
+                        model.analyzeAIModelsAndRuntimes()
+                    } label: {
+                        Label(
+                            model.aiModelsAndRuntimes.state.report == nil ? "Analyze" : "Analyze Again",
+                            systemImage: "arrow.clockwise"
+                        )
                     }
+                    .help("Measure AI model and runtime storage")
+                    .disabled(model.isAnalysisActive(.aiModelsAndRuntimes))
 
                 } else if model.selectedSection == .developerStorage {
-                    if model.developerStorage.isRunning {
-                        DeveloperStorageToolbarStatus(progress: model.developerStorage.progress)
-
-                        Button {
-                            model.cancelDeveloperStorageAnalysis()
-                        } label: {
-                            Label("Cancel Analysis", systemImage: "xmark.circle")
-                        }
-                        .help("Cancel developer storage analysis")
-                    } else {
-                        Button {
-                            model.analyzeDeveloperStorage()
-                        } label: {
-                            Label(
-                                model.developerStorage.state.report == nil ? "Analyze" : "Analyze Again",
-                                systemImage: "arrow.clockwise"
-                            )
-                        }
-                        .help("Measure developer storage")
-                        .disabled(model.isScanningEverything)
+                    Button {
+                        model.analyzeDeveloperStorage()
+                    } label: {
+                        Label(
+                            model.developerStorage.state.report == nil ? "Analyze" : "Analyze Again",
+                            systemImage: "arrow.clockwise"
+                        )
                     }
+                    .help("Measure developer storage")
+                    .disabled(model.isAnalysisActive(.developerStorage))
 
                     Button {
                         model.chooseDeveloperProjectsFolder()
@@ -137,7 +104,7 @@ struct AppRootView: View {
                         Label("Add Projects Folder", systemImage: "folder.badge.plus")
                     }
                     .help("Find generated artifacts below a projects folder")
-                    .disabled(model.isScanningEverything)
+                    .disabled(model.isInScanEverything(.developerStorage))
                     .contextMenu {
                         ForEach(model.developerStorage.projectContainers) { container in
                             Button("Remove \(container.name)") {
@@ -148,23 +115,14 @@ struct AppRootView: View {
                     }
 
                 } else {
-                    if model.isScanning {
-                        ScanToolbarStatus()
-
-                        Button {
-                            model.cancelScan()
-                        } label: {
-                            Label("Cancel Scan", systemImage: "xmark.circle")
-                        }
-                        .help("Cancel the current scan")
-                    } else if model.result != nil {
+                    if model.result != nil {
                         Button {
                             model.rescan()
                         } label: {
                             Label("Rescan", systemImage: "arrow.clockwise")
                         }
                         .help("Scan this location again (⌘R)")
-                        .disabled(model.isScanningEverything)
+                        .disabled(!model.canRefreshCurrentSection)
                     }
 
                     if model.currentNode != nil {
@@ -186,7 +144,6 @@ struct AppRootView: View {
                         Label("Scan Folder", systemImage: "folder.badge.plus")
                     }
                     .help("Choose a folder to scan (⌘O)")
-                    .disabled(model.isScanningEverything)
                 }
             }
         }
@@ -250,6 +207,10 @@ struct AppRootView: View {
             Text("SpaceLens does not have a saved storage map for \(volume.name). Would you like to scan it now?")
         }
         .animation(.easeOut(duration: 0.16), value: model.errorMessage)
+        .onChange(of: model.activityCount) { previousCount, count in
+            // The sidebar is the only place progress is shown.
+            if count > previousCount { isSidebarVisible = true }
+        }
     }
 
     @ViewBuilder
@@ -308,6 +269,7 @@ struct AppRootView: View {
             if model.selectedSection == .aiCodingTools {
                 AICodingToolsView(
                     store: model.aiCodingTools,
+                    isInBatch: model.isInScanEverything(.aiCodingTools),
                     actions: AICodingToolsViewActions(
                         analyze: { model.analyzeAICodingTools() },
                         showInFinder: { model.showInFinder(url: $0) },
@@ -318,6 +280,7 @@ struct AppRootView: View {
             } else if model.selectedSection == .aiModelsAndRuntimes {
                 AIModelsAndRuntimesView(
                     store: model.aiModelsAndRuntimes,
+                    isInBatch: model.isInScanEverything(.aiModelsAndRuntimes),
                     actions: AIModelsViewActions(
                         analyze: { model.analyzeAIModelsAndRuntimes() },
                         showInFinder: { model.showInFinder(url: $0) },
@@ -328,6 +291,7 @@ struct AppRootView: View {
             } else if model.selectedSection == .developerStorage {
                 DeveloperStorageView(
                     store: model.developerStorage,
+                    isInBatch: model.isInScanEverything(.developerStorage),
                     actions: DeveloperStorageViewActions(
                         analyze: { model.analyzeDeveloperStorage() },
                         showInFinder: { model.showInFinder(url: $0) },
@@ -463,38 +427,6 @@ private struct FullDiskAccessPrompt: View {
         .background(theme.background)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Full Disk Access required before scanning or analysis")
-    }
-}
-
-private struct ScanToolbarStatus: View {
-    @Environment(AppViewModel.self) private var model
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Group {
-                if let fraction = model.estimatedScanFraction {
-                    ProgressView(value: fraction)
-                } else {
-                    ProgressView()
-                }
-            }
-            .controlSize(.small)
-            .frame(width: 72)
-
-            Text("\(model.progress.itemsScanned.formatted()) items")
-                .font(.caption)
-                .monospacedDigit()
-        }
-        .help(
-            "\(StorageFormatters.bytes(model.progress.mappedBytes)) mapped\n"
-                + model.progress.currentPath
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Scanning in progress")
-        .accessibilityValue(
-            "\(model.progress.itemsScanned.formatted()) items, "
-                + "\(StorageFormatters.bytes(model.progress.mappedBytes)) mapped"
-        )
     }
 }
 

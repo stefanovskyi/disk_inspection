@@ -42,6 +42,8 @@ final class DeveloperStorageStore {
     deinit { task?.cancel() }
 
     var isRunning: Bool { state.isRunning }
+    /// Requested but still waiting for a free slot in the scan queue.
+    var isQueued: Bool { state.isRunning && startedAt == nil }
 
     func selectEcosystem(_ id: DeveloperEcosystemID) {
         selectedEcosystemID = id
@@ -70,18 +72,31 @@ final class DeveloperStorageStore {
     }
 
     func analyze() {
+        cancelPreservingReport()
         let previousReport = state.report
         let analysisID = UUID()
-        scanCoordinator.begin(.developerStorage, id: analysisID) { [weak self] in
-            self?.cancelPreservingReport(expectedID: analysisID)
-        }
         activeAnalysisID = analysisID
         state = .running(previousReport: previousReport)
         progress = DeveloperStorageProgress()
-        startedAt = Date()
+        startedAt = nil
 
-        let analyzer = analyzer
         let request = requestFactory(projectContainers.map(\.url))
+        scanCoordinator.enqueue(.developerStorage, id: analysisID) { [weak self] in
+            self?.runAnalysis(
+                id: analysisID,
+                request: request,
+                previousReport: previousReport
+            )
+        }
+    }
+
+    private func runAnalysis(
+        id analysisID: UUID,
+        request: DeveloperStorageRequest,
+        previousReport: DeveloperStorageReport?
+    ) {
+        startedAt = Date()
+        let analyzer = analyzer
         task = Task { [weak self] in
             guard let self else { return }
             let progressStore = self

@@ -10,6 +10,7 @@ struct AICodingToolsViewActions {
 struct AICodingToolsView: View {
     @Bindable var store: AICodingToolsStore
     @Environment(\.colorScheme) private var colorScheme
+    let isInBatch: Bool
     let actions: AICodingToolsViewActions
 
     var body: some View {
@@ -20,10 +21,14 @@ struct AICodingToolsView: View {
 
             switch store.state {
             case .idle:
-                emptyState(theme: theme)
+                if isInBatch {
+                    runningState(theme: theme)
+                } else {
+                    emptyState(theme: theme)
+                }
             case .running(let previousReport):
                 if let previousReport {
-                    reportView(previousReport, theme: theme, progressMessage: progressMessage)
+                    reportView(previousReport, theme: theme)
                 } else {
                     runningState(theme: theme)
                 }
@@ -142,50 +147,9 @@ struct AICodingToolsView: View {
     }
 
     private func runningState(theme: SpaceTheme) -> some View {
-        VStack(spacing: 18) {
-            ProgressView()
-                .controlSize(.large)
-                .accessibilityLabel("Analyzing AI coding tool storage")
-
-            Text(progressTitle)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(theme.primaryText)
-
-            Text(progressMessage)
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(theme.secondaryText)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-
-            if let fraction = store.progress.fractionCompleted {
-                ProgressView(value: fraction)
-                    .frame(maxWidth: 430)
-                    .tint(theme.accent)
-                    .accessibilityValue(StorageFormatters.percent(fraction))
-            }
-
-            HStack(spacing: 18) {
-                Label(
-                    StorageFormatters.bytes(store.progress.mappedBytes),
-                    systemImage: "externaldrive"
-                )
-                Label(
-                    "\(store.progress.itemsScanned.formatted()) items",
-                    systemImage: "doc.on.doc"
-                )
-                analysisElapsedLabel
-            }
-            .font(.callout.monospacedDigit())
-            .foregroundStyle(theme.secondaryText)
-
-            Button("Cancel") { store.cancelPreservingReport() }
-                .buttonStyle(.bordered)
-
+        AnalysisInProgressView(title: "Analyzing AI coding tools") {
             metadataNotice(theme: theme)
-                .padding(.top, 8)
         }
-        .padding(34)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func failureState(message: String, theme: SpaceTheme) -> some View {
@@ -212,26 +176,14 @@ struct AICodingToolsView: View {
     private func reportView(
         _ report: AICodingToolsReport,
         theme: SpaceTheme,
-        progressMessage: String? = nil,
         errorMessage: String? = nil
     ) -> some View {
         VStack(spacing: 0) {
-            if let progressMessage {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    analysisBanner(
-                        icon: "arrow.triangle.2.circlepath",
-                        message: progressMessage + " · " + elapsedText(at: context.date),
-                        color: theme.accent,
-                        showsProgress: true,
-                        theme: theme
-                    )
-                }
-            } else if let errorMessage {
+            if let errorMessage {
                 analysisBanner(
                     icon: "exclamationmark.triangle.fill",
                     message: errorMessage,
                     color: theme.warning,
-                    showsProgress: false,
                     theme: theme
                 )
             }
@@ -332,17 +284,11 @@ struct AICodingToolsView: View {
         icon: String,
         message: String,
         color: Color,
-        showsProgress: Bool,
         theme: SpaceTheme
     ) -> some View {
         HStack(spacing: 9) {
-            if showsProgress {
-                ProgressView()
-                    .controlSize(.small)
-            } else {
-                Image(systemName: icon)
-                    .foregroundStyle(color)
-            }
+            Image(systemName: icon)
+                .foregroundStyle(color)
             Text(message)
                 .font(.caption)
                 .foregroundStyle(theme.secondaryText)
@@ -353,33 +299,6 @@ struct AICodingToolsView: View {
         .padding(.vertical, 9)
         .background(color.opacity(0.09))
         .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private var progressTitle: String {
-        if let tool = store.progress.currentTool {
-            return "Analyzing \(tool.displayName)"
-        }
-        return "Preparing analysis"
-    }
-
-    private var analysisElapsedLabel: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            Label(elapsedText(at: context.date), systemImage: "clock")
-        }
-    }
-
-    private func elapsedText(at date: Date) -> String {
-        guard let startedAt = store.startedAt else { return "0 sec" }
-        return StorageFormatters.duration(max(date.timeIntervalSince(startedAt), 0))
-    }
-
-    private var progressMessage: String {
-        let progress = store.progress
-        if !progress.currentLocationName.isEmpty {
-            let path = progress.currentPath.isEmpty ? "" : " · \(progress.currentPath)"
-            return "\(progress.currentLocationName)\(path)"
-        }
-        return "Finding known tool storage locations…"
     }
 
     private func selectedTool(in report: AICodingToolsReport) -> AICodingToolReport? {

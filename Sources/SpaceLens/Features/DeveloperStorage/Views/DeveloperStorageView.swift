@@ -10,6 +10,7 @@ struct DeveloperStorageViewActions {
 struct DeveloperStorageView: View {
     @Bindable var store: DeveloperStorageStore
     @Environment(\.colorScheme) private var colorScheme
+    let isInBatch: Bool
     let actions: DeveloperStorageViewActions
 
     var body: some View {
@@ -18,10 +19,14 @@ struct DeveloperStorageView: View {
             header(theme: theme)
             switch store.state {
             case .idle:
-                emptyState(theme: theme)
+                if isInBatch {
+                    runningState(theme: theme)
+                } else {
+                    emptyState(theme: theme)
+                }
             case .running(let previousReport):
                 if let previousReport {
-                    reportView(previousReport, theme: theme, progressMessage: progressMessage)
+                    reportView(previousReport, theme: theme)
                 } else {
                     runningState(theme: theme)
                 }
@@ -149,38 +154,9 @@ struct DeveloperStorageView: View {
     }
 
     private func runningState(theme: SpaceTheme) -> some View {
-        VStack(spacing: 18) {
-            ProgressView()
-                .controlSize(.large)
-                .accessibilityLabel("Analyzing developer storage")
-            Text(progressTitle)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(theme.primaryText)
-            Text(progressMessage)
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(theme.secondaryText)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-            if let fraction = store.progress.fractionCompleted {
-                ProgressView(value: fraction).frame(maxWidth: 430).tint(theme.accent)
-            }
-            HStack(spacing: 18) {
-                Label(StorageFormatters.bytes(store.progress.mappedBytes), systemImage: "externaldrive")
-                Label("\(store.progress.itemsScanned.formatted()) items", systemImage: "doc.on.doc")
-                Label("\(store.progress.discoveredArtifacts.formatted()) artifacts", systemImage: "folder.badge.gearshape")
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Label(
-                        StorageFormatters.duration(context.date.timeIntervalSince(store.startedAt ?? context.date)),
-                        systemImage: "clock"
-                    )
-                }
-            }
-            .font(.callout.monospacedDigit())
-            .foregroundStyle(theme.secondaryText)
-            Button("Cancel") { store.cancelPreservingReport() }.buttonStyle(.bordered)
+        AnalysisInProgressView(title: "Analyzing developer storage") {
+            EmptyView()
         }
-        .padding(34)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func failureState(message: String, theme: SpaceTheme) -> some View {
@@ -205,14 +181,11 @@ struct DeveloperStorageView: View {
     private func reportView(
         _ report: DeveloperStorageReport,
         theme: SpaceTheme,
-        progressMessage: String? = nil,
         errorMessage: String? = nil
     ) -> some View {
         VStack(spacing: 0) {
-            if let progressMessage {
-                statusBanner(message: progressMessage, warning: false, theme: theme)
-            } else if let errorMessage {
-                statusBanner(message: errorMessage, warning: true, theme: theme)
+            if let errorMessage {
+                statusBanner(message: errorMessage, theme: theme)
             }
             HStack(spacing: 12) {
                 ecosystemRanking(report: report, theme: theme)
@@ -254,11 +227,10 @@ struct DeveloperStorageView: View {
         .spacePanel()
     }
 
-    private func statusBanner(message: String, warning: Bool, theme: SpaceTheme) -> some View {
+    private func statusBanner(message: String, theme: SpaceTheme) -> some View {
         HStack(spacing: 8) {
-            if !warning { ProgressView().controlSize(.small) }
-            Image(systemName: warning ? "exclamationmark.triangle.fill" : "arrow.triangle.2.circlepath")
-                .foregroundStyle(warning ? theme.warning : theme.accent)
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(theme.warning)
             Text(message).font(.caption.weight(.medium)).foregroundStyle(theme.secondaryText).lineLimit(1)
             Spacer()
         }
@@ -266,21 +238,6 @@ struct DeveloperStorageView: View {
         .padding(.vertical, 8)
         .background(theme.surface)
         .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private var progressTitle: String {
-        if let ecosystem = store.progress.currentEcosystem { return "Analyzing \(ecosystem.displayName)" }
-        return "Discovering developer artifacts…"
-    }
-
-    private var progressMessage: String {
-        var parts: [String] = []
-        if let name = store.progress.currentLocationName { parts.append(name) }
-        if store.progress.totalLocations > 0 {
-            parts.append("\(store.progress.completedLocations) of \(store.progress.totalLocations) locations")
-        }
-        if let path = store.progress.currentPath { parts.append(path) }
-        return parts.isEmpty ? "Resolving recognized locations" : parts.joined(separator: " · ")
     }
 
     private func selectedEcosystem(in report: DeveloperStorageReport) -> DeveloperEcosystemReport? {
@@ -328,19 +285,5 @@ private struct DeveloperEcosystemRow: View {
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-    }
-}
-
-struct DeveloperStorageToolbarStatus: View {
-    let progress: DeveloperStorageProgress
-
-    var body: some View {
-        HStack(spacing: 7) {
-            ProgressView().controlSize(.small)
-            Text(progress.currentEcosystem?.displayName ?? "Discovering developer storage")
-                .font(.caption.weight(.medium)).lineLimit(1)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Analyzing developer storage")
     }
 }

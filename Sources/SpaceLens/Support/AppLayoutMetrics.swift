@@ -2,6 +2,7 @@ import CoreGraphics
 
 enum AppLayoutMetrics {
     static let sidebarWidth: CGFloat = 248
+    static let sidebarListMinimumHeight: CGFloat = 120
 
     static let preferredInspectorWidth: CGFloat = 240
     static let minimumInspectorWidth: CGFloat = 220

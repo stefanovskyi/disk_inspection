@@ -44,6 +44,8 @@ final class AICodingToolsStore {
     }
 
     var isRunning: Bool { state.isRunning }
+    /// Requested but still waiting for a free slot in the scan queue.
+    var isQueued: Bool { state.isRunning && startedAt == nil }
 
     func selectTool(_ id: AICodingToolID) {
         selectedToolID = id
@@ -72,19 +74,31 @@ final class AICodingToolsStore {
     }
 
     func analyze() {
+        cancelPreservingReport()
         let previousReport = state.report
         let analysisID = UUID()
-        scanCoordinator.begin(.aiCodingTools, id: analysisID) { [weak self] in
-            self?.cancelPreservingReport(expectedID: analysisID)
-        }
-
         activeAnalysisID = analysisID
         state = .running(previousReport: previousReport)
         progress = AICodingToolsProgress()
-        startedAt = Date()
+        startedAt = nil
 
-        let analyzer = analyzer
         let request = requestFactory(projectRoots.map(\.url))
+        scanCoordinator.enqueue(.aiCodingTools, id: analysisID) { [weak self] in
+            self?.runAnalysis(
+                id: analysisID,
+                request: request,
+                previousReport: previousReport
+            )
+        }
+    }
+
+    private func runAnalysis(
+        id analysisID: UUID,
+        request: AICodingToolsRequest,
+        previousReport: AICodingToolsReport?
+    ) {
+        startedAt = Date()
+        let analyzer = analyzer
         task = Task { [weak self] in
             guard let self else { return }
             let progressStore = self
