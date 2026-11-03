@@ -45,7 +45,7 @@ final class DeveloperStorageStore {
     /// Requested but still waiting for a free slot in the scan queue.
     var isQueued: Bool { state.isRunning && startedAt == nil }
 
-    func selectEcosystem(_ id: DeveloperEcosystemID) {
+    func selectEcosystem(_ id: DeveloperEcosystemID?) {
         selectedEcosystemID = id
     }
 

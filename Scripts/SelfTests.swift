@@ -253,7 +253,24 @@ struct SpaceLensSelfTests {
         try fileNodeEqualityUsesImmutableArenaIdentity()
         try sessionStoreRetainsAndReplacesVolumeResults()
         try previousScanSummaryIsBoundedAndPersistent()
-        print("SpaceLens self-tests passed (41/41)")
+        try navigationHistoryRetracesVisitsAndPrunesRemovedLocations()
+        print("SpaceLens self-tests passed (42/42)")
+    }
+
+    private static func navigationHistoryRetracesVisitsAndPrunesRemovedLocations() throws {
+        var history = NavigationHistory<String>()
+        history.record(from: "disk", to: "folder")
+        history.record(from: "folder", to: "nested")
+        history.record(from: "nested", to: "nested")
+        history.record(from: "nested", to: "disk") // A breadcrumb jump is a visit too.
+        guard history.goBack() == "nested", history.goBack() == "folder" else {
+            throw SelfTestFailure.failed("Back did not retrace folders and breadcrumb visits")
+        }
+        history.record(from: "folder", to: "analysis")
+        history.removeAll { $0 == "folder" }
+        guard history.goBack() == "disk", !history.canGoBack, history.goBack() == nil else {
+            throw SelfTestFailure.failed("Removed locations or duplicate selections remained in Back history")
+        }
     }
 
     private static func scanEverythingPlanPrioritizesStartupAndSkipsNetworkVolumes() throws {

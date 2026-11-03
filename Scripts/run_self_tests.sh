@@ -13,6 +13,7 @@ swiftc \
     -sdk "$sdk_path" \
     -module-cache-path "$temporary_dir/module-cache" \
     "$project_dir/Sources/SpaceLens/Models/FileNode.swift" \
+    "$project_dir/Sources/SpaceLens/Models/AppNavigation.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Domain/AICodingToolInstallations.swift" \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Domain/AICodingToolsReport.swift" \
     "$project_dir/Sources/SpaceLens/Features/DeveloperStorage/Domain/DeveloperStorageReport.swift" \

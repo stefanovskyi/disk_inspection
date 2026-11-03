@@ -42,7 +42,7 @@ struct AppRootView: View {
                 } label: {
                     Label("Back", systemImage: "chevron.left")
                 }
-                .disabled(model.selectedSection != .storage || !model.canNavigateBack)
+                .disabled(!model.canNavigateBack)
                 .help("Go back (⌘[)")
             }
 
@@ -149,6 +149,14 @@ struct AppRootView: View {
         }
         .tint(theme.accent)
         .background(theme.background)
+        .background {
+            MouseBackNavigation {
+                guard model.canNavigateBack else { return false }
+                model.navigateBack()
+                return true
+            }
+            .frame(width: 0, height: 0)
+        }
         .overlay(alignment: .top) {
             if let message = model.errorMessage {
                 ErrorBanner(message: message) {
@@ -279,6 +287,7 @@ struct AppRootView: View {
                     store: model.aiCodingTools,
                     isInBatch: model.isInScanEverything(.aiCodingTools),
                     actions: AICodingToolsViewActions(
+                        selectTool: { model.selectAICodingTool($0) },
                         analyze: { model.analyzeAICodingTools() },
                         showInFinder: { model.showInFinder(url: $0) },
                         openInTerminal: { model.openInTerminal(url: $0) },
@@ -290,6 +299,7 @@ struct AppRootView: View {
                     store: model.aiModelsAndRuntimes,
                     isInBatch: model.isInScanEverything(.aiModelsAndRuntimes),
                     actions: AIModelsViewActions(
+                        selectRuntime: { model.selectAIModelRuntime($0) },
                         analyze: { model.analyzeAIModelsAndRuntimes() },
                         showInFinder: { model.showInFinder(url: $0) },
                         openInTerminal: { model.openInTerminal(url: $0) },
@@ -301,6 +311,7 @@ struct AppRootView: View {
                     store: model.developerStorage,
                     isInBatch: model.isInScanEverything(.developerStorage),
                     actions: DeveloperStorageViewActions(
+                        selectEcosystem: { model.selectDeveloperEcosystem($0) },
                         analyze: { model.analyzeDeveloperStorage() },
                         showInFinder: { model.showInFinder(url: $0) },
                         openInTerminal: { model.openInTerminal(url: $0) },

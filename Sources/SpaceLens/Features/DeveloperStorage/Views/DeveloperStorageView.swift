@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct DeveloperStorageViewActions {
+    let selectEcosystem: (DeveloperEcosystemID) -> Void
     let analyze: () -> Void
     let showInFinder: (URL) -> Void
     let openInTerminal: (URL) -> Void
@@ -221,7 +222,7 @@ struct DeveloperStorageView: View {
             }
             .padding(.horizontal, 4)
             ForEach(report.rankedEcosystems) { ecosystem in
-                Button { store.selectEcosystem(ecosystem.id) } label: {
+                Button { actions.selectEcosystem(ecosystem.id) } label: {
                     DeveloperEcosystemRow(
                         ecosystem: ecosystem,
                         totalSize: report.totalSize,

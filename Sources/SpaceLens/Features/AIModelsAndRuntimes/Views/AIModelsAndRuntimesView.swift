@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AIModelsViewActions {
+    let selectRuntime: (AIModelRuntimeID) -> Void
     let analyze: () -> Void
     let showInFinder: (URL) -> Void
     let openInTerminal: (URL) -> Void
@@ -231,7 +232,7 @@ struct AIModelsAndRuntimesView: View {
             }
             .padding(.horizontal, 4)
             ForEach(report.rankedRuntimes) { runtime in
-                Button { store.selectRuntime(runtime.id) } label: {
+                Button { actions.selectRuntime(runtime.id) } label: {
                     AIModelRuntimeRow(
                         runtime: runtime,
                         totalSize: report.totalSize,

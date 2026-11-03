@@ -47,7 +47,7 @@ final class AICodingToolsStore {
     /// Requested but still waiting for a free slot in the scan queue.
     var isQueued: Bool { state.isRunning && startedAt == nil }
 
-    func selectTool(_ id: AICodingToolID) {
+    func selectTool(_ id: AICodingToolID?) {
         selectedToolID = id
     }
 

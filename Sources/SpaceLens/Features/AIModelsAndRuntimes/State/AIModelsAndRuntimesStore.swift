@@ -47,7 +47,7 @@ final class AIModelsAndRuntimesStore {
     /// Requested but still waiting for a free slot in the scan queue.
     var isQueued: Bool { state.isRunning && startedAt == nil }
 
-    func selectRuntime(_ id: AIModelRuntimeID) {
+    func selectRuntime(_ id: AIModelRuntimeID?) {
         selectedRuntimeID = id
     }
 

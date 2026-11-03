@@ -90,6 +90,21 @@ final class AppViewModelScanQueueTests: XCTestCase {
         XCTAssertFalse(model.aiCodingTools.isRunning)
     }
 
+    func testBackAcrossPagesDoesNotCancelAnalysis() {
+        let model = makeModel()
+        model.analyzeAICodingTools()
+        model.showAIModelsAndRuntimes()
+        model.showDeveloperStorage()
+
+        model.navigateBack()
+        XCTAssertEqual(model.selectedSection, .aiModelsAndRuntimes)
+        model.navigateBack()
+        XCTAssertEqual(model.selectedSection, .aiCodingTools)
+        XCTAssertTrue(model.aiCodingTools.isRunning)
+        XCTAssertEqual(model.activities.map(\.target), [.analysis(.aiCodingTools)])
+        model.activities.forEach(model.cancel)
+    }
+
     func testStorageScanKeepsRunningAcrossNavigationAndCachesItsResult() async throws {
         let scanner = GatedScanner()
         let model = makeModel(scanner: scanner)

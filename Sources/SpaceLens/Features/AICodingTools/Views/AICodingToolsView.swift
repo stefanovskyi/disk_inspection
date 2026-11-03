@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AICodingToolsViewActions {
+    let selectTool: (AICodingToolID) -> Void
     let analyze: () -> Void
     let showInFinder: (URL) -> Void
     let openInTerminal: (URL) -> Void
@@ -236,7 +237,7 @@ struct AICodingToolsView: View {
 
             ForEach(report.rankedTools) { tool in
                 Button {
-                    store.selectTool(tool.id)
+                    actions.selectTool(tool.id)
                 } label: {
                     AICodingToolRow(
                         tool: tool,

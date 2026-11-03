@@ -8,6 +8,30 @@ private enum PendingFullDiskOperation {
     case analysis(ScanEverythingAnalysis)
 }
 
+private enum NavigationLocation: Equatable {
+    case storage(StorageNavigationLocation)
+    case aiCodingTools(AICodingToolID?)
+    case aiModelsAndRuntimes(AIModelRuntimeID?)
+    case developerStorage(DeveloperEcosystemID?)
+}
+
+private struct StorageNavigationLocation: Equatable {
+    let volume: VolumeInfo?
+    let result: ScanResult?
+    let scanPath: String?
+    let navigationPath: [FileNode]
+
+    var rootPath: String? { scanPath ?? result?.root.id ?? volume?.id }
+    var showsScan: Bool { result != nil || scanPath != nil }
+    var nodeIDs: [String] {
+        navigationPath.isEmpty ? rootPath.map { [$0] } ?? [] : navigationPath.map(\.id)
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.rootPath == rhs.rootPath && lhs.showsScan == rhs.showsScan && lhs.nodeIDs == rhs.nodeIDs
+    }
+}
+
 /// A requested disk or folder scan. Progress lives on this object so that a
 /// background scan only invalidates views that actually read it.
 @MainActor
@@ -81,6 +105,8 @@ final class AppViewModel {
     private let previousScanStore = PreviousScanStore()
     private let scanResultFinalizer = ScanResultFinalizer()
     private var scanSessionStore = ScanSessionStore()
+    private var navigationHistory = NavigationHistory<NavigationLocation>()
+    @ObservationIgnored private var isUpdatingNavigation = false
     private var previousSummaries: [String: PreviousScanSummary] = [:]
     @ObservationIgnored private var scanTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var volumeRefreshTask: Task<Void, Never>?
@@ -144,7 +170,7 @@ final class AppViewModel {
     var currentNode: FileNode? {
         navigationPath.last ?? presentedScan?.progress.previewRoot
     }
-    var canNavigateBack: Bool { !isScanning && navigationPath.count > 1 }
+    var canNavigateBack: Bool { navigationHistory.canGoBack }
     var isRequestingFullDiskAccess: Bool { pendingFullDiskOperation != nil }
     var isRequestingScanEverything: Bool { pendingScanEverythingPlan != nil }
     var isRequestingRescan: Bool { pendingRescanVolume != nil }
@@ -258,7 +284,10 @@ final class AppViewModel {
             }
             updatePreviousScanPresentation()
             if selectedSection == .storage, !isScanning, result == nil, let selectedVolumeOverview {
+                // Refreshing mounted-volume metadata is not user navigation.
+                isUpdatingNavigation = true
                 presentActiveOrStoredScan(for: selectedVolumeOverview)
+                isUpdatingNavigation = false
             }
             isDiscoveringVolumes = false
             volumeRefreshTask = nil
@@ -417,6 +446,8 @@ final class AppViewModel {
     }
 
     func selectVolume(_ volume: VolumeInfo) {
+        let previous = beginNavigation()
+        defer { finishNavigation(from: previous) }
         selectedSection = .storage
         if presentActiveOrStoredScan(for: volume) {
             return
@@ -428,6 +459,8 @@ final class AppViewModel {
     }
 
     func selectSessionFolder(_ folder: SessionFolder) {
+        let previous = beginNavigation()
+        defer { finishNavigation(from: previous) }
         selectedSection = .storage
         selectedVolumeOverview = nil
         previousScanSummary = nil
@@ -454,6 +487,8 @@ final class AppViewModel {
     }
 
     func viewCachedResult(at url: URL) {
+        let previous = beginNavigation()
+        defer { finishNavigation(from: previous) }
         guard let cachedResult = cachedResult(at: url) else {
             scan(url)
             return
@@ -467,6 +502,10 @@ final class AppViewModel {
         if let volume = volume(at: url) {
             selectedVolumeOverview = volume
             updatePreviousScanPresentation()
+        } else {
+            selectedVolumeOverview = nil
+            previousScanSummary = nil
+            previousScanRoot = nil
         }
     }
 
@@ -475,6 +514,8 @@ final class AppViewModel {
         guard let summary = previousSummaries[volume.persistentIdentifier] else {
             return false
         }
+        let previous = beginNavigation()
+        defer { finishNavigation(from: previous) }
 
         selectedSection = .storage
         presentedScanPath = scanJob(at: volume.url)?.path
@@ -507,6 +548,10 @@ final class AppViewModel {
 
     func removeSessionFolder(_ folder: SessionFolder) {
         let folderPath = folder.url.standardizedFileURL.path
+        navigationHistory.removeAll {
+            if case .storage(let location) = $0 { return location.rootPath == folderPath }
+            return false
+        }
         sessionFolders.removeAll { $0.id == folder.id }
         scanSessionStore.removeResult(for: folder.url)
 
@@ -520,6 +565,8 @@ final class AppViewModel {
     }
 
     func showDiskList() {
+        let previous = beginNavigation()
+        defer { finishNavigation(from: previous) }
         selectedSection = .storage
         pendingFullDiskOperation = nil
         pendingScanEverythingPlan = nil
@@ -546,6 +593,8 @@ final class AppViewModel {
         panel.canCreateDirectories = false
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        let previous = beginNavigation()
+        defer { finishNavigation(from: previous) }
         let folder = SessionFolder(url: url)
         if !sessionFolders.contains(folder) {
             sessionFolders.append(folder)
@@ -558,11 +607,17 @@ final class AppViewModel {
     }
 
     func scan(_ url: URL) {
+        let previous = beginNavigation()
+        defer { finishNavigation(from: previous) }
         selectedSection = .storage
         let volume = volume(at: url)
         if let volume {
             selectedVolumeOverview = volume
             updatePreviousScanPresentation()
+        } else {
+            selectedVolumeOverview = nil
+            previousScanSummary = nil
+            previousScanRoot = nil
         }
         if let job = scanJob(at: url) {
             present(job)
@@ -605,6 +660,8 @@ final class AppViewModel {
     }
 
     private func startScan(_ url: URL) {
+        let previous = beginNavigation()
+        defer { finishNavigation(from: previous) }
         if let job = scanJob(at: url) {
             present(job)
             return
@@ -770,6 +827,8 @@ final class AppViewModel {
     }
 
     func showVolumeOverview(_ volume: VolumeInfo) {
+        let previous = beginNavigation()
+        defer { finishNavigation(from: previous) }
         selectedSection = .storage
         presentedScanPath = nil
         result = nil
@@ -779,18 +838,120 @@ final class AppViewModel {
     }
 
     func navigate(into node: FileNode) {
-        guard !isScanning, node.isDirectory, !node.children.isEmpty else { return }
-        navigationPath.append(node)
+        guard !isScanning, node.isDirectory, !node.children.isEmpty,
+              let currentNode, node.id != currentNode.id,
+              let destination = navigationNode(withID: node.id, under: currentNode) else { return }
+        updateNavigation {
+            navigationPath.append(destination)
+        }
     }
 
     func navigate(toBreadcrumbAt index: Int) {
         guard navigationPath.indices.contains(index) else { return }
-        navigationPath = Array(navigationPath.prefix(index + 1))
+        updateNavigation {
+            navigationPath = Array(navigationPath.prefix(index + 1))
+        }
     }
 
     func navigateBack() {
-        guard canNavigateBack else { return }
-        navigationPath.removeLast()
+        guard let location = navigationHistory.goBack() else { return }
+        restoreNavigation(location)
+    }
+
+    private var navigationLocation: NavigationLocation {
+        switch selectedSection {
+        case .storage:
+            return .storage(StorageNavigationLocation(
+                volume: selectedVolumeOverview,
+                result: result,
+                scanPath: presentedScanPath,
+                navigationPath: navigationPath
+            ))
+        case .aiCodingTools: return .aiCodingTools(aiCodingTools.selectedToolID)
+        case .aiModelsAndRuntimes: return .aiModelsAndRuntimes(aiModelsAndRuntimes.selectedRuntimeID)
+        case .developerStorage: return .developerStorage(developerStorage.selectedEcosystemID)
+        }
+    }
+
+    /// Nested actions (such as selecting a cached folder) form one history entry.
+    private func updateNavigation(_ update: () -> Void) {
+        let previous = beginNavigation()
+        defer { finishNavigation(from: previous) }
+        update()
+    }
+
+    private func beginNavigation() -> NavigationLocation? {
+        guard !isUpdatingNavigation else { return nil }
+        isUpdatingNavigation = true
+        return navigationLocation
+    }
+
+    private func finishNavigation(from previous: NavigationLocation?) {
+        guard let previous else { return }
+        navigationHistory.record(from: previous, to: navigationLocation)
+        isUpdatingNavigation = false
+    }
+
+    private func restoreNavigation(_ location: NavigationLocation) {
+        switch location {
+        case .aiCodingTools(let id):
+            selectedSection = .aiCodingTools
+            aiCodingTools.selectTool(id)
+        case .aiModelsAndRuntimes(let id):
+            selectedSection = .aiModelsAndRuntimes
+            aiModelsAndRuntimes.selectRuntime(id)
+        case .developerStorage(let id):
+            selectedSection = .developerStorage
+            developerStorage.selectEcosystem(id)
+        case .storage(let location):
+            selectedSection = .storage
+            selectedVolumeOverview = location.volume
+            updatePreviousScanPresentation()
+            presentedScanPath = nil
+            result = nil
+            navigationPath = []
+            guard location.showsScan, let rootPath = location.rootPath else { return }
+            let url = URL(fileURLWithPath: rootPath)
+            if let job = scanJob(atPath: rootPath) {
+                present(job)
+            } else {
+                result = cachedResult(at: url) ?? location.result
+            }
+            if let result {
+                // A rescan can remove descendants. Stop at the deepest surviving folder.
+                navigationPath = [result.root]
+                for id in location.nodeIDs.dropFirst() {
+                    guard let parent = navigationPath.last,
+                          let node = navigationNode(withID: id, under: parent) else { break }
+                    navigationPath.append(node)
+                }
+            }
+        }
+    }
+
+    /// Chart clicks can jump several levels, so history paths need not list
+    /// every ancestor. Resolve only the components along the requested path.
+    private func navigationNode(withID id: String, under root: FileNode) -> FileNode? {
+        if id == root.id { return root }
+        guard id.hasPrefix(root.id == "/" ? "/" : root.id + "/") else { return nil }
+        var node = root
+        for name in id.dropFirst(root.id.count).split(separator: "/") {
+            guard let child = node.children.first(where: { !$0.isAggregate && $0.name == name }) else { return nil }
+            node = child
+        }
+        return node
+    }
+
+    func selectAICodingTool(_ id: AICodingToolID) {
+        updateNavigation { aiCodingTools.selectTool(id) }
+    }
+
+    func selectAIModelRuntime(_ id: AIModelRuntimeID) {
+        updateNavigation { aiModelsAndRuntimes.selectRuntime(id) }
+    }
+
+    func selectDeveloperEcosystem(_ id: DeveloperEcosystemID) {
+        updateNavigation { developerStorage.selectEcosystem(id) }
     }
 
     func showInFinder(_ node: FileNode) {
@@ -836,11 +997,11 @@ final class AppViewModel {
     }
 
     func showAICodingTools() {
-        selectedSection = .aiCodingTools
+        updateNavigation { selectedSection = .aiCodingTools }
     }
 
     func analyzeAICodingTools() {
-        selectedSection = .aiCodingTools
+        showAICodingTools()
         errorMessage = nil
         requestAnalysis(.aiCodingTools)
     }
@@ -880,11 +1041,11 @@ final class AppViewModel {
     }
 
     func showAIModelsAndRuntimes() {
-        selectedSection = .aiModelsAndRuntimes
+        updateNavigation { selectedSection = .aiModelsAndRuntimes }
     }
 
     func analyzeAIModelsAndRuntimes() {
-        selectedSection = .aiModelsAndRuntimes
+        showAIModelsAndRuntimes()
         errorMessage = nil
         requestAnalysis(.aiModelsAndRuntimes)
     }
@@ -923,11 +1084,11 @@ final class AppViewModel {
     }
 
     func showDeveloperStorage() {
-        selectedSection = .developerStorage
+        updateNavigation { selectedSection = .developerStorage }
     }
 
     func analyzeDeveloperStorage() {
-        selectedSection = .developerStorage
+        showDeveloperStorage()
         errorMessage = nil
         requestAnalysis(.developerStorage)
     }
