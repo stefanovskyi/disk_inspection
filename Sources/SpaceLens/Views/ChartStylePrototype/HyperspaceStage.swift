@@ -9,7 +9,7 @@ struct HyperspaceStage: View {
     var actions: SunburstChartActions = .disabled
 
     private var dark: Bool { colorScheme == .dark }
-    private var theme: SpaceTheme { SpaceTheme(colorScheme: colorScheme) }
+    private var theme: SpaceTheme { SpaceTheme(colorScheme: colorScheme, usesSlateSurfaces: true) }
     private var accent: Color { variant.accent(isDark: dark) }
 
     var body: some View {
@@ -57,7 +57,10 @@ struct HyperspaceStage: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 18)
         }
-        .background(variant.background(isDark: dark))
+        .background(LinearGradient(
+            colors: dark ? [variant.background(isDark: true), variant.background(isDark: true)] : [theme.surface, theme.sidebar],
+            startPoint: .topLeading, endPoint: .bottomTrailing
+        ))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay { RoundedRectangle(cornerRadius: 12).stroke(accent.opacity(0.35), lineWidth: 1) }
         .environment(\.hyperspaceVariant, variant)
@@ -103,7 +106,7 @@ struct HyperspaceStage: View {
                 HStack(spacing: 8) {
                     Text(String(format: "%02d", index + 1))
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(color)
+                        .foregroundStyle(dark ? color : theme.secondaryText)
                     Text(child.name).font(.system(size: 12, weight: .medium)).lineLimit(1)
                     Spacer(minLength: 0)
                     Text(StorageFormatters.percent(child.percentage(of: root.size)))

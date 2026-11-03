@@ -4,38 +4,39 @@
 :root{font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif);color:var(--foreground,#dce8f2)}
 html,body{margin:0}*{box-sizing:border-box}button,select,input{font:inherit}button,select{cursor:pointer}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--ring,#54d6ef);outline-offset:3px}
 .controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 10px}.controls button,.controls select,.demo{padding:8px 11px;background:var(--secondary,#202c3b);color:var(--foreground,#dce8f2);border:1px solid var(--border,#465565);border-radius:7px;font-size:12px}.controls button[aria-pressed=true]{border-color:var(--primary,#5cdaec);background:var(--accent,#173f55)}.controls .motion{font-size:11px;display:flex;gap:5px;align-items:center;margin-left:auto;color:var(--muted-foreground,#9aabba)}
-.cockpit{--ink:#dce9f6;--muted:#91a9c3;--edge:#244258;--accent:#5ee6ff;--base:#040a16;--tint:#0d2438;background:var(--base);border:1px solid var(--edge);border-radius:12px;padding:18px;color:var(--ink);overflow:hidden}.cockpit.light{--ink:#172d41;--muted:#526b82;--edge:#b0c9d8;--accent:#087b98;--base:#f3f8fc;--tint:#dcecf4}
+.cockpit{--ink:#dce9f6;--muted:#91a9c3;--edge:#244258;--accent:#5ee6ff;--base:#040a16;--tint:#0d2438;background:var(--base);border:1px solid var(--edge);border-radius:12px;padding:18px;color:var(--ink);overflow:hidden}.cockpit.light{--ink:#112a3d;--muted:#1c384a;--edge:#667f93;--accent:#06445d;--base:#a7bac9;--tint:#91adbf;background:linear-gradient(135deg,#a7bac9,#99adbd)}.cockpit.light .directory .rank{color:var(--muted)}
 .console-head{display:flex;gap:15px;align-items:flex-start;justify-content:space-between;padding-bottom:15px;border-bottom:1px solid var(--edge)}.eyebrow{font:600 11px var(--font-mono,ui-monospace,monospace);letter-spacing:2.4px;color:var(--accent)}.subtitle{color:var(--muted);font-size:12px;line-height:1.5;margin:7px 0 0}.sample{font:9px/1.8 var(--font-mono,ui-monospace,monospace);color:var(--muted);text-align:right;white-space:nowrap;letter-spacing:1px}.breadcrumbs{display:flex;gap:6px;align-items:center;margin:12px 0 0;flex-wrap:wrap}.breadcrumbs button{color:var(--ink);font-size:10px;background:transparent;border:0;padding:2px 0}.breadcrumbs span{color:var(--muted);font-size:10px}.stage{display:grid;grid-template-columns:minmax(0,1fr) 175px;gap:12px;align-items:stretch}.chart-wrap{position:relative;min-width:0;height:470px}.chart-wrap canvas{display:block;width:100%;height:100%;touch-action:manipulation}.chart-wrap canvas:focus-visible{outline:1px solid var(--accent)}.panel{padding:23px 0 10px;min-width:0;display:flex;flex-direction:column;gap:15px}.panel-title{font:10px var(--font-mono,ui-monospace,monospace);color:var(--accent);letter-spacing:1.6px}.rows{display:flex;flex-direction:column;gap:16px}.directory{display:block;position:relative;width:100%;text-align:left;background:transparent;border:0;color:var(--ink);padding:0 0 9px;min-width:0}.directory:hover{color:var(--accent)}.directory:focus-visible{outline:1px solid var(--accent);outline-offset:4px}.directory .name{display:flex;gap:7px;align-items:baseline;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.directory .rank{font:9px var(--font-mono,ui-monospace,monospace);color:var(--branch)}.directory .amount{display:block;font:10px var(--font-mono,ui-monospace,monospace);color:var(--muted);margin:6px 0 0}.directory .bar{position:absolute;height:2px;bottom:0;left:0;background:var(--branch);width:var(--share)}.summary{margin-top:auto;font:10px/2 var(--font-mono,ui-monospace,monospace);border-left:2px solid var(--accent);padding:6px 10px;background:var(--tint);color:var(--muted)}.selection{font:10px/1.8 var(--font-mono,ui-monospace,monospace);color:var(--muted);min-height:38px}.selection strong{color:var(--ink);font-weight:500}.console-foot{border-top:1px solid var(--edge);padding-top:12px;display:flex;align-items:center;gap:10px;justify-content:space-between}.hint{font:10px/1.6 var(--font-mono,ui-monospace,monospace);color:var(--muted)}.demo{background:var(--tint);border-color:var(--edge);color:var(--accent);font:10px var(--font-mono,ui-monospace,monospace);white-space:nowrap}.demo:hover{border-color:var(--accent)}.notes{font-size:11px;line-height:1.6;color:var(--muted-foreground,#99aabc);margin:10px 0 0}
 @media(max-width:540px){.cockpit{padding:13px}.stage{grid-template-columns:minmax(0,1fr);gap:0}.chart-wrap{height:340px}.panel{padding-top:0;gap:10px}.rows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.summary{display:none}.selection{min-height:0}.console-head{gap:5px}.eyebrow{font-size:10px;letter-spacing:1.6px}.sample{font-size:8px}.controls .motion{margin-left:0}.console-foot{align-items:flex-start}.hint{font-size:9px}}
-@media(prefers-color-scheme:light){:root{color:var(--foreground,#172d41)}.controls button,.controls select{background:var(--secondary,#edf2f6);color:var(--foreground,#172d41);border-color:var(--border,#c3cfd9)}.controls button[aria-pressed=true]{background:var(--accent,#c6e8ed)}.notes,.controls .motion{color:var(--muted-foreground,#526b82)}}
+@media(prefers-color-scheme:light){:root{color:var(--foreground,#172d41)}.controls button,.controls select{background:color-mix(in srgb,var(--secondary,#8fa4b4) 20%,#8fa4b4);color:var(--foreground,#112a3d);border-color:#667f93}.controls button[aria-pressed=true]{background:color-mix(in srgb,var(--accent,#537a94) 30%,#6c91a8)}.notes,.controls .motion{color:var(--muted-foreground,#526b82)}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
 </style></head><body><main>
 <nav class="controls" aria-label="Hyperspace variants">
-<button data-choice="hologram" aria-pressed="true">Hologram</button><button data-choice="nebula" aria-pressed="false">Nebula</button><button data-choice="pulse" aria-pressed="false">Pulse</button>
-<button id="appearance" aria-label="Toggle chart light and dark appearance">Light</button><label class="motion"><input id="motion" type="checkbox" checked>Motion</label>
+<button data-choice="holo-pulse" aria-pressed="true">Holo Pulse</button><button data-choice="hologram" aria-pressed="false">Hologram</button><button data-choice="nebula" aria-pressed="false">Nebula</button><button data-choice="pulse" aria-pressed="false">Pulse</button>
+<button id="appearance" aria-label="Toggle chart Slate and Dark appearance">Slate</button><label class="motion"><input id="motion" type="checkbox" checked>Motion</label>
 <select id="dataset" aria-label="Sample dataset"><option value="disk">Disk</option><option value="folder">Folder</option></select>
 </nav>
-<section class="cockpit" data-variant="hologram" aria-label="SpaceLens storage-map prototype">
-<div class="console-head"><div><div class="eyebrow" id="title">SPACELENS / HYPERSPACE</div><p class="subtitle" id="subtitle"></p></div><div class="sample"><span id="variant-title">HOLOGRAM</span><br>SAMPLE DATA</div></div>
+<section class="cockpit" data-variant="holo-pulse" aria-label="SpaceLens storage-map prototype">
+<div class="console-head"><div><div class="eyebrow" id="title">SPACELENS / HYPERSPACE</div><p class="subtitle" id="subtitle"></p></div><div class="sample"><span id="variant-title">HOLO PULSE</span><br>SAMPLE DATA</div></div>
 <nav class="breadcrumbs" id="breadcrumbs" aria-label="Folder path"></nav>
 <div class="stage"><div class="chart-wrap"><canvas id="chart" role="img" aria-label="Interactive storage chart; the directory buttons provide the same navigation"></canvas></div><aside class="panel"><div class="panel-title">SECTOR DIRECTORY</div><div class="rows" id="directories"></div><div class="selection" id="selection" aria-live="polite"></div><div class="summary" id="summary"></div></aside></div>
 <div class="console-foot"><span class="hint" id="hint"></span><button class="demo" id="demo">Try hover effect</button></div>
 </section>
-<p class="notes">Three Hyperspace variations using the same sample data. Hover a folder or replay its effect; click folders to explore. Motion settles after 1.2 seconds and respects Reduce Motion. Open the native version with <code>make chart-preview</code>.</p>
+<p class="notes">Holo Pulse combines Hologram’s translucent material with Pulse’s curved tracer. Slate replaces the bright light appearance. Hover a folder or replay its effect; click folders to explore. Motion settles after 1.2 seconds and respects Reduce Motion. Open the native version with <code>make chart-preview</code>.</p>
 <script id="scene-data" type="application/json">__SPACE_SCENES__</script>
 <script>
 
 const data = JSON.parse(document.getElementById('scene-data').textContent);
 const variants = {
-  hologram: { title:'Hologram', subtitle:'Fine glass-like edges. A light sweep follows the hovered sector.', hint:'HOVER / sector sweep', stars:180, glow:3 },
-  nebula: { title:'Nebula', subtitle:'Fuller luminous bands. A soft wave lights the hovered sector.', hint:'HOVER / soft light wave', stars:240, glow:6 },
-  pulse: { title:'Pulse', subtitle:'Crisp energy contours. A short tracer follows the hovered arc.', hint:'HOVER / curved edge tracer', stars:100, glow:2 }
+  'holo-pulse': { title:'Holo Pulse', subtitle:"Hologram's translucent color, with Pulse's curved hover tracer.", hint:'HOVER / curved edge tracer', material:'hologram', motion:'pulse', stars:180, glow:3 },
+  hologram: { title:'Hologram', subtitle:'Fine glass-like edges. A light sweep follows the hovered sector.', hint:'HOVER / sector sweep', material:'hologram', motion:'hologram', stars:180, glow:3 },
+  nebula: { title:'Nebula', subtitle:'Fuller luminous bands. A soft wave lights the hovered sector.', hint:'HOVER / soft light wave', material:'nebula', motion:'nebula', stars:240, glow:6 },
+  pulse: { title:'Pulse', subtitle:'Crisp energy contours. A short tracer follows the hovered arc.', hint:'HOVER / curved edge tracer', material:'pulse', motion:'pulse', stars:100, glow:2 }
 };
 const hues = [.53,.69,.10,.90,.38,.77,.02,.56];
 const canvas = document.getElementById('chart'), ctx = canvas.getContext('2d'), cockpit = document.querySelector('.cockpit');
 const params = new URLSearchParams(location.search);
-let variant = variants[params.get('variant')] ? params.get('variant') : 'hologram';
-let light = params.get('appearance') === 'light', path = [data.diskRoot], hover = null, selected = null, started = 0, queued = false, metrics = null;
+let variant = variants[params.get('variant')] ? params.get('variant') : 'holo-pulse';
+let light = ['slate','light'].includes(params.get('appearance')), path = [data.diskRoot], hover = null, selected = null, started = 0, queued = false, metrics = null;
 const reduced = matchMedia('(prefers-reduced-motion:reduce)'), motion = document.getElementById('motion');
 motion.checked = !reduced.matches;
 motion.disabled = reduced.matches;
@@ -50,7 +51,7 @@ function hue(s) {
   const index=Math.max(0,branches.findIndex(x=>m>=x.start&&m<=x.end));
   return hues[index%hues.length];
 }
-function color(s,a=1) { return rgb(hue(s),light?.77:.72-s.depth*.035,light?.60+s.depth*.018:.78+s.depth*.025,a); }
+function color(s,a=1) { return rgb(hue(s),light?.77:.72-s.depth*.035,light?.44+s.depth*.01:.78+s.depth*.025,a); }
 function bytes(n) { return `${(n/1e9).toLocaleString('en-US',{maximumFractionDigits:2})} GB`; }
 function point(radius,angle) { return [metrics.cx+Math.sin(angle)*radius,metrics.cy-Math.cos(angle)*radius]; }
 function arc(radius,start,end) {
@@ -69,7 +70,7 @@ function line(a,b,color,width=1) {
 function update() {
   const s=scene();cockpit.dataset.variant=variant;cockpit.classList.toggle('light',light);
   document.querySelectorAll('[data-choice]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.choice===variant)));
-  document.getElementById('appearance').textContent=light?'Dark':'Light';
+  document.getElementById('appearance').textContent=light?'Dark':'Slate';
   document.getElementById('variant-title').textContent=variants[variant].title.toUpperCase();
   document.getElementById('subtitle').textContent=variants[variant].subtitle;
   document.getElementById('hint').textContent=`${variants[variant].hint}${moving()?'':' · MOTION OFF'}`;
@@ -82,7 +83,7 @@ function update() {
   const rows=document.getElementById('directories');rows.replaceChildren();
   s.children.slice(0,7).forEach((child,index)=>{
     const b=document.createElement('button');b.className='directory';
-    b.style.setProperty('--branch',rgb(hues[index%hues.length],.72,light?.61:.85));
+    b.style.setProperty('--branch',rgb(hues[index%hues.length],light?.77:.72,light?.44:.85));
     b.style.setProperty('--share',`${child.size/s.size*100}%`);
     const name=document.createElement('span');name.className='name';
     const rank=document.createElement('span');rank.className='rank';rank.textContent=String(index+1).padStart(2,'0');
@@ -97,7 +98,7 @@ function update() {
   document.getElementById('summary').textContent=`${bytes(s.size)} MAPPED${s.free?' / '+bytes(s.free)+' FREE':''}`;
   canvas.setAttribute('aria-label',`Hyperspace ${variants[variant].title} storage map for ${s.name}, ${bytes(s.size)}. Use the directory buttons to explore.`);
   syncSelection();queue();
-  try { const url=new URL(location.href);url.searchParams.set('variant',variant);url.searchParams.set('appearance',light?'light':'dark');history.replaceState({},'',url); } catch {}
+  try { const url=new URL(location.href);url.searchParams.set('variant',variant);url.searchParams.set('appearance',light?'slate':'dark');history.replaceState({},'',url); } catch {}
 }
 function syncSelection() {
   const s=hover||selected,el=document.getElementById('selection');el.replaceChildren();
@@ -129,8 +130,8 @@ function draw(time) {
   ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
   const diameter=Math.min(w,h),outer=diameter*.465,inner=diameter*.145;
   metrics={cx:w/2,cy:h/2,outer,inner,ring:(outer-inner)/scene().rings};
-  const ink=light?'#172d41':'#dce9f6',muted=light?'#526b82':'#91a9c3',accent=rgb(hues[0],.65,light?.55:.9);
-  if(variant==='nebula') {
+  const ink=light?'#112a3d':'#dce9f6',muted=light?'#1c384a':'#91a9c3',accent=rgb(hues[0],.65,light?.44:.9),material=variants[variant].material;
+  if(material==='nebula') {
     const atmosphere=ctx.createRadialGradient(metrics.cx,metrics.cy,outer*.3,metrics.cx,metrics.cy,outer*1.2);
     atmosphere.addColorStop(0,rgb(hues[0],.65,.9,light?.035:.07));atmosphere.addColorStop(1,rgb(hues[0],.65,.9,0));
     ctx.fillStyle=atmosphere;ctx.fillRect(0,0,w,h);
@@ -143,22 +144,22 @@ function draw(time) {
   ctx.globalAlpha=.23;ctx.strokeStyle=accent;ctx.lineWidth=.6;ctx.setLineDash([2,7]);
   ctx.beginPath();ctx.arc(metrics.cx,metrics.cy,outer+7,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
   for(let i=0;i<120;i++){const a=i/120*Math.PI*2;ctx.globalAlpha=i%10===0?.7:.23;line(point(outer+9,a),point(outer+(i%10===0?15:11),a),accent,i%10===0?1.2:.6);}
-  ctx.globalAlpha=1;ctx.strokeStyle=light?'#c6d5df':'#203445';ctx.lineWidth=.6;
+  ctx.globalAlpha=1;ctx.strokeStyle=light?'#667f93':'#203445';ctx.lineWidth=.6;
   ctx.beginPath();ctx.arc(metrics.cx,metrics.cy,outer,0,Math.PI*2);ctx.stroke();
   for(const s of scene().segments) {
     const t=tile(s),g=ctx.createRadialGradient(metrics.cx,metrics.cy,t.radius-t.half,metrics.cx,metrics.cy,t.radius+t.half);
-    const opacity=variant==='hologram'?[.10,light?.19:.28]:variant==='nebula'?[light?.17:.20,light?.46:.65]:[.035,light?.11:.15];
+    const opacity=material==='hologram'?[.10,light?.19:.28]:material==='nebula'?[light?.17:.20,light?.46:.65]:[.035,light?.11:.15];
     g.addColorStop(0,color(s,opacity[0]));g.addColorStop(1,color(s,opacity[1]));
-    ctx.save();ctx.fillStyle=g;ctx.fill(t.p);ctx.lineWidth=.6;ctx.strokeStyle=color(s,variant==='pulse'?.35:.56);ctx.stroke(t.p);
-    ctx.shadowColor=color(s,light?.16:.8);ctx.shadowBlur=variants[variant].glow;ctx.strokeStyle=color(s);ctx.lineWidth=variant==='pulse'?1.8:1.2;
+    ctx.save();ctx.fillStyle=g;ctx.fill(t.p);ctx.lineWidth=.6;ctx.strokeStyle=color(s,material==='pulse'?.35:.56);ctx.stroke(t.p);
+    ctx.shadowColor=color(s,light?.16:.8);ctx.shadowBlur=variants[variant].glow;ctx.strokeStyle=color(s);ctx.lineWidth=material==='pulse'?1.8:1.2;
     ctx.stroke(arc(t.radius+t.half-.9,t.start,t.end));
-    if(variant==='nebula'){ctx.shadowBlur=0;ctx.lineWidth=.8;ctx.strokeStyle=color(s,.7);ctx.stroke(arc(t.radius-t.half+.8,t.start,t.end));}
+    if(material==='nebula'){ctx.shadowBlur=0;ctx.lineWidth=.8;ctx.strokeStyle=color(s,.7);ctx.stroke(arc(t.radius-t.half+.8,t.start,t.end));}
     ctx.restore();
   }
   const focused=hover||selected;
   if(focused){const elapsed=moving()?Math.max(0,(time-started)/1000):1.2;drawFocus(focused,elapsed);if(hover&&moving()&&elapsed<1.2)queue();}
   const core=ctx.createRadialGradient(metrics.cx-inner*.4,metrics.cy-inner*.5,0,metrics.cx,metrics.cy,inner);
-  core.addColorStop(0,light?'#e5f2f9':'#102837');core.addColorStop(1,light?'#f4f8fc':'#050b17');ctx.fillStyle=core;
+  core.addColorStop(0,light?'#9bb3c5':'#102837');core.addColorStop(1,light?'#8fa4b4':'#050b17');ctx.fillStyle=core;
   ctx.beginPath();ctx.arc(metrics.cx,metrics.cy,inner*.86,0,Math.PI*2);ctx.fill();ctx.strokeStyle=accent;ctx.globalAlpha=.65;ctx.lineWidth=.8;ctx.stroke();ctx.globalAlpha=1;
   ctx.textAlign='center';ctx.fillStyle=muted;ctx.font='8px ui-monospace,monospace';ctx.fillText(focused?'DIRECTORY':'STORAGE CORE',metrics.cx,metrics.cy-21);
   ctx.fillStyle=ink;ctx.font=`600 ${Math.min(20,inner*.25)}px ui-monospace,monospace`;ctx.fillText(bytes(focused?.size??scene().size),metrics.cx,metrics.cy+2);
@@ -166,22 +167,22 @@ function draw(time) {
   if(scene().free){const a=scene().extent+(Math.PI*2-scene().extent)/2,[x,y]=point(inner+(outer-inner)*.65,a);ctx.fillStyle=muted;ctx.font='8px ui-monospace,monospace';ctx.fillText('FREE',x,y-4);ctx.font='10px ui-monospace,monospace';ctx.fillText(bytes(scene().free),x,y+11);}
 }
 function drawFocus(s,elapsed) {
-  const t=tile(s),inner=t.radius-t.half,outer=t.radius+t.half,c=color(s);
-  ctx.save();ctx.shadowColor=color(s,light?.2:.8);ctx.shadowBlur=variant==='nebula'?8:4;
-  ctx.fillStyle=color(s,variant==='nebula'?.23:.15);ctx.fill(t.p);
-  ctx.strokeStyle=light?c:'rgba(255,255,255,.75)';ctx.lineWidth=1.1;ctx.stroke(t.p);
+  const t=tile(s),inner=t.radius-t.half,outer=t.radius+t.half,c=color(s),material=variants[variant].material,hoverMotion=variants[variant].motion;
+  ctx.save();ctx.shadowColor=color(s,light?.2:.8);ctx.shadowBlur=material==='nebula'?8:4;
+  ctx.fillStyle=color(s,material==='nebula'?.23:.15);ctx.fill(t.p);
+  ctx.strokeStyle=light?c:'rgba(184,232,255,.75)';ctx.lineWidth=1.1;ctx.stroke(t.p);
   if(elapsed<1&&moving()) {
     const phase=Math.max(0,Math.min(1,elapsed));ctx.clip(t.p);
-    if(variant==='hologram') {
+    if(hoverMotion==='hologram') {
       const angle=s.start+(s.end-s.start)*phase;
-      line(point(inner-2,angle),point(outer+2,angle),light?c:'#fff',2);
-    } else if(variant==='nebula') {
+      line(point(inner-2,angle),point(outer+2,angle),light?c:'#b8e8ff',2);
+    } else if(hoverMotion==='nebula') {
       ctx.lineWidth=Math.max(3,metrics.ring*.3);ctx.strokeStyle=color(s,Math.sin(phase*Math.PI)*.85);
       ctx.stroke(arc(inner+(outer-inner)*phase,t.start,t.end));
     } else {
       const head=t.start+(t.end-t.start)*(1-Math.pow(1-phase,2)),length=Math.min(.18,(t.end-t.start)*.25);
       ctx.lineCap='round';ctx.lineWidth=2.2;
-      for(let i=0;i<4;i++){ctx.strokeStyle=light?color(s,(i+1)*.22):`rgba(255,255,255,${(i+1)*.22})`;ctx.stroke(arc(outer-1.3,Math.max(t.start,head-length*(4-i)/4),head));}
+      for(let i=0;i<4;i++){ctx.strokeStyle=light?color(s,(i+1)*.22):`rgba(184,232,255,${(i+1)*.22})`;ctx.stroke(arc(outer-1.3,Math.max(t.start,head-length*(4-i)/4),head));}
     }
   }
   ctx.restore();

@@ -226,7 +226,7 @@ private struct SunburstBaseLayer: View {
     let metrics: ChartMetrics
 
     var body: some View {
-        let theme = SpaceTheme(colorScheme: colorScheme)
+        let theme = SpaceTheme(colorScheme: colorScheme, usesSlateSurfaces: hyperspaceVariant != nil)
 
         Canvas(rendersAsynchronously: true) { context, _ in
             drawCapacityOutline(context: &context, theme: theme)
@@ -330,7 +330,7 @@ private struct SunburstInteractionLayer: View {
     let actions: SunburstChartActions
 
     var body: some View {
-        let theme = SpaceTheme(colorScheme: colorScheme)
+        let theme = SpaceTheme(colorScheme: colorScheme, usesSlateSurfaces: hyperspaceVariant != nil)
 
         ZStack {
             if let selectedSegment {
@@ -722,11 +722,12 @@ private struct ChartMetrics {
 
 private struct ChartHoverCard: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.hyperspaceVariant) private var hyperspaceVariant
     let segment: SunburstSegment
     let rootSize: Int64
 
     var body: some View {
-        let theme = SpaceTheme(colorScheme: colorScheme)
+        let theme = SpaceTheme(colorScheme: colorScheme, usesSlateSurfaces: hyperspaceVariant != nil)
 
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 7) {

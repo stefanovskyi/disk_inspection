@@ -16,7 +16,7 @@ struct SpaceTheme {
     let chartHighlight: Color
     let shadow: Color
 
-    init(colorScheme: ColorScheme) {
+    init(colorScheme: ColorScheme, usesSlateSurfaces: Bool = false) {
         if colorScheme == .dark {
             background = Self.rgb(0x12171C)
             sidebar = Self.rgb(0x171D22)
@@ -32,6 +32,21 @@ struct SpaceTheme {
             selectionBorder = Self.rgb(0x327989)
             chartHighlight = Self.rgb(0xDCEAF0)
             shadow = Self.rgb(0x0A0F14)
+        } else if usesSlateSurfaces {
+            background = Self.rgb(0x8FA4B4)
+            sidebar = Self.rgb(0x99ADBD)
+            surface = Self.rgb(0xA7BAC9)
+            elevatedSurface = Self.rgb(0xB6C7D4)
+            border = Self.rgb(0x667F93)
+            primaryText = Self.rgb(0x112A3D)
+            secondaryText = Self.rgb(0x1C384A)
+            tertiaryText = Self.rgb(0x1B3749)
+            accent = Self.rgb(0x06445D)
+            warning = Self.rgb(0x812449)
+            selectionSurface = Self.rgb(0x91ADBF)
+            selectionBorder = Self.rgb(0x366C85)
+            chartHighlight = Self.rgb(0x113E57)
+            shadow = Self.rgb(0x243C50)
         } else {
             background = Self.rgb(0xF1F4F7)
             sidebar = Self.rgb(0xE9EEF2)

@@ -49,9 +49,9 @@ These are unedited captures of completed results from the current app build—no
 
 ### Hyperspace design prototype (this branch only)
 
-The `prototype/storage-map-styles` branch explores three variants of the chosen
-**Hyperspace** theme: **Hologram** (fine glass-like edges), **Nebula** (fuller luminous
-bands), and **Pulse** (crisp contours with a curved hover tracer). Open the
+The `prototype/storage-map-styles` branch opens on **Holo Pulse**: Hologram's colors
+and translucent material combined with Pulse's curved hover tracer. Hologram,
+Nebula, and Pulse remain available for comparison. Open the
 [interactive comparison](docs/prototypes/chart-styles/index.html) in a browser,
 or run the native gallery:
 
@@ -59,14 +59,15 @@ or run the native gallery:
 make chart-preview
 ```
 
-Use the style switcher, light/dark and motion controls, and disk/folder samples.
+Use the style switcher, Dark/Slate and motion controls, and disk/folder samples.
 Hover a sector, click folders to drill down, and use the breadcrumbs to return.
 Hover feedback follows the folder's actual shape; square target brackets are removed.
 Animations settle after 1.2 seconds and respect Reduce Motion. All values are invented
 sample data; no scan is started. Finder and Terminal menu actions are inactive in this
 gallery. Launching SpaceLens normally retains the existing interface and chart.
 
-Hyperspace is the selected theme; the variant is still being explored. See the
+Slate replaces the bright light appearance with muted blue-gray surfaces,
+darker text, and a tinted chart hub. Hyperspace is the selected theme. See the
 [prototype notes](docs/prototypes/chart-styles/README.md) for scope and reproduction.
 
 Requirements: macOS 14 or newer and Swift 6 from Xcode or the Xcode Command Line Tools.

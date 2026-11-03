@@ -23,7 +23,7 @@ struct HyperspaceAtmosphere: View {
                 let radius: CGFloat = index % 13 == 0 ? 1 : 0.45
                 let opacity = dark ? (index % 7 == 0 ? 0.6 : 0.23) : 0.22
                 context.fill(Path(ellipseIn: CGRect(x: x, y: y, width: radius * 2, height: radius * 2)),
-                             with: .color((index % 5 == 0 ? accent : SpaceTheme(colorScheme: colorScheme).secondaryText).opacity(opacity)))
+                             with: .color((index % 5 == 0 ? accent : SpaceTheme(colorScheme: colorScheme, usesSlateSurfaces: true).secondaryText).opacity(opacity)))
             }
             let radius = outerRadius + 7
             let orbit = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
@@ -90,11 +90,11 @@ struct HyperspaceHoverEffect: View {
         var glow = context
         glow.addFilter(.shadow(color: color.opacity(dark ? 0.8 : 0.2), radius: variant == .nebula ? 8 : 4))
         glow.fill(tile, with: .color(color.opacity(variant == .nebula ? 0.23 : 0.15)))
-        glow.stroke(tile, with: .color(dark ? .white.opacity(0.75) : color), lineWidth: 1.1)
+        glow.stroke(tile, with: .color(dark ? HyperspaceVariant.iceLight.opacity(0.75) : color), lineWidth: 1.1)
 
         guard elapsed < 1, !reduceMotion else { return }
         let phase = min(1, elapsed)
-        switch variant {
+        switch variant.hoverMotion {
         case .hologram:
             var sweep = context
             sweep.clip(to: tile)
@@ -103,14 +103,14 @@ struct HyperspaceHoverEffect: View {
             beam.move(to: point(center, inner - 2, angle))
             beam.addLine(to: point(center, outer + 2, angle))
             sweep.addFilter(.shadow(color: color, radius: 7))
-            sweep.stroke(beam, with: .color(dark ? .white : color), lineWidth: 2)
+            sweep.stroke(beam, with: .color(dark ? HyperspaceVariant.iceLight : color), lineWidth: 2)
         case .nebula:
             var wave = glow
             wave.clip(to: tile)
             wave.stroke(HyperspaceRenderer.arc(center: center, radius: inner + (outer - inner) * phase,
                                                start: start, end: end),
                         with: .color(color.opacity(sin(phase * .pi) * 0.85)), lineWidth: max(3, ringWidth * 0.30))
-        case .pulse:
+        case .holoPulse, .pulse:
             var tracer = glow
             tracer.clip(to: tile)
             let head = start + (end - start) * (1 - pow(1 - phase, 2))
@@ -119,7 +119,7 @@ struct HyperspaceHoverEffect: View {
                 let tail = max(start, head - length * Double(4 - index) / 4)
                 tracer.stroke(HyperspaceRenderer.arc(center: center, radius: outer - 1.3,
                                                      start: tail, end: head),
-                              with: .color((dark ? Color.white : color).opacity(Double(index + 1) * 0.22)),
+                              with: .color((dark ? HyperspaceVariant.iceLight : color).opacity(Double(index + 1) * 0.22)),
                               style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
             }
         }

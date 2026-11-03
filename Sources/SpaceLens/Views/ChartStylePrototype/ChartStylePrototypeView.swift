@@ -4,7 +4,7 @@ import SwiftUI
 // Prototype only. Run `make chart-preview`; no filesystem scan or persisted settings.
 struct ChartStylePrototypeView: View {
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
-    @State private var variant = HyperspaceVariant.hologram
+    @State private var variant = HyperspaceVariant.holoPulse
     @State private var motionEnabled = true
     @State private var lightAppearance = false
     @State private var compactDataset = false
@@ -12,12 +12,15 @@ struct ChartStylePrototypeView: View {
     @State private var selectedItem: FileNode?
 
     private var root: FileNode { path.last ?? ChartPrototypeData.disk }
+    private var appearance: ColorScheme { lightAppearance ? .light : .dark }
+    private var theme: SpaceTheme { SpaceTheme(colorScheme: appearance, usesSlateSurfaces: true) }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 16) {
                 Label("SpaceLens · Hyperspace lab", systemImage: "circle.hexagongrid")
                     .font(.headline)
+                    .foregroundStyle(theme.primaryText)
                 Spacer()
                 Picker("Sample", selection: $compactDataset) {
                     Text("Disk · deep hierarchy").tag(false)
@@ -27,11 +30,12 @@ struct ChartStylePrototypeView: View {
                 .frame(width: 220)
                 Toggle("Motion", isOn: $motionEnabled)
                     .toggleStyle(.switch)
+                    .foregroundStyle(theme.primaryText)
                     .disabled(systemReduceMotion)
                     .help("Hover animations respect the macOS Reduce Motion setting")
                 Picker("Appearance", selection: $lightAppearance) {
                     Text("Dark").tag(false)
-                    Text("Light").tag(true)
+                    Text("Slate").tag(true)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -47,12 +51,13 @@ struct ChartStylePrototypeView: View {
                         selectedItem = nil
                     }
                     .buttonStyle(.plain)
+                    .foregroundStyle(theme.primaryText)
                     .font(.caption.weight(index == path.count - 1 ? .semibold : .regular))
                 }
                 Spacer()
                 Text("Sample data · hover, click folders, or select a row")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.secondaryText)
             }
             .padding(.horizontal, 22)
             .padding(.bottom, 8)
@@ -68,6 +73,7 @@ struct ChartStylePrototypeView: View {
                     showInFinder: { _ in }, openInTerminal: { _ in }
                 )
             )
+            .environment(\.colorScheme, appearance)
             .padding(.horizontal, 18)
 
             HStack(spacing: 14) {
@@ -83,7 +89,7 @@ struct ChartStylePrototypeView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 360)
+                .frame(width: 440)
                 Button { variant = variant.shifted(by: 1) } label: {
                     Image(systemName: "chevron.right")
                 }
@@ -91,16 +97,16 @@ struct ChartStylePrototypeView: View {
                 .keyboardShortcut(.rightArrow, modifiers: [])
             }
             .padding(12)
-            .background(.regularMaterial, in: Capsule())
+            .background(theme.elevatedSurface, in: Capsule())
             .padding(.top, 12)
 
             Text("Design prototype · identical byte proportions and depth · Finder and Terminal actions are inactive for sample data")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.secondaryText)
                 .padding(.vertical, 10)
         }
-        .background(SpaceTheme(colorScheme: lightAppearance ? .light : .dark).background)
-        .preferredColorScheme(lightAppearance ? .light : .dark)
+        .background(theme.background)
+        .preferredColorScheme(.dark)
         .environment(\.hyperspaceMotionEnabled, motionEnabled && !systemReduceMotion)
         .onChange(of: compactDataset) { _, compact in
             path = [compact ? ChartPrototypeData.folder : ChartPrototypeData.disk]
