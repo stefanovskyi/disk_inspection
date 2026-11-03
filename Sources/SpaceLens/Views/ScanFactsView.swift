@@ -151,16 +151,17 @@ struct ScanFactsView<Notice: View>: View {
                 )
             }
 
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(theme.elevatedSurface)
+            Capsule()
+                .fill(theme.elevatedSurface)
+                .overlay(alignment: .leading) {
                     Capsule()
                         .fill(theme.accent.opacity(isHovering ? 0.35 : 0.8))
-                        .frame(width: proxy.size.width * dwell)
+                        // Animate only the fill, keeping its layout anchored to the track.
+                        .scaleEffect(x: min(max(dwell, 0), 1), y: 1, anchor: .leading)
                 }
-            }
-            .frame(height: 3)
-            .accessibilityHidden(true)
+                .frame(height: 3)
+                .clipShape(Capsule())
+                .accessibilityHidden(true)
         }
         .padding(layout == .page ? 24 : 15)
         .background {
