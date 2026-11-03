@@ -98,6 +98,7 @@ Do not hard-code this compatibility override into application source code.
 - Load system icons off the main actor through `SystemIconLoader`; a stalled disk must not freeze the interface.
 - Support both light and dark appearances through `SpaceTheme`.
 - The chart must provide hover feedback, click-to-drill behavior, and context actions without layout shifts.
+- Give clickable rows, buttons, and menus outside the chart pointer feedback with `hoverFeedback` from `Support/HoverFeedback.swift`: `.row` for narrow selectable rows, `.surface` for wide panel rows, `.control` for buttons with their own chrome. Leave static cards without it.
 - Color cannot be the only way to understand storage data. Maintain the ranked textual item list and accessibility labels.
 - Continuous loading animation must respect `accessibilityReduceMotion` and expose a textual accessibility value.
 - Every clickable icon-only control needs an accessibility label or useful help text.

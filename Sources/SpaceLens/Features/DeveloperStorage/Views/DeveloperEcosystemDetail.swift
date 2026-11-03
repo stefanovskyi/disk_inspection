@@ -285,11 +285,13 @@ private struct DeveloperProjectRow: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
+                .hoverFeedback(.control)
                 .padding(.top, 10)
                 .padding(.trailing, 9)
                 .help("Project actions")
                 .accessibilityLabel("Actions for \(project.name)")
             }
+            .hoverFeedback(.surface(cornerRadius: 9))
 
             if isExpanded {
                 Divider().padding(.leading, 14)
@@ -381,9 +383,11 @@ private struct DeveloperStorageLocationRow: View {
                     Image(systemName: "ellipsis").frame(width: 24, height: 24)
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .hoverFeedback(.control)
                 .help("Location actions").accessibilityLabel("Actions for \(location.name)")
                 .padding(.top, 10).padding(.trailing, 9)
             }
+            .hoverFeedback(.surface(cornerRadius: 9), isInteractive: expandable)
 
             if isExpanded, let root = location.root {
                 Divider().padding(.leading, 14)

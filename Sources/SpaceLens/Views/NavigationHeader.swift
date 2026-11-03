@@ -42,6 +42,7 @@ struct NavigationHeader: View {
                             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                         }
                         .buttonStyle(.plain)
+                        .hoverFeedback(.control)
                         .accessibilityLabel("Go to \(breadcrumb.name)")
                     }
                 }
@@ -64,6 +65,7 @@ struct NavigationHeader: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(theme.warning)
+                        .hoverFeedback(.control)
                         .help("Open Full Disk Access settings")
                     }
 

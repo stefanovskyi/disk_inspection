@@ -78,6 +78,7 @@ private struct AICodingInstallationCard: View {
                 )
             }
             .buttonStyle(.plain)
+            .hoverFeedback(.surface(cornerRadius: 9))
             .accessibilityLabel(
                 "\(installation.displayName), \(installation.surface.displayName), \(versionSummary)"
             )
@@ -90,6 +91,7 @@ private struct AICodingInstallationCard: View {
                 Image(systemName: "folder")
             }
             .buttonStyle(.borderless)
+            .hoverFeedback(.control)
             .padding(11)
             .help("Show installation in Finder")
             .accessibilityLabel("Show \(installation.displayName) installation in Finder")

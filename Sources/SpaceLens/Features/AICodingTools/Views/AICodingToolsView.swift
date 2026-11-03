@@ -245,6 +245,7 @@ struct AICodingToolsView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .hoverFeedback(.row(cornerRadius: 9))
                 .accessibilityAddTraits(store.selectedToolID == tool.id ? .isSelected : [])
             }
 

@@ -229,6 +229,7 @@ struct DeveloperStorageView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .hoverFeedback(.row(cornerRadius: 9))
                 .accessibilityAddTraits(store.selectedEcosystemID == ecosystem.id ? .isSelected : [])
             }
             Spacer()

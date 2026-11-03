@@ -116,6 +116,7 @@ struct AIModelRuntimeDetail: View {
                             Image(systemName: "folder")
                         }
                         .buttonStyle(.borderless)
+                        .hoverFeedback(.control)
                         .help("Reveal installation in Finder")
                         .accessibilityLabel("Reveal \(installation.name) in Finder")
                     }
@@ -292,6 +293,7 @@ struct AIModelRuntimeDetail: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
+            .hoverFeedback(.control)
             .help("Model actions")
             .accessibilityLabel("Actions for \(model.displayName)")
         }
@@ -359,6 +361,7 @@ struct AIModelRuntimeDetail: View {
                         .menuStyle(.borderlessButton)
                         .menuIndicator(.hidden)
                         .fixedSize()
+                        .hoverFeedback(.control)
                         .help("Location actions")
                         .accessibilityLabel("Actions for \(location.name)")
                     }

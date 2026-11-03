@@ -239,6 +239,7 @@ struct AIModelsAndRuntimesView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .hoverFeedback(.row(cornerRadius: 9))
                 .accessibilityAddTraits(store.selectedRuntimeID == runtime.id ? .isSelected : [])
             }
             Spacer(minLength: 8)

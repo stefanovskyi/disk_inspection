@@ -5,6 +5,7 @@ private struct AICodingOutlineRow<Content: View, Actions: View>: View {
     let accessibilityLabel: String
     let padding: EdgeInsets
     let actionsAlignment: Alignment
+    let hover: HoverFeedbackStyle
     @ViewBuilder let content: () -> Content
     @ViewBuilder let actions: () -> Actions
 
@@ -17,6 +18,7 @@ private struct AICodingOutlineRow<Content: View, Actions: View>: View {
                     rowContent
                 }
                 .buttonStyle(.plain)
+                .hoverFeedback(hover)
                 .accessibilityLabel(accessibilityLabel)
                 .accessibilityValue(expansion.wrappedValue ? "Expanded" : "Collapsed")
                 .accessibilityHint(expansion.wrappedValue ? "Collapse this folder" : "Expand to show folders and files")
@@ -56,7 +58,8 @@ struct AICodingLocationOutline: View {
                 expansion: expandableRoot.map { expansionBinding(for: $0.id) },
                 accessibilityLabel: locationAccessibilityLabel,
                 padding: EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14),
-                actionsAlignment: .topTrailing
+                actionsAlignment: .topTrailing,
+                hover: .surface(cornerRadius: 12)
             ) {
                 locationHeader(theme: theme)
             } actions: {
@@ -186,6 +189,7 @@ struct AICodingLocationOutline: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .hoverFeedback(.control)
         .disabled(!canOpen)
         .help("Location actions")
         .accessibilityLabel("Actions for \(location.name)")
@@ -233,7 +237,8 @@ struct AICodingFilesystemNodeRow: View {
                 expansion: canExpand ? expansionBinding : nil,
                 accessibilityLabel: nodeAccessibilityLabel,
                 padding: EdgeInsets(top: 7, leading: 0, bottom: 7, trailing: 0),
-                actionsAlignment: .trailing
+                actionsAlignment: .trailing,
+                hover: .surface(cornerRadius: 7, outset: 6)
             ) {
                 nodeContent(theme: theme)
             } actions: {
@@ -340,6 +345,7 @@ struct AICodingFilesystemNodeRow: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
+            .hoverFeedback(.control)
             .help("Actions for \(nodeDisplayName)")
             .accessibilityLabel("Actions for \(nodeDisplayName)")
         }

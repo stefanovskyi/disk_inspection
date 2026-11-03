@@ -46,11 +46,13 @@ struct ItemInspector: View {
                     } label: {
                         Label("Finder", systemImage: "folder")
                     }
+                    .hoverFeedback(.control)
                     Button {
                         model.openInTerminal(inspectedNode)
                     } label: {
                         Label("Terminal", systemImage: "terminal")
                     }
+                    .hoverFeedback(.control)
                 }
                 .font(.caption2.weight(.semibold))
                 .buttonStyle(.bordered)
@@ -114,6 +116,7 @@ struct ItemInspector: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .hoverFeedback(.control)
                         .help(showsSmallItems ? "Hide items smaller than 1%" : "Show items smaller than 1%")
                     }
                 }
@@ -243,6 +246,7 @@ struct SmallerItemsInspector: View {
                             .frame(width: 24, height: 24)
                     }
                     .buttonStyle(.plain)
+                    .hoverFeedback(.control)
                     .help("Return to all items")
                     .accessibilityLabel("Close smaller items")
                 }
@@ -375,6 +379,7 @@ private struct InspectorRow: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 8)
         .background(isHovered ? theme.elevatedSurface.opacity(0.55) : Color.clear)
+        .animation(.easeOut(duration: 0.16), value: isHovered)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .contentShape(Rectangle())
         .simultaneousGesture(

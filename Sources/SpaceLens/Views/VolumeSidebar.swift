@@ -65,6 +65,7 @@ struct VolumeSidebar: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .hoverFeedback(.row(cornerRadius: 10))
                     .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -124,6 +125,7 @@ struct VolumeSidebar: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .hoverFeedback(.row(cornerRadius: 10))
                     .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -178,6 +180,7 @@ struct VolumeSidebar: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .hoverFeedback(.row(cornerRadius: 10))
                     .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -220,6 +223,7 @@ struct VolumeSidebar: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(theme.accent)
+                .hoverFeedback(.control)
                 .disabled(isPrimaryFolderButtonDisabled)
                 .help(
                     primaryFolderButtonHelp
@@ -250,6 +254,7 @@ struct VolumeSidebar: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(theme.secondaryText)
+                .hoverFeedback(.control)
                 .accessibilityHint("Refreshes the list of mounted disks")
             }
             .padding(14)
@@ -468,6 +473,7 @@ private struct ScanEverythingControl: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(theme.accent)
+            .hoverFeedback(.control)
             .disabled(!model.canRequestDiscScan)
             .help("Scan every mounted local disk")
             .accessibilityHint("Scans all mounted local disks")
@@ -482,6 +488,7 @@ private struct ScanEverythingControl: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(theme.accent)
+            .hoverFeedback(.control)
             .disabled(!model.canRequestAllAnalyses)
             .help("Run all storage analyses")
             .accessibilityHint("Runs AI Coding Tools, AI Models, and Developer Storage analyses")
@@ -530,6 +537,7 @@ private struct ScanActivityCard: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(theme.secondaryText)
+                .hoverFeedback(.control)
                 .help("Cancel: \(activity.title)")
                 .accessibilityLabel("Cancel: \(activity.title)")
             }
@@ -657,6 +665,7 @@ private struct VolumeRow: View {
                     }
                 }
         }
+        .hoverFeedback(.row(cornerRadius: 10))
         .onTapGesture { model.selectVolume(volume) }
         .contextMenu {
             if hasCachedResult {
@@ -770,6 +779,7 @@ private struct SessionFolderRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .hoverFeedback(.control)
             .help("Remove \(folder.name) from sidebar")
             .accessibilityLabel("Remove \(folder.name) from sidebar")
             .padding(.trailing, 4)
@@ -785,6 +795,7 @@ private struct SessionFolderRow: View {
                     }
                 }
         }
+        .hoverFeedback(.row(cornerRadius: 10))
         .contextMenu {
             if cachedResult != nil {
                 Button("View Existing Result") { model.viewCachedResult(at: folder.url) }

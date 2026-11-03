@@ -59,6 +59,7 @@ struct DiskOverview: View {
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .hoverFeedback(.control)
                 .help("Open the saved scan")
             }
 
@@ -72,6 +73,7 @@ struct DiskOverview: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(theme.accent)
+            .hoverFeedback(.control)
             .keyboardShortcut(.defaultAction)
             .disabled(model.isScanActive(on: volume))
         }
