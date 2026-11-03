@@ -1,69 +1,23 @@
 import SwiftUI
 
-struct HyperspaceStage: View {
+/// Invented sample data around the production chart, for appearance and interaction checks.
+struct ChartSampleStage: View {
     @Environment(\.colorScheme) private var colorScheme
-    let variant: HyperspaceVariant
     let root: FileNode
     let volume: VolumeInfo?
     var selectedItemID: String? = nil
     var actions: SunburstChartActions = .disabled
 
     private var dark: Bool { colorScheme == .dark }
-    private var theme: SpaceTheme { SpaceTheme(colorScheme: colorScheme, usesSlateSurfaces: true) }
-    private var accent: Color { variant.accent(isDark: dark) }
+    private var theme: SpaceTheme { SpaceTheme(colorScheme: colorScheme) }
+    private var accent: Color { HoloPulseStyle.accent(isDark: dark) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "waveform.path")
-                        Text("SPACELENS / HYPERSPACE").tracking(3)
-                    }
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(accent)
-                    Text(variant.subtitle)
-                        .font(.callout)
-                        .foregroundStyle(theme.secondaryText)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 7) {
-                    Text(variant.title.uppercased()).tracking(1.5)
-                    Text("SAMPLE DATA").foregroundStyle(theme.tertiaryText)
-                }
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(accent)
-            }
-            .padding(24)
-
-            Rectangle().fill(accent.opacity(0.35)).frame(height: 1)
-                .padding(.horizontal, 24)
-
-            HStack(spacing: 12) {
-                SunburstChart(root: root, volume: volume, isProvisional: false,
-                              selectedItemID: selectedItemID, actions: actions)
-                    .padding(14)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                directoryPanel.padding(.trailing, 24)
-            }
-
-            HStack {
-                Image(systemName: "cursorarrow.rays")
-                Text("\(variant.hoverHint) · settles after 1.2 seconds")
-                Spacer(minLength: 0)
-            }
-            .font(.system(size: 10, design: .monospaced))
-            .foregroundStyle(theme.secondaryText)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 18)
+        HStack(spacing: 12) {
+            StorageMapPanel(node: root, volume: volume, isProvisional: false,
+                            selectedItemID: selectedItemID, actions: actions)
+            directoryPanel.padding(.horizontal, 20).spacePanel()
         }
-        .background(LinearGradient(
-            colors: dark ? [variant.background(isDark: true), variant.background(isDark: true)] : [theme.surface, theme.sidebar],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        ))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay { RoundedRectangle(cornerRadius: 12).stroke(accent.opacity(0.35), lineWidth: 1) }
-        .environment(\.hyperspaceVariant, variant)
     }
 
     private var directoryPanel: some View {
@@ -96,7 +50,7 @@ struct HyperspaceStage: View {
     }
 
     private func directory(_ child: FileNode, index: Int) -> some View {
-        let color = variant.color(hue: HyperspaceVariant.branchHues[index % HyperspaceVariant.branchHues.count],
+        let color = HoloPulseStyle.color(hue: HoloPulseStyle.branchHue(at: index),
                                   depth: 0, isDark: dark)
         return Button {
             if child.isDirectory && !child.children.isEmpty { actions.inspect(child) }

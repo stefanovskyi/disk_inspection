@@ -1,6 +1,6 @@
 #!/bin/zsh
 
-# Throwaway chart lab. A separate bundle identity keeps the running app untouched.
+# Sample-data chart preview. A separate bundle identity keeps the running app untouched.
 set -euo pipefail
 
 project_dir="${0:A:h:h}"
@@ -15,4 +15,9 @@ cp -R "$project_dir/.build/debug/SpaceLens_SpaceLens.bundle" "$app_dir/Contents/
 sed 's/@VERSION@/1.3.0/g' "$project_dir/Support/Info.plist.in" > "$app_dir/Contents/Info.plist"
 plutil -replace CFBundleIdentifier -string local.spacelens.chart-style-prototype "$app_dir/Contents/Info.plist"
 codesign --force --deep --sign - "$app_dir"
-open -n "$app_dir" --args --chart-style-prototype
+if [[ "${1:-}" == "--app" ]]; then
+    # Exercise the real app UI under the isolated identity without replacing a session.
+    open -n "$app_dir"
+else
+    open -n "$app_dir" --args --chart-style-prototype
+fi

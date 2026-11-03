@@ -2,12 +2,41 @@ import SwiftUI
 
 struct ChartPanel: View {
     @Environment(AppViewModel.self) private var model
-    @Environment(\.colorScheme) private var colorScheme
     let node: FileNode
     let volume: VolumeInfo?
     let isProvisional: Bool
     @Binding var selectedItem: FileNode?
     let inspectSmallerItems: (SunburstSmallerItems) -> Void
+
+    var body: some View {
+        StorageMapPanel(
+            node: node, volume: volume, isProvisional: isProvisional,
+            selectedItemID: selectedItem?.id,
+            actions: SunburstChartActions(
+                select: { selectedItem = $0 },
+                inspect: {
+                    selectedItem = nil
+                    model.navigate(into: $0)
+                },
+                inspectSmallerItems: {
+                    selectedItem = nil
+                    inspectSmallerItems($0)
+                },
+                showInFinder: { model.showInFinder($0) },
+                openInTerminal: { model.openInTerminal($0) }
+            )
+        )
+    }
+}
+
+/// Shared by the real scan screen and the sample-data visual check.
+struct StorageMapPanel: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let node: FileNode
+    let volume: VolumeInfo?
+    let isProvisional: Bool
+    var selectedItemID: String? = nil
+    var actions: SunburstChartActions = .disabled
 
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
@@ -31,23 +60,8 @@ struct ChartPanel: View {
             .padding(.top, 16)
 
             SunburstChart(
-                root: node,
-                volume: volume,
-                isProvisional: isProvisional,
-                selectedItemID: selectedItem?.id,
-                actions: SunburstChartActions(
-                    select: { selectedItem = $0 },
-                    inspect: {
-                        selectedItem = nil
-                        model.navigate(into: $0)
-                    },
-                    inspectSmallerItems: {
-                        selectedItem = nil
-                        inspectSmallerItems($0)
-                    },
-                    showInFinder: { model.showInFinder($0) },
-                    openInTerminal: { model.openInTerminal($0) }
-                )
+                root: node, volume: volume, isProvisional: isProvisional,
+                selectedItemID: selectedItemID, actions: actions
             )
                 .padding(12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -62,12 +76,11 @@ struct ChartPanel: View {
             .padding(.horizontal, 18)
             .padding(.bottom, 14)
         }
-        .spacePanel()
+        .holoPulsePanel()
     }
 }
 
 struct SunburstChart: View {
-    @Environment(\.hyperspaceVariant) private var hyperspaceVariant
     @StateObject private var sceneCache = SunburstSceneCache()
     let root: FileNode
     let volume: VolumeInfo?
@@ -109,9 +122,7 @@ struct SunburstChart: View {
             let metrics = ChartMetrics(size: proxy.size, ringCount: scene.ringCount)
 
             ZStack {
-                if let variant = hyperspaceVariant {
-                    HyperspaceAtmosphere(variant: variant, center: metrics.center, outerRadius: metrics.outerRadius)
-                }
+                HoloPulseAtmosphere(center: metrics.center, outerRadius: metrics.outerRadius)
                 SunburstBaseLayer(scene: scene, capacity: capacity, metrics: metrics)
                 SunburstInteractionLayer(
                     root: root,
@@ -219,14 +230,13 @@ struct SunburstChartActions {
 
 private struct SunburstBaseLayer: View {
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.hyperspaceVariant) private var hyperspaceVariant
 
     let scene: SunburstScene
     let capacity: StorageChartCapacity
     let metrics: ChartMetrics
 
     var body: some View {
-        let theme = SpaceTheme(colorScheme: colorScheme, usesSlateSurfaces: hyperspaceVariant != nil)
+        let theme = SpaceTheme(colorScheme: colorScheme)
 
         Canvas(rendersAsynchronously: true) { context, _ in
             drawCapacityOutline(context: &context, theme: theme)
@@ -278,37 +288,10 @@ private struct SunburstBaseLayer: View {
     private func drawSegments(context: inout GraphicsContext) {
         let branches = scene.segments.filter { $0.depth == 0 }
         for segment in scene.segments {
-            if let variant = hyperspaceVariant {
-                HyperspaceRenderer.draw(
-                    segment, variant: variant, branches: branches, context: &context,
-                    center: metrics.center, radius: metrics.radius(forDepth: segment.depth),
-                    ringWidth: metrics.ringWidth, isDark: colorScheme == .dark
-                )
-                continue
-            }
-            let angularGap = min(0.006, segment.angularSpan * 0.14)
-            let radius = metrics.radius(forDepth: segment.depth)
-            var arc = Path()
-            arc.addArc(
-                center: metrics.center,
-                radius: radius,
-                startAngle: .radians(segment.startAngle - (.pi / 2) + angularGap),
-                endAngle: .radians(segment.endAngle - (.pi / 2) - angularGap),
-                clockwise: false
-            )
-
-            let color = SpacePalette.color(
-                hue: segment.hue,
-                depth: segment.depth,
-                isDark: colorScheme == .dark
-            )
-            context.stroke(
-                arc,
-                with: .color(color.opacity(0.86)),
-                style: StrokeStyle(
-                    lineWidth: max(2, metrics.ringWidth - 2.5),
-                    lineCap: .butt
-                )
+            HoloPulseRenderer.draw(
+                segment, branches: branches, context: &context,
+                center: metrics.center, radius: metrics.radius(forDepth: segment.depth),
+                ringWidth: metrics.ringWidth, isDark: colorScheme == .dark
             )
         }
     }
@@ -316,7 +299,6 @@ private struct SunburstBaseLayer: View {
 
 private struct SunburstInteractionLayer: View {
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.hyperspaceVariant) private var hyperspaceVariant
     @State private var hoveredSegmentIndex: Int?
     @State private var isHoveringFreeSpace = false
 
@@ -330,31 +312,24 @@ private struct SunburstInteractionLayer: View {
     let actions: SunburstChartActions
 
     var body: some View {
-        let theme = SpaceTheme(colorScheme: colorScheme, usesSlateSurfaces: hyperspaceVariant != nil)
+        let theme = SpaceTheme(colorScheme: colorScheme)
 
         ZStack {
             if let selectedSegment {
                 Canvas { context, _ in
-                    drawSelection(segment: selectedSegment, context: &context, theme: theme)
+                    drawSectorFocus(segment: selectedSegment, context: &context, theme: theme)
                 }
                 .allowsHitTesting(false)
             }
 
             if let hoveredSegment {
-                if let variant = hyperspaceVariant {
-                    HyperspaceHoverEffect(
-                        variant: variant, segment: hoveredSegment,
-                        hue: variant.hue(for: hoveredSegment, branches: scene.segments.filter { $0.depth == 0 }),
-                        center: metrics.center, radius: metrics.radius(forDepth: hoveredSegment.depth),
-                        ringWidth: metrics.ringWidth
-                    )
-                    .id("\(variant.rawValue):\(hoveredSegment.id)")
-                } else {
-                    Canvas { context, _ in
-                        drawHover(segment: hoveredSegment, context: &context, theme: theme)
-                    }
-                    .allowsHitTesting(false)
-                }
+                HoloPulseHoverEffect(
+                    segment: hoveredSegment,
+                    hue: HoloPulseStyle.hue(for: hoveredSegment, branches: scene.segments.filter { $0.depth == 0 }),
+                    center: metrics.center, radius: metrics.radius(forDepth: hoveredSegment.depth),
+                    ringWidth: metrics.ringWidth
+                )
+                .id(hoveredSegment.id)
             }
 
             centerSummary(theme: theme)
@@ -433,64 +408,6 @@ private struct SunburstInteractionLayer: View {
         }
     }
 
-    private func drawHover(
-        segment: SunburstSegment,
-        context: inout GraphicsContext,
-        theme: SpaceTheme
-    ) {
-        let angularGap = min(0.006, segment.angularSpan * 0.14)
-        let radius = metrics.radius(forDepth: segment.depth)
-        var arc = Path()
-        arc.addArc(
-            center: metrics.center,
-            radius: radius,
-            startAngle: .radians(segment.startAngle - (.pi / 2) + angularGap),
-            endAngle: .radians(segment.endAngle - (.pi / 2) - angularGap),
-            clockwise: false
-        )
-        let color = SpacePalette.color(
-            hue: segment.hue,
-            depth: segment.depth,
-            isDark: colorScheme == .dark
-        )
-        context.stroke(
-            arc,
-            with: .color(color),
-            style: StrokeStyle(lineWidth: max(2, metrics.ringWidth - 0.5), lineCap: .butt)
-        )
-        context.stroke(
-            arc,
-            with: .color(theme.chartHighlight.opacity(0.82)),
-            style: StrokeStyle(lineWidth: 1.2, lineCap: .butt)
-        )
-    }
-
-    private func drawSelection(
-        segment: SunburstSegment,
-        context: inout GraphicsContext,
-        theme: SpaceTheme
-    ) {
-        if hyperspaceVariant != nil {
-            drawSectorFocus(segment: segment, context: &context, theme: theme)
-            return
-        }
-        let angularGap = min(0.006, segment.angularSpan * 0.14)
-        let radius = metrics.radius(forDepth: segment.depth)
-        var arc = Path()
-        arc.addArc(
-            center: metrics.center,
-            radius: radius,
-            startAngle: .radians(segment.startAngle - (.pi / 2) + angularGap),
-            endAngle: .radians(segment.endAngle - (.pi / 2) - angularGap),
-            clockwise: false
-        )
-        context.stroke(
-            arc,
-            with: .color(theme.accent.opacity(0.96)),
-            style: StrokeStyle(lineWidth: max(3, metrics.ringWidth + 1.5), lineCap: .butt)
-        )
-    }
-
     private func drawSectorFocus(
         segment: SunburstSegment,
         context: inout GraphicsContext,
@@ -524,13 +441,11 @@ private struct SunburstInteractionLayer: View {
         return ZStack {
             Circle()
                 .fill(theme.background)
-            if hyperspaceVariant != nil {
-                Circle()
-                    .fill(RadialGradient(
-                        colors: [theme.accent.opacity(0.12), theme.background],
-                        center: .topLeading, startRadius: 0, endRadius: size
-                    ))
-            }
+            Circle()
+                .fill(RadialGradient(
+                    colors: [theme.accent.opacity(0.12), theme.background],
+                    center: .topLeading, startRadius: 0, endRadius: size
+                ))
             Circle()
                 .stroke(theme.border, lineWidth: 1)
 
@@ -722,12 +637,11 @@ private struct ChartMetrics {
 
 private struct ChartHoverCard: View {
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.hyperspaceVariant) private var hyperspaceVariant
     let segment: SunburstSegment
     let rootSize: Int64
 
     var body: some View {
-        let theme = SpaceTheme(colorScheme: colorScheme, usesSlateSurfaces: hyperspaceVariant != nil)
+        let theme = SpaceTheme(colorScheme: colorScheme)
 
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 7) {

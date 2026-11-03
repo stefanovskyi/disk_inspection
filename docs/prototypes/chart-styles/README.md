@@ -1,68 +1,47 @@
-# SpaceLens Hyperspace variants
+# SpaceLens Holo Pulse preview
 
-Hyperspace is the selected theme. **Holo Pulse** is the current default: Hologram's
-colors, translucency, edge weights, glow, and starfield, with Pulse's curved hover
-tracer and timing. The source variations remain available for comparison.
+**Holo Pulse is the only storage-map style and is used by normal app launches.**
+The other styles, renderer branches, switchers, and screenshots have been removed.
+Earlier exploration remains in Git history.
 
-The user's design constraint is explicit: **do not use the square hover brackets**.
-Hover feedback follows the annular folder sector itself, with no detached target
-marker. Byte proportions, hierarchy depth, and navigation use the existing chart.
+The native renderer lives in `Sources/SpaceLens/Views/HoloPulse/`. It combines
+translucent bands, fine luminous edges, a static starfield, and a curved hover
+tracer. The production `ChartPanel` and sample harness share `StorageMapPanel`.
+The existing sidebar, inspector, Finder/Terminal actions, navigation, accessibility
+labels, capacity proportions, and transparent missing descendants remain intact.
+The inspector's ranked colors follow the chart's branch palette.
 
-| Variant | Surface | Hover |
-| --- | --- | --- |
-| Holo Pulse | Hologram's material and palette | Pulse's curved edge tracer |
-| Hologram | Original Hyperspace glass-like edges and translucent bands | A narrow light sweep within the sector |
-| Nebula | Fuller luminous bands, softer glow, and a richer static starfield | A soft light wave across the sector's width |
-| Pulse | Crisp energy contours, quiet interiors, and a sparse starfield | A short tracer along the sector's outer arc |
-
-All four share the same blue palette, branch colors, capacity outline, ranked
-directory panel, and chart placement. Holding the structure constant makes the
-lighting and motion differences easier to compare.
+Hover follows the annular sector; there are no square brackets. Animation settles
+after 1.2 seconds, runs at at most 30 frames per second, and respects macOS Reduce
+Motion. Nothing animates continuously while the pointer is idle.
 
 ## Appearance
 
-**Dark** preserves Hologram's original palette. **Slate** replaces the bright light
-appearance with opaque blue-gray surfaces and a subtle gradient. The page,
-chart hub, free-space label, hover card, and switcher all use that palette. The
-native window chrome stays dark when the content changes to Slate.
+Dark uses a navy chart surface and cyan-led branch colors. Light appearance uses
+Slate throughout the app: blue-gray surfaces from `#8FA4B4` to `#B6C7D4`, dark blue
+text, and darker chart edges. Theme surfaces never use solid white. Hover light
+uses ice blue. The sample harness keeps native controls dark while selecting Slate.
 
-Theme surfaces must never be solid white. The Slate theme uses surfaces in the
-`#8FA4B4` to `#B6C7D4` range, with dark blue text and darker chart edges. Hover light
-uses ice blue rather than pure white. The main app's existing palette is unchanged.
-
-## Open
+## Preview
 
 ```bash
 make chart-preview
 ```
 
-The native lab supports hover, folder drill-down, breadcrumbs, keyboard variant
-cycling, Dark/Slate appearance, motion controls, and disk/folder samples.
-The launcher builds a separate preview app in `.build/` with its own identity,
-so it can run beside an existing SpaceLens session.
+The sample harness uses invented data and a separate bundle identity. It supports
+Dark/Slate appearance, motion controls, disk/folder samples, hover, folder
+navigation, breadcrumbs, and row selection. Finder and Terminal actions are
+inactive for invented paths. There is no style selection.
 
-Double-click `index.html` for the interactive Canvas comparison. Hover a folder
-or use **Try hover effect** to replay the animation. The `?variant=` values are
-`holo-pulse` (default), `hologram`, `nebula`, and `pulse`. Use `?appearance=slate`
-for the muted appearance; older `appearance=light` links also open Slate.
+To inspect the normal application UI under the separate preview identity, close
+the sample preview and run `Scripts/preview_chart_styles.sh --app`. This preserves
+any existing SpaceLens process and its in-memory scan cache.
 
-Hover animation lasts at most 1.2 seconds, then its timeline stops. Native updates
-are capped at 30 per second during that event. Changing the hovered sector, root,
-or variant discards the old effect. **Motion off** and the system's **Reduce Motion**
-setting use a static highlight. Stars remain static.
+The self-contained `index.html` supports the same chart sample and curved tracer.
+Use `?appearance=slate` for Slate; older `appearance=light` links also work.
+It is a browser approximation; the two native PNGs render the production panel.
 
-Both previews use invented 480.98 GB / 512 GB disk data, with 31.02 GB free,
-and a 39 GB folder sample. Finder and Terminal actions are inactive for sample
-data. The gallery starts no scan and persists no preferences.
-
-## Isolation
-
-Branch: `prototype/storage-map-styles`. The gallery is opt-in through
-`--chart-style-prototype`; normal app launches keep their existing presentation.
-An optional `hyperspaceVariant` environment value activates the new material
-only in the lab. The filesystem scanner and `SunburstLayout` are unchanged.
-
-## Reproduce
+## Regenerate
 
 ```bash
 make build
@@ -70,11 +49,19 @@ make build
 python3 Scripts/build_space_preview.py
 ```
 
-The eight PNGs are native SwiftUI renders at 1080 × 730 points, at 1.5× scale.
-Filenames ending in `-light.png` now contain the Slate appearance.
-The exporter also writes `space-scenes.json` with native scene angles and folder
-navigation targets. The Python helper embeds that data into
-`space-preview.template.html` to produce the self-contained `index.html`.
+`images/holo-pulse-dark.png` and `images/holo-pulse-light.png` are SwiftUI renders
+of `StorageMapPanel` at 1080 × 730 points and 1.5× scale. The `-light.png` file uses
+Slate. `space-scenes.json` contains native scene angles and navigation targets;
+the Python helper embeds it into `space-preview.template.html` as `index.html`.
 
-The native and browser renderers implement the same variants separately.
-Use the native lab or PNGs to judge the final macOS appearance.
+## Verify
+
+```bash
+make build
+make test
+make app
+codesign --verify --deep --strict --verbose=2 dist/SpaceLens.app
+plutil -lint dist/SpaceLens.app/Contents/Info.plist
+```
+
+Builds stay local; this change does not publish or release the application.

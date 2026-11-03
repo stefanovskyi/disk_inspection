@@ -1,10 +1,9 @@
 import AppKit
 import SwiftUI
 
-// Prototype only. Run `make chart-preview`; no filesystem scan or persisted settings.
+// Sample harness for the production chart. No filesystem scan or persisted settings.
 struct ChartStylePrototypeView: View {
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
-    @State private var variant = HyperspaceVariant.holoPulse
     @State private var motionEnabled = true
     @State private var lightAppearance = false
     @State private var compactDataset = false
@@ -13,12 +12,12 @@ struct ChartStylePrototypeView: View {
 
     private var root: FileNode { path.last ?? ChartPrototypeData.disk }
     private var appearance: ColorScheme { lightAppearance ? .light : .dark }
-    private var theme: SpaceTheme { SpaceTheme(colorScheme: appearance, usesSlateSurfaces: true) }
+    private var theme: SpaceTheme { SpaceTheme(colorScheme: appearance) }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 16) {
-                Label("SpaceLens · Hyperspace lab", systemImage: "circle.hexagongrid")
+                Label("SpaceLens · Holo Pulse preview", systemImage: "circle.hexagongrid")
                     .font(.headline)
                     .foregroundStyle(theme.primaryText)
                 Spacer()
@@ -62,8 +61,8 @@ struct ChartStylePrototypeView: View {
             .padding(.horizontal, 22)
             .padding(.bottom, 8)
 
-            HyperspaceStage(
-                variant: variant, root: root,
+            ChartSampleStage(
+                root: root,
                 volume: !compactDataset && path.count == 1 ? ChartPrototypeData.volume : nil,
                 selectedItemID: selectedItem?.id,
                 actions: SunburstChartActions(
@@ -76,38 +75,14 @@ struct ChartStylePrototypeView: View {
             .environment(\.colorScheme, appearance)
             .padding(.horizontal, 18)
 
-            HStack(spacing: 14) {
-                Button { variant = variant.shifted(by: -1) } label: {
-                    Image(systemName: "chevron.left")
-                }
-                .help("Previous variant")
-                .keyboardShortcut(.leftArrow, modifiers: [])
-                Picker("Hyperspace variant", selection: $variant) {
-                    ForEach(HyperspaceVariant.allCases) { option in
-                        Text(option.title).tag(option)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 440)
-                Button { variant = variant.shifted(by: 1) } label: {
-                    Image(systemName: "chevron.right")
-                }
-                .help("Next variant")
-                .keyboardShortcut(.rightArrow, modifiers: [])
-            }
-            .padding(12)
-            .background(theme.elevatedSurface, in: Capsule())
-            .padding(.top, 12)
-
-            Text("Design prototype · identical byte proportions and depth · Finder and Terminal actions are inactive for sample data")
+            Text("Holo Pulse · production chart with sample data · Finder and Terminal actions are inactive for sample data")
                 .font(.caption2)
                 .foregroundStyle(theme.secondaryText)
                 .padding(.vertical, 10)
         }
         .background(theme.background)
         .preferredColorScheme(.dark)
-        .environment(\.hyperspaceMotionEnabled, motionEnabled && !systemReduceMotion)
+        .environment(\.chartMotionEnabled, motionEnabled && !systemReduceMotion)
         .onChange(of: compactDataset) { _, compact in
             path = [compact ? ChartPrototypeData.folder : ChartPrototypeData.disk]
             selectedItem = nil

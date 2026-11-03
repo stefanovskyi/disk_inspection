@@ -37,7 +37,7 @@ verify-dmg:
 run:
 	swift run SpaceLens
 
-# Throwaway native gallery on prototype/storage-map-styles. Uses invented data only.
+# Sample-data preview of the production Holo Pulse chart.
 chart-preview:
 	./Scripts/preview_chart_styles.sh
 

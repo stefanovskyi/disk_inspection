@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SpaceLens · Hyperspace variants</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SpaceLens · Holo Pulse</title>
 <style>
 :root{font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif);color:var(--foreground,#dce8f2)}
 html,body{margin:0}*{box-sizing:border-box}button,select,input{font:inherit}button,select{cursor:pointer}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--ring,#54d6ef);outline-offset:3px}
@@ -10,32 +10,25 @@ html,body{margin:0}*{box-sizing:border-box}button,select,input{font:inherit}butt
 @media(prefers-color-scheme:light){:root{color:var(--foreground,#172d41)}.controls button,.controls select{background:color-mix(in srgb,var(--secondary,#8fa4b4) 20%,#8fa4b4);color:var(--foreground,#112a3d);border-color:#667f93}.controls button[aria-pressed=true]{background:color-mix(in srgb,var(--accent,#537a94) 30%,#6c91a8)}.notes,.controls .motion{color:var(--muted-foreground,#526b82)}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
 </style></head><body><main>
-<nav class="controls" aria-label="Hyperspace variants">
-<button data-choice="holo-pulse" aria-pressed="true">Holo Pulse</button><button data-choice="hologram" aria-pressed="false">Hologram</button><button data-choice="nebula" aria-pressed="false">Nebula</button><button data-choice="pulse" aria-pressed="false">Pulse</button>
+<nav class="controls" aria-label="Holo Pulse preview controls">
 <button id="appearance" aria-label="Toggle chart Slate and Dark appearance">Slate</button><label class="motion"><input id="motion" type="checkbox" checked>Motion</label>
 <select id="dataset" aria-label="Sample dataset"><option value="disk">Disk</option><option value="folder">Folder</option></select>
 </nav>
-<section class="cockpit" data-variant="holo-pulse" aria-label="SpaceLens storage-map prototype">
+<section class="cockpit" aria-label="SpaceLens storage-map prototype">
 <div class="console-head"><div><div class="eyebrow" id="title">SPACELENS / HYPERSPACE</div><p class="subtitle" id="subtitle"></p></div><div class="sample"><span id="variant-title">HOLO PULSE</span><br>SAMPLE DATA</div></div>
 <nav class="breadcrumbs" id="breadcrumbs" aria-label="Folder path"></nav>
 <div class="stage"><div class="chart-wrap"><canvas id="chart" role="img" aria-label="Interactive storage chart; the directory buttons provide the same navigation"></canvas></div><aside class="panel"><div class="panel-title">SECTOR DIRECTORY</div><div class="rows" id="directories"></div><div class="selection" id="selection" aria-live="polite"></div><div class="summary" id="summary"></div></aside></div>
 <div class="console-foot"><span class="hint" id="hint"></span><button class="demo" id="demo">Try hover effect</button></div>
 </section>
-<p class="notes">Holo Pulse combines Hologram’s translucent material with Pulse’s curved tracer. Slate replaces the bright light appearance. Hover a folder or replay its effect; click folders to explore. Motion settles after 1.2 seconds and respects Reduce Motion. Open the native version with <code>make chart-preview</code>.</p>
+<p class="notes">Holo Pulse is the app’s storage-map style. Slate uses muted blue-gray surfaces. Hover a folder or replay its effect; click folders to explore. Motion settles after 1.2 seconds and respects Reduce Motion. Open the native version with <code>make chart-preview</code>.</p>
 <script id="scene-data" type="application/json">__SPACE_SCENES__</script>
 <script>
 
 const data = JSON.parse(document.getElementById('scene-data').textContent);
-const variants = {
-  'holo-pulse': { title:'Holo Pulse', subtitle:"Hologram's translucent color, with Pulse's curved hover tracer.", hint:'HOVER / curved edge tracer', material:'hologram', motion:'pulse', stars:180, glow:3 },
-  hologram: { title:'Hologram', subtitle:'Fine glass-like edges. A light sweep follows the hovered sector.', hint:'HOVER / sector sweep', material:'hologram', motion:'hologram', stars:180, glow:3 },
-  nebula: { title:'Nebula', subtitle:'Fuller luminous bands. A soft wave lights the hovered sector.', hint:'HOVER / soft light wave', material:'nebula', motion:'nebula', stars:240, glow:6 },
-  pulse: { title:'Pulse', subtitle:'Crisp energy contours. A short tracer follows the hovered arc.', hint:'HOVER / curved edge tracer', material:'pulse', motion:'pulse', stars:100, glow:2 }
-};
+const style = { title:'Holo Pulse', subtitle:'Translucent bands with a curved hover tracer.', hint:'HOVER / curved edge tracer', stars:180, glow:3 };
 const hues = [.53,.69,.10,.90,.38,.77,.02,.56];
 const canvas = document.getElementById('chart'), ctx = canvas.getContext('2d'), cockpit = document.querySelector('.cockpit');
 const params = new URLSearchParams(location.search);
-let variant = variants[params.get('variant')] ? params.get('variant') : 'holo-pulse';
 let light = ['slate','light'].includes(params.get('appearance')), path = [data.diskRoot], hover = null, selected = null, started = 0, queued = false, metrics = null;
 const reduced = matchMedia('(prefers-reduced-motion:reduce)'), motion = document.getElementById('motion');
 motion.checked = !reduced.matches;
@@ -68,12 +61,11 @@ function line(a,b,color,width=1) {
   ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke();
 }
 function update() {
-  const s=scene();cockpit.dataset.variant=variant;cockpit.classList.toggle('light',light);
-  document.querySelectorAll('[data-choice]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.choice===variant)));
+  const s=scene();cockpit.classList.toggle('light',light);
   document.getElementById('appearance').textContent=light?'Dark':'Slate';
-  document.getElementById('variant-title').textContent=variants[variant].title.toUpperCase();
-  document.getElementById('subtitle').textContent=variants[variant].subtitle;
-  document.getElementById('hint').textContent=`${variants[variant].hint}${moving()?'':' · MOTION OFF'}`;
+  document.getElementById('variant-title').textContent=style.title.toUpperCase();
+  document.getElementById('subtitle').textContent=style.subtitle;
+  document.getElementById('hint').textContent=`${style.hint}${moving()?'':' · MOTION OFF'}`;
   const crumbs=document.getElementById('breadcrumbs');crumbs.replaceChildren();
   path.forEach((id,index)=>{
     if(index){const sep=document.createElement('span');sep.textContent='/';crumbs.append(sep);}
@@ -96,9 +88,9 @@ function update() {
     b.onpointerleave=b.onblur=()=>focus(null);rows.append(b);
   });
   document.getElementById('summary').textContent=`${bytes(s.size)} MAPPED${s.free?' / '+bytes(s.free)+' FREE':''}`;
-  canvas.setAttribute('aria-label',`Hyperspace ${variants[variant].title} storage map for ${s.name}, ${bytes(s.size)}. Use the directory buttons to explore.`);
+  canvas.setAttribute('aria-label',`Hyperspace ${style.title} storage map for ${s.name}, ${bytes(s.size)}. Use the directory buttons to explore.`);
   syncSelection();queue();
-  try { const url=new URL(location.href);url.searchParams.set('variant',variant);url.searchParams.set('appearance',light?'slate':'dark');history.replaceState({},'',url); } catch {}
+  try { const url=new URL(location.href);url.searchParams.delete('variant');url.searchParams.set('appearance',light?'slate':'dark');history.replaceState({},'',url); } catch {}
 }
 function syncSelection() {
   const s=hover||selected,el=document.getElementById('selection');el.replaceChildren();
@@ -130,13 +122,8 @@ function draw(time) {
   ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
   const diameter=Math.min(w,h),outer=diameter*.465,inner=diameter*.145;
   metrics={cx:w/2,cy:h/2,outer,inner,ring:(outer-inner)/scene().rings};
-  const ink=light?'#112a3d':'#dce9f6',muted=light?'#1c384a':'#91a9c3',accent=rgb(hues[0],.65,light?.44:.9),material=variants[variant].material;
-  if(material==='nebula') {
-    const atmosphere=ctx.createRadialGradient(metrics.cx,metrics.cy,outer*.3,metrics.cx,metrics.cy,outer*1.2);
-    atmosphere.addColorStop(0,rgb(hues[0],.65,.9,light?.035:.07));atmosphere.addColorStop(1,rgb(hues[0],.65,.9,0));
-    ctx.fillStyle=atmosphere;ctx.fillRect(0,0,w,h);
-  }
-  for(let i=0;i<variants[variant].stars;i++) {
+  const ink=light?'#112a3d':'#dce9f6',muted=light?'#1c384a':'#91a9c3',accent=rgb(hues[0],.65,light?.44:.9);
+  for(let i=0;i<style.stars;i++) {
     const x=((i*137+31)%997)/997*w,y=((i*293+79)%991)/991*h;
     ctx.fillStyle=i%5===0?accent:ink;ctx.globalAlpha=light?.18:i%7===0?.6:.23;
     ctx.beginPath();ctx.arc(x,y,i%13===0?1:.45,0,Math.PI*2);ctx.fill();
@@ -148,12 +135,11 @@ function draw(time) {
   ctx.beginPath();ctx.arc(metrics.cx,metrics.cy,outer,0,Math.PI*2);ctx.stroke();
   for(const s of scene().segments) {
     const t=tile(s),g=ctx.createRadialGradient(metrics.cx,metrics.cy,t.radius-t.half,metrics.cx,metrics.cy,t.radius+t.half);
-    const opacity=material==='hologram'?[.10,light?.19:.28]:material==='nebula'?[light?.17:.20,light?.46:.65]:[.035,light?.11:.15];
+    const opacity=[.10,light?.19:.28];
     g.addColorStop(0,color(s,opacity[0]));g.addColorStop(1,color(s,opacity[1]));
-    ctx.save();ctx.fillStyle=g;ctx.fill(t.p);ctx.lineWidth=.6;ctx.strokeStyle=color(s,material==='pulse'?.35:.56);ctx.stroke(t.p);
-    ctx.shadowColor=color(s,light?.16:.8);ctx.shadowBlur=variants[variant].glow;ctx.strokeStyle=color(s);ctx.lineWidth=material==='pulse'?1.8:1.2;
+    ctx.save();ctx.fillStyle=g;ctx.fill(t.p);ctx.lineWidth=.6;ctx.strokeStyle=color(s,.56);ctx.stroke(t.p);
+    ctx.shadowColor=color(s,light?.16:.8);ctx.shadowBlur=style.glow;ctx.strokeStyle=color(s);ctx.lineWidth=1.2;
     ctx.stroke(arc(t.radius+t.half-.9,t.start,t.end));
-    if(material==='nebula'){ctx.shadowBlur=0;ctx.lineWidth=.8;ctx.strokeStyle=color(s,.7);ctx.stroke(arc(t.radius-t.half+.8,t.start,t.end));}
     ctx.restore();
   }
   const focused=hover||selected;
@@ -167,38 +153,25 @@ function draw(time) {
   if(scene().free){const a=scene().extent+(Math.PI*2-scene().extent)/2,[x,y]=point(inner+(outer-inner)*.65,a);ctx.fillStyle=muted;ctx.font='8px ui-monospace,monospace';ctx.fillText('FREE',x,y-4);ctx.font='10px ui-monospace,monospace';ctx.fillText(bytes(scene().free),x,y+11);}
 }
 function drawFocus(s,elapsed) {
-  const t=tile(s),inner=t.radius-t.half,outer=t.radius+t.half,c=color(s),material=variants[variant].material,hoverMotion=variants[variant].motion;
-  ctx.save();ctx.shadowColor=color(s,light?.2:.8);ctx.shadowBlur=material==='nebula'?8:4;
-  ctx.fillStyle=color(s,material==='nebula'?.23:.15);ctx.fill(t.p);
+  const t=tile(s),inner=t.radius-t.half,outer=t.radius+t.half,c=color(s);
+  ctx.save();ctx.shadowColor=color(s,light?.2:.8);ctx.shadowBlur=4;
+  ctx.fillStyle=color(s,.15);ctx.fill(t.p);
   ctx.strokeStyle=light?c:'rgba(184,232,255,.75)';ctx.lineWidth=1.1;ctx.stroke(t.p);
   if(elapsed<1&&moving()) {
     const phase=Math.max(0,Math.min(1,elapsed));ctx.clip(t.p);
-    if(hoverMotion==='hologram') {
-      const angle=s.start+(s.end-s.start)*phase;
-      line(point(inner-2,angle),point(outer+2,angle),light?c:'#b8e8ff',2);
-    } else if(hoverMotion==='nebula') {
-      ctx.lineWidth=Math.max(3,metrics.ring*.3);ctx.strokeStyle=color(s,Math.sin(phase*Math.PI)*.85);
-      ctx.stroke(arc(inner+(outer-inner)*phase,t.start,t.end));
-    } else {
-      const head=t.start+(t.end-t.start)*(1-Math.pow(1-phase,2)),length=Math.min(.18,(t.end-t.start)*.25);
-      ctx.lineCap='round';ctx.lineWidth=2.2;
-      for(let i=0;i<4;i++){ctx.strokeStyle=light?color(s,(i+1)*.22):`rgba(184,232,255,${(i+1)*.22})`;ctx.stroke(arc(outer-1.3,Math.max(t.start,head-length*(4-i)/4),head));}
-    }
+    const head=t.start+(t.end-t.start)*(1-Math.pow(1-phase,2)),length=Math.min(.18,(t.end-t.start)*.25);
+    ctx.lineCap='round';ctx.lineWidth=2.2;
+    for(let i=0;i<4;i++){ctx.strokeStyle=light?color(s,(i+1)*.22):`rgba(184,232,255,${(i+1)*.22})`;ctx.stroke(arc(outer-1.3,Math.max(t.start,head-length*(4-i)/4),head));}
   }
   ctx.restore();
 }
 canvas.addEventListener('pointermove',event=>{const s=hit(event);canvas.style.cursor=s?'pointer':'default';focus(s);});
 canvas.addEventListener('pointerleave',()=>focus(null));
 canvas.addEventListener('click',event=>{const s=hit(event);if(s)navigate(s.target);});
-document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>{variant=b.dataset.choice;reset();update();});
 document.getElementById('appearance').onclick=()=>{light=!light;update();};
 motion.onchange=()=>{started=performance.now();update();};
 reduced.addEventListener('change',()=>{motion.disabled=reduced.matches;if(reduced.matches)motion.checked=false;update();});
 document.getElementById('dataset').onchange=event=>{path=[event.target.value==='folder'?data.folderRoot:data.diskRoot];reset();update();};
 document.getElementById('demo').onclick=()=>{hover=null;focus(scene().segments.find(s=>s.depth===2&&s.end-s.start>.3)||scene().segments[0]);};
-document.addEventListener('keydown',event=>{
-  if(event.target.closest('input,select,textarea,[contenteditable=true]'))return;
-  if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();const keys=Object.keys(variants);variant=keys[(keys.indexOf(variant)+(event.key==='ArrowRight'?1:-1)+keys.length)%keys.length];reset();update();}
-});
 new ResizeObserver(queue).observe(canvas);update();
 </script></main></body></html>

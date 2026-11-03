@@ -5,7 +5,7 @@ struct SpaceLensApp: App {
     @State private var model = AppViewModel()
 
     var body: some Scene {
-        WindowGroup(ProcessInfo.processInfo.arguments.contains("--chart-style-prototype") ? "SpaceLens · Hyperspace lab" : "SpaceLens") {
+        WindowGroup(ProcessInfo.processInfo.arguments.contains("--chart-style-prototype") ? "SpaceLens · Holo Pulse preview" : "SpaceLens") {
             Group {
                 if ProcessInfo.processInfo.arguments.contains("--chart-style-prototype") {
                     ChartStylePrototypeView()

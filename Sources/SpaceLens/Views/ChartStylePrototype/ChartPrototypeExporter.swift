@@ -5,26 +5,24 @@ import SwiftUI
 enum ChartPrototypeExporter {
     static func export(to directory: URL) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        for variant in HyperspaceVariant.allCases {
-            for scheme in [ColorScheme.dark, .light] {
-                let content = HyperspaceStage(
-                    variant: variant, root: ChartPrototypeData.disk, volume: ChartPrototypeData.volume
-                )
-                .frame(width: 1080, height: 730)
-                .environment(\.colorScheme, scheme)
-                let renderer = ImageRenderer(content: content)
-                renderer.scale = 1.5
-                guard let cgImage = renderer.cgImage else {
-                    throw CocoaError(.fileWriteUnknown)
-                }
-                let bitmap = NSBitmapImageRep(cgImage: cgImage)
-                guard let png = bitmap.representation(using: .png, properties: [:]) else {
-                    throw CocoaError(.fileWriteUnknown)
-                }
-                let name = "\(variant.rawValue)-\(scheme == .dark ? "dark" : "light").png"
-                try png.write(to: directory.appendingPathComponent(name))
-                print("Rendered \(name)")
+        for scheme in [ColorScheme.dark, .light] {
+            let content = StorageMapPanel(
+                node: ChartPrototypeData.disk, volume: ChartPrototypeData.volume, isProvisional: false
+            )
+            .frame(width: 1080, height: 730)
+            .environment(\.colorScheme, scheme)
+            let renderer = ImageRenderer(content: content)
+            renderer.scale = 1.5
+            guard let cgImage = renderer.cgImage else {
+                throw CocoaError(.fileWriteUnknown)
             }
+            let bitmap = NSBitmapImageRep(cgImage: cgImage)
+            guard let png = bitmap.representation(using: .png, properties: [:]) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            let name = "holo-pulse-\(scheme == .dark ? "dark" : "light").png"
+            try png.write(to: directory.appendingPathComponent(name))
+            print("Rendered \(name)")
         }
         try exportSceneData(to: directory.deletingLastPathComponent().appendingPathComponent("space-scenes.json"))
     }

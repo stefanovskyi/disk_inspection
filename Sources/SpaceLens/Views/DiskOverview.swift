@@ -136,7 +136,7 @@ struct DiskOverview: View {
             .padding(.horizontal, 18)
             .padding(.bottom, 14)
         }
-        .spacePanel()
+        .holoPulsePanel()
     }
 
     private var mapSubtitle: String {

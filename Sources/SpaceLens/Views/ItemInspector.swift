@@ -87,11 +87,12 @@ struct ItemInspector: View {
                         InspectorRow(
                             node: child,
                             parentSize: node.size,
-                            hue: SunburstLayout.hue(for: child.id),
+                            hue: HoloPulseStyle.branchHue(at: children.firstIndex { $0.id == child.id } ?? 0),
                             select: { selectedItem = child }
                         )
                         .tag(child.id)
                         .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                     }
 
                     if smallItemCount > 0 {
@@ -117,6 +118,7 @@ struct ItemInspector: View {
                     }
                 }
                 .listStyle(.inset)
+                .scrollContentBackground(.hidden)
                 .focusable()
                 .onKeyPress(.return) { activateSelection() }
             }
@@ -268,14 +270,16 @@ struct SmallerItemsInspector: View {
                     InspectorRow(
                         node: child,
                         parentSize: selection.size,
-                        hue: SunburstLayout.hue(for: child.id),
+                        hue: HoloPulseStyle.branchHue(at: 0),
                         select: { selectedItem = child }
                     )
                     .tag(child.id)
                     .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
             }
             .listStyle(.inset)
+            .scrollContentBackground(.hidden)
             .focusable()
             .onKeyPress(.return) { activateSelection() }
         }
@@ -322,7 +326,7 @@ private struct InspectorRow: View {
     var body: some View {
         let theme = SpaceTheme(colorScheme: colorScheme)
         let fraction = node.percentage(of: parentSize)
-        let color = SpacePalette.color(hue: hue, depth: 0, isDark: colorScheme == .dark)
+        let color = HoloPulseStyle.color(hue: hue, depth: 0, isDark: colorScheme == .dark)
 
         VStack(spacing: 8) {
                 HStack(spacing: 9) {

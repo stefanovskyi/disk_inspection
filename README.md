@@ -43,32 +43,24 @@ This exception does not make the app signed or notarized. Do not disable Gatekee
   <a href="docs/images/spacelens-ai-models.png"><img src="docs/images/spacelens-ai-models.png" width="49%" alt="Completed AI Models analysis in SpaceLens"></a>
 </p>
 
-These are unedited captures of completed results from the current app build—not scanning-progress or mockup screens. Totals naturally depend on the Mac being inspected.
+These are unedited captures of completed results from the earlier app build, before Holo Pulse was added. Totals naturally depend on the Mac being inspected.
 
 ## Run locally
 
-### Hyperspace design prototype (this branch only)
+### Holo Pulse storage map
 
-The `prototype/storage-map-styles` branch opens on **Holo Pulse**: Hologram's colors
-and translucent material combined with Pulse's curved hover tracer. Hologram,
-Nebula, and Pulse remain available for comparison. Open the
-[interactive comparison](docs/prototypes/chart-styles/index.html) in a browser,
-or run the native gallery:
+The app uses **Holo Pulse**: translucent colored bands, luminous curved edges,
+a static starfield, and a short curved hover tracer. It is the only chart style;
+there is no style switcher. Animation settles after 1.2 seconds and respects
+macOS Reduce Motion. Folder proportions, hierarchy, navigation, context actions,
+and the ranked list retain their existing behavior.
 
-```bash
-make chart-preview
-```
+Light appearance uses **Slate**, a muted blue-gray palette throughout the app.
+Chart surfaces, the center hub, labels, and hover cards never use solid white.
 
-Use the style switcher, Dark/Slate and motion controls, and disk/folder samples.
-Hover a sector, click folders to drill down, and use the breadcrumbs to return.
-Hover feedback follows the folder's actual shape; square target brackets are removed.
-Animations settle after 1.2 seconds and respect Reduce Motion. All values are invented
-sample data; no scan is started. Finder and Terminal menu actions are inactive in this
-gallery. Launching SpaceLens normally retains the existing interface and chart.
-
-Slate replaces the bright light appearance with muted blue-gray surfaces,
-darker text, and a tinted chart hub. Hyperspace is the selected theme. See the
-[prototype notes](docs/prototypes/chart-styles/README.md) for scope and reproduction.
+For a sample-data preview of the production chart, run `make chart-preview` or
+open the [interactive sample](docs/prototypes/chart-styles/index.html).
+See the [preview notes](docs/prototypes/chart-styles/README.md) for reproduction.
 
 Requirements: macOS 14 or newer and Swift 6 from Xcode or the Xcode Command Line Tools.
 
