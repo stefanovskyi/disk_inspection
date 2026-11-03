@@ -1,57 +1,55 @@
-# SpaceLens storage-map exploration
+# SpaceLens Hyperspace variants
 
-Question: how can SpaceLens feel like an outer-space instrument panel, with
-laser light and animated hover feedback, while preserving an accurate hierarchy?
+Hyperspace is the selected theme. This branch now contains three variations of
+that theme; the previous theme options, their renderer branches, gallery links,
+and screenshots have been removed. Git history retains the earlier exploration.
 
-Branch: `prototype/storage-map-styles`. This is throwaway prototype code. No design
-has been selected or promoted to main, and no implementation issue was supplied.
+The user's design constraint is explicit: **do not use the square hover brackets**.
+Hover feedback follows the annular folder sector itself, with no detached target
+marker. Byte proportions, hierarchy depth, and navigation use the existing chart.
 
-## Options
-
-| Style | Direction | Tradeoff |
+| Variant | Surface | Hover |
 | --- | --- | --- |
-| Classic | Current solid fills and original path-based colors | Baseline |
-| Hyperspace | Starfield, blue holographic edges, reticle lock and sector sweep | Fine edges favor a dark appearance |
-| Bridge | Amber/violet console, directory panel on the left, warm hover sweep | Solid tiles are visually denser |
-| Lasers | Green/pink energy core, centered map, twin photon traces and impact halo | The most theatrical hover treatment |
+| Hologram | Original Hyperspace glass-like edges and translucent bands | A narrow light sweep within the sector |
+| Nebula | Fuller luminous bands, softer glow, and a richer static starfield | A soft light wave across the sector's width |
+| Pulse | Crisp energy contours, quiet interiors, and a sparse starfield | A short tracer along the sector's outer arc |
 
-The earlier Aurora, Prism, and Contour concepts remain available under **Earlier
-concepts** in the native lab, and in `previous-concepts.html`. These are original
-space-console designs inspired by cinematic science fiction. No movie artwork,
-logos, characters, sound effects, or proprietary interface assets are bundled.
-
-The treatments assign separate colors to top-level branches and retain each
-branch's color through its descendants. They use the existing `SunburstScene`,
-capacity calculation, size-proportional angles, depth limit, hit testing, hover
-card, selection, and drill-down actions. Missing descendants remain empty. Thin
-instrument ticks sit outside the capacity boundary; stars are static decoration.
-
-Hovering starts a single 1.2-second effect, then the timeline stops until another
-sector is entered. The native timeline runs at most 30 times per second during
-that burst. Moving away removes the effect and cancels its task. The **Motion**
-switch and system **Reduce Motion** replace animation with a static highlight.
-Navigation and changing styles discard the old effect.
-
-The gallery uses invented 480.98 GB / 512 GB disk data, with 31.02 GB free, and a
-39 GB folder sample. It does not scan the filesystem or persist preferences.
-Context-menu Finder and Terminal actions are inactive for sample data.
+All three share the same blue palette, branch colors, capacity outline, ranked
+directory panel, and chart placement. Holding the structure constant makes the
+lighting and motion differences easier to compare. No variant has been selected.
 
 ## Open
 
-- Double-click `index.html` for the interactive Canvas comparison. Hover, click
-  directories, or use **Try hover effect** to replay an animation. Arrow keys
-  cycle styles; dark/light, motion, and disk/folder controls are available.
-- Run `make chart-preview` for actual native hover, selection, drill-down,
-  breadcrumbs, and deep-disk / shallow-folder samples.
-- The launcher builds a separate ad-hoc-signed preview bundle in `.build/` with
-  its own identity, so it can run beside an existing SpaceLens session.
-- Launch the app normally for the existing application, with Classic unchanged.
+```bash
+make chart-preview
+```
 
-The gallery is opt-in through `--chart-style-prototype`. The extra source is in
-`Sources/SpaceLens/Views/ChartStylePrototype/`; the existing chart's rendering uses
-an environment value that defaults to Classic. Normal app launches keep Classic.
+The native lab supports hover, folder drill-down, breadcrumbs, keyboard variant
+cycling, light/dark appearance, motion controls, and disk/folder samples.
+The launcher builds a separate preview app in `.build/` with its own identity,
+so it can run beside an existing SpaceLens session.
 
-## Regenerate native snapshots
+Double-click `index.html` for the interactive Canvas comparison. Hover a folder
+or use **Try hover effect** to replay the animation. The `?variant=` values are
+`hologram`, `nebula`, and `pulse`.
+
+Hover animation lasts at most 1.2 seconds, then its timeline stops. Native updates
+are capped at 30 per second during that event. Changing the hovered sector, root,
+or variant discards the old effect. **Motion off** and the system's **Reduce Motion**
+setting use a static highlight. Stars remain static.
+
+Both previews use invented 480.98 GB / 512 GB disk data, with 31.02 GB free,
+and a 39 GB folder sample. Finder and Terminal actions are inactive for sample
+data. The gallery starts no scan and persists no preferences.
+
+## Isolation
+
+Branch: `prototype/storage-map-styles`. The gallery is opt-in through
+`--chart-style-prototype`; normal app launches keep their existing presentation.
+An optional `hyperspaceVariant` environment value activates the new material
+only in the lab. The filesystem scanner and `SunburstLayout` are unchanged.
+
+## Reproduce
 
 ```bash
 make build
@@ -59,15 +57,10 @@ make build
 python3 Scripts/build_space_preview.py
 ```
 
-The PNGs are SwiftUI `ImageRenderer` output at 1080 × 730 points, rendered at 1.5×.
-They use sample data. The exporter also writes `space-scenes.json`, containing
-native scene angles and folder navigation targets. The Python helper embeds that
-data into `space-preview.template.html` to produce the self-contained `index.html`.
-The browser and native renderers implement the same visual concepts separately;
-judge final macOS appearance in the native lab or its PNGs.
+The six PNGs are native SwiftUI renders at 1080 × 730 points, at 1.5× scale.
+The exporter also writes `space-scenes.json` with native scene angles and folder
+navigation targets. The Python helper embeds that data into
+`space-preview.template.html` to produce the self-contained `index.html`.
 
-## Choosing a direction
-
-Pick a material, layout, and hover effect independently. A chosen design should
-be implemented as a focused production change; the lab, fixtures, and unused
-variants stay on this branch. No winner has been selected.
+The native and browser renderers implement the same variants separately.
+Use the native lab or PNGs to judge the final macOS appearance.

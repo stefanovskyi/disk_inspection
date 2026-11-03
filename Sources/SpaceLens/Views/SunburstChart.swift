@@ -67,7 +67,7 @@ struct ChartPanel: View {
 }
 
 struct SunburstChart: View {
-    @Environment(\.chartPrototypeStyle) private var prototypeStyle
+    @Environment(\.hyperspaceVariant) private var hyperspaceVariant
     @StateObject private var sceneCache = SunburstSceneCache()
     let root: FileNode
     let volume: VolumeInfo?
@@ -109,8 +109,8 @@ struct SunburstChart: View {
             let metrics = ChartMetrics(size: proxy.size, ringCount: scene.ringCount)
 
             ZStack {
-                if prototypeStyle.isSpaceStyle {
-                    SpaceChartAtmosphere(style: prototypeStyle, center: metrics.center, outerRadius: metrics.outerRadius)
+                if let variant = hyperspaceVariant {
+                    HyperspaceAtmosphere(variant: variant, center: metrics.center, outerRadius: metrics.outerRadius)
                 }
                 SunburstBaseLayer(scene: scene, capacity: capacity, metrics: metrics)
                 SunburstInteractionLayer(
@@ -219,7 +219,7 @@ struct SunburstChartActions {
 
 private struct SunburstBaseLayer: View {
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.chartPrototypeStyle) private var prototypeStyle
+    @Environment(\.hyperspaceVariant) private var hyperspaceVariant
 
     let scene: SunburstScene
     let capacity: StorageChartCapacity
@@ -278,9 +278,9 @@ private struct SunburstBaseLayer: View {
     private func drawSegments(context: inout GraphicsContext) {
         let branches = scene.segments.filter { $0.depth == 0 }
         for segment in scene.segments {
-            if prototypeStyle != .classic {
-                ChartPrototypeRenderer.draw(
-                    segment, style: prototypeStyle, branches: branches, context: &context,
+            if let variant = hyperspaceVariant {
+                HyperspaceRenderer.draw(
+                    segment, variant: variant, branches: branches, context: &context,
                     center: metrics.center, radius: metrics.radius(forDepth: segment.depth),
                     ringWidth: metrics.ringWidth, isDark: colorScheme == .dark
                 )
@@ -316,7 +316,7 @@ private struct SunburstBaseLayer: View {
 
 private struct SunburstInteractionLayer: View {
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.chartPrototypeStyle) private var prototypeStyle
+    @Environment(\.hyperspaceVariant) private var hyperspaceVariant
     @State private var hoveredSegmentIndex: Int?
     @State private var isHoveringFreeSpace = false
 
@@ -341,14 +341,14 @@ private struct SunburstInteractionLayer: View {
             }
 
             if let hoveredSegment {
-                if prototypeStyle.isSpaceStyle {
-                    SpaceChartHoverEffect(
-                        style: prototypeStyle, segment: hoveredSegment,
-                        hue: prototypeStyle.hue(for: hoveredSegment, branches: scene.segments.filter { $0.depth == 0 }),
+                if let variant = hyperspaceVariant {
+                    HyperspaceHoverEffect(
+                        variant: variant, segment: hoveredSegment,
+                        hue: variant.hue(for: hoveredSegment, branches: scene.segments.filter { $0.depth == 0 }),
                         center: metrics.center, radius: metrics.radius(forDepth: hoveredSegment.depth),
-                        hubRadius: metrics.innerRadius, ringWidth: metrics.ringWidth
+                        ringWidth: metrics.ringWidth
                     )
-                    .id("\(prototypeStyle.rawValue):\(hoveredSegment.id)")
+                    .id("\(variant.rawValue):\(hoveredSegment.id)")
                 } else {
                     Canvas { context, _ in
                         drawHover(segment: hoveredSegment, context: &context, theme: theme)
@@ -438,10 +438,6 @@ private struct SunburstInteractionLayer: View {
         context: inout GraphicsContext,
         theme: SpaceTheme
     ) {
-        if prototypeStyle != .classic {
-            drawPrototypeFocus(segment: segment, context: &context, theme: theme)
-            return
-        }
         let angularGap = min(0.006, segment.angularSpan * 0.14)
         let radius = metrics.radius(forDepth: segment.depth)
         var arc = Path()
@@ -474,8 +470,8 @@ private struct SunburstInteractionLayer: View {
         context: inout GraphicsContext,
         theme: SpaceTheme
     ) {
-        if prototypeStyle != .classic {
-            drawPrototypeFocus(segment: segment, context: &context, theme: theme)
+        if hyperspaceVariant != nil {
+            drawSectorFocus(segment: segment, context: &context, theme: theme)
             return
         }
         let angularGap = min(0.006, segment.angularSpan * 0.14)
@@ -495,7 +491,7 @@ private struct SunburstInteractionLayer: View {
         )
     }
 
-    private func drawPrototypeFocus(
+    private func drawSectorFocus(
         segment: SunburstSegment,
         context: inout GraphicsContext,
         theme: SpaceTheme
@@ -528,7 +524,7 @@ private struct SunburstInteractionLayer: View {
         return ZStack {
             Circle()
                 .fill(theme.background)
-            if prototypeStyle != .classic {
+            if hyperspaceVariant != nil {
                 Circle()
                     .fill(RadialGradient(
                         colors: [theme.accent.opacity(0.12), theme.background],

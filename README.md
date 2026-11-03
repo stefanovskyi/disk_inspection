@@ -47,12 +47,12 @@ These are unedited captures of completed results from the current app build—no
 
 ## Run locally
 
-### Chart design prototype (this branch only)
+### Hyperspace design prototype (this branch only)
 
-The `prototype/storage-map-styles` branch contains three space-console concepts:
-**Hyperspace** (holographic targeting), **Bridge** (warm amber/violet panels), and
-**Lasers** (photon traces and impact halos), plus the original **Classic** chart.
-Open the [interactive comparison](docs/prototypes/chart-styles/index.html) in a browser,
+The `prototype/storage-map-styles` branch explores three variants of the chosen
+**Hyperspace** theme: **Hologram** (fine glass-like edges), **Nebula** (fuller luminous
+bands), and **Pulse** (crisp contours with a curved hover tracer). Open the
+[interactive comparison](docs/prototypes/chart-styles/index.html) in a browser,
 or run the native gallery:
 
 ```bash
@@ -60,13 +60,13 @@ make chart-preview
 ```
 
 Use the style switcher, light/dark and motion controls, and disk/folder samples.
-Hover to target a sector, click folders to drill down, and use the breadcrumbs to return.
-Hover animations settle after 1.2 seconds and respect Reduce Motion. The earlier
-Aurora, Prism, and Contour options remain under **Earlier concepts**. All values are invented
+Hover a sector, click folders to drill down, and use the breadcrumbs to return.
+Hover feedback follows the folder's actual shape; square target brackets are removed.
+Animations settle after 1.2 seconds and respect Reduce Motion. All values are invented
 sample data; no scan is started. Finder and Terminal menu actions are inactive in this
 gallery. Launching SpaceLens normally retains the existing interface and chart.
 
-This is a design exploration, with no selected winner yet. See the
+Hyperspace is the selected theme; the variant is still being explored. See the
 [prototype notes](docs/prototypes/chart-styles/README.md) for scope and reproduction.
 
 Requirements: macOS 14 or newer and Swift 6 from Xcode or the Xcode Command Line Tools.
