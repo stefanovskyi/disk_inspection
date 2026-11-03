@@ -23,6 +23,27 @@ SpaceLens is a native, read-only macOS storage inspector. It maps disks and fold
 
 The chart supports hover details, click-to-drill navigation, breadcrumbs, context actions, keyboard navigation, and an accessible text alternative. Symbolic links are never followed, scans stay on the selected filesystem, and inaccessible locations do not abort the rest of a scan.
 
+## Keyboard shortcuts
+
+Press **⌘/** or choose **Help > Keyboard Shortcuts** to see all shortcuts in a two-column reference without scrolling.
+
+| Shortcut | Action |
+| --- | --- |
+| ⌘B | Show or hide the left sidebar |
+| ⇧⌘B | Show or hide the inspector on the Storage Map page |
+| ⌘1 | AI Coding Tools |
+| ⌘2 | AI Models |
+| ⌘3 | Developer Storage |
+| ⌘4 | Main Drive (startup disk) |
+| ⌘5 | Second Drive |
+| ⌘6 | Third Drive |
+| ⌘[ | Back |
+| ⌘O | Scan Folder |
+| ⌘R | Rescan or analyze again |
+| ⌘/ | Show keyboard shortcuts |
+
+Second and third drives follow mounted-drive order in the sidebar, after the startup disk. Shortcuts for unavailable drives are disabled. Drive shortcuts use the same saved-scan and scan-confirmation flow as clicking a drive. The inspector toggle is available when a storage map is shown. The existing **⌃⌘S** sidebar and **⌥⌘I** inspector shortcuts also work. Use **Return** to open a selected folder or activate a dialog’s default action, and **Escape** to close a dialog.
+
 ## Download a release
 
 Download the latest disk image from [GitHub Releases](https://github.com/stefanovskyi/disk_inspection/releases/latest). Current release builds require macOS 14 or newer on Apple silicon. Open the `.dmg`, then drag **SpaceLens** onto **Applications**.

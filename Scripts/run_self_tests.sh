@@ -24,6 +24,7 @@ swiftc \
     "$project_dir/Sources/SpaceLens/Models/ScanFact.swift" \
     "$project_dir/Sources/SpaceLens/Models/SunburstLayout.swift" \
     "$project_dir/Sources/SpaceLens/Support/AppLayoutMetrics.swift" \
+    "$project_dir/Sources/SpaceLens/Support/AppShortcut.swift" \
     "$project_dir/Sources/SpaceLens/Support/BrandLogo.swift" \
     "$project_dir/Sources/SpaceLens/Support/BrandLogoCatalog.swift" \
     "$project_dir/Sources/SpaceLens/Support/StorageItemIcon.swift" \

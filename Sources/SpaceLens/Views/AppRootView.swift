@@ -3,8 +3,9 @@ import SwiftUI
 struct AppRootView: View {
     @Environment(AppViewModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage("layout.sidebarVisible") private var isSidebarVisible = true
-    @AppStorage("layout.inspectorVisible") private var isInspectorVisible = true
+    @Binding var isSidebarVisible: Bool
+    @Binding var isInspectorVisible: Bool
+    @Binding var isShowingKeyboardShortcuts: Bool
     @AppStorage("layout.inspectorWidth.v2") private var inspectorWidth = Double(
         AppLayoutMetrics.preferredInspectorWidth
     )
@@ -34,8 +35,8 @@ struct AppRootView: View {
                         systemImage: "sidebar.leading"
                     )
                 }
-                .keyboardShortcut("s", modifiers: [.command, .control])
-                .help(isSidebarVisible ? "Hide sidebar" : "Show sidebar")
+                .keyboardShortcut(AppShortcut.toggleSidebar.alternateShortcut)
+                .help(isSidebarVisible ? "Hide sidebar (⌘B)" : "Show sidebar (⌘B)")
 
                 Button {
                     model.navigateBack()
@@ -134,8 +135,8 @@ struct AppRootView: View {
                                 systemImage: "sidebar.trailing"
                             )
                         }
-                        .keyboardShortcut("i", modifiers: [.command, .option])
-                        .help(isInspectorVisible ? "Hide inspector" : "Show inspector")
+                        .keyboardShortcut(AppShortcut.toggleInspector.alternateShortcut)
+                        .help(isInspectorVisible ? "Hide inspector (⇧⌘B)" : "Show inspector (⇧⌘B)")
                     }
 
                     Button {
@@ -175,6 +176,9 @@ struct AppRootView: View {
             )
         ) {
             FullDiskAccessPrompt()
+        }
+        .sheet(isPresented: $isShowingKeyboardShortcuts) {
+            KeyboardShortcutsView(volumes: model.volumes)
         }
         .alert(
             "\(model.pendingScanEverythingPlan?.scope.title ?? "Continue")?",

@@ -254,7 +254,34 @@ struct SpaceLensSelfTests {
         try sessionStoreRetainsAndReplacesVolumeResults()
         try previousScanSummaryIsBoundedAndPersistent()
         try navigationHistoryRetracesVisitsAndPrunesRemovedLocations()
-        print("SpaceLens self-tests passed (42/42)")
+        try driveShortcutsFollowMountedVolumeOrder()
+        print("SpaceLens self-tests passed (43/43)")
+    }
+
+    private static func driveShortcutsFollowMountedVolumeOrder() throws {
+        func volume(_ path: String) -> VolumeInfo {
+            VolumeInfo(
+                url: URL(fileURLWithPath: path), name: path,
+                totalCapacity: 100, availableCapacity: 50,
+                isExternal: path != "/", isReadOnly: false
+            )
+        }
+        let startup = volume("/")
+        let external = volume("/Volumes/External")
+        let backup = volume("/Volumes/Backup")
+        let volumes = [external, startup, backup, volume("/Volumes/Archive")]
+        guard AppShortcut.mainDrive.volume(in: volumes) == startup,
+              AppShortcut.secondDrive.volume(in: volumes) == external,
+              AppShortcut.thirdDrive.volume(in: volumes) == backup else {
+            throw SelfTestFailure.failed("Drive shortcuts did not reserve the startup disk and follow sidebar order")
+        }
+        guard AppShortcut.driveShortcuts.allSatisfy({ $0.volume(in: []) == nil }),
+              AppShortcut.mainDrive.volume(in: [external]) == nil,
+              AppShortcut.secondDrive.volume(in: [startup]) == nil,
+              AppShortcut.thirdDrive.volume(in: [startup, external]) == nil,
+              AppShortcut.secondDrive.volume(in: [startup, backup]) == backup else {
+            throw SelfTestFailure.failed("Unavailable or unmounted drives retained shortcut destinations")
+        }
     }
 
     private static func navigationHistoryRetracesVisitsAndPrunesRemovedLocations() throws {
