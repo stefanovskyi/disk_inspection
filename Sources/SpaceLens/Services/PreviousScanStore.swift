@@ -56,14 +56,17 @@ struct PreviousScanStore: Sendable {
         try data.write(to: fileURL, options: .atomic)
     }
 
-    private static var defaultFileURL: URL {
+    /// The folder holding SpaceLens' own support files.
+    static var defaultDirectoryURL: URL {
         let applicationSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support", isDirectory: true)
-        return applicationSupport
-            .appendingPathComponent("SpaceLens", isDirectory: true)
-            .appendingPathComponent("PreviousScans.json", isDirectory: false)
+        return applicationSupport.appendingPathComponent("SpaceLens", isDirectory: true)
+    }
+
+    private static var defaultFileURL: URL {
+        defaultDirectoryURL.appendingPathComponent("PreviousScans.json", isDirectory: false)
     }
 }

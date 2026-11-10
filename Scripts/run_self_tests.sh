@@ -53,6 +53,7 @@ swiftc \
     "$project_dir/Sources/SpaceLens/Features/AICodingTools/Catalogs/T3CodeCatalog.swift" \
     "$project_dir/Sources/SpaceLens/Services/FullDiskAccessChecker.swift" \
     "$project_dir/Sources/SpaceLens/Services/PreviousScanStore.swift" \
+    "$project_dir/Sources/SpaceLens/Services/LocalStorageReset.swift" \
     "$project_dir/Sources/SpaceLens/Services/ScanCoordinator.swift" \
     "$project_dir/Scripts/SelfTests.swift" \
     -o "$temporary_dir/SpaceLensSelfTests"

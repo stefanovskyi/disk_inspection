@@ -15,6 +15,7 @@ Keep the product name **SpaceLens**. The DaisyDisk screenshots supplied during i
 - `Sources/SpaceLens/Services/DiskScanner.swift` — asynchronous recursive filesystem scanner.
 - `Sources/SpaceLens/Services/VolumeDiscovery.swift` — mounted-volume discovery.
 - `Sources/SpaceLens/Services/ScanCoordinator.swift` — FIFO queue that bounds how many scans and analyses run at once.
+- `Sources/SpaceLens/Services/LocalStorageReset.swift` and `ApplicationRelauncher.swift` — clear the app's own stored state and relaunch it as on first launch.
 - `Sources/SpaceLens/ViewModels/AppViewModel.swift` — application state, navigation, scanning, and macOS actions.
 - `Sources/SpaceLens/Views/` — SwiftUI interface and interactive sunburst chart.
 - `Sources/SpaceLens/Support/` — formatting, design tokens, and the product identification in `BrandLogo`, `BrandLogoCatalog`, and `StorageItemIcon`.
@@ -55,6 +56,7 @@ Do not hard-code this compatibility override into application source code.
 ## Filesystem Safety
 
 - SpaceLens is read-only. Never add deletion, moving, cleanup, or automatic file-modification behavior unless the user explicitly requests it.
+- **File > Reset SpaceLens…** (`LocalStorageReset`) is the only deletion. It may remove only SpaceLens' own preferences domain and support, cache, and saved-state folders, must not follow symbolic links, and must ask for confirmation first.
 - Never follow symbolic links during scanning. This prevents cycles and avoids measuring data outside the selected root.
 - Stay on the selected filesystem. Main-disk scans must skip `/System/Volumes` and `/Volumes`, and directory device/inode identities must prevent APFS firmlink duplication.
 - Permission errors must be collected and shown as unreadable/protected items; one inaccessible path must not abort an otherwise valid scan.

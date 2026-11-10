@@ -218,6 +218,28 @@ struct AppRootView: View {
         } message: { volume in
             Text("SpaceLens does not have a saved storage map for \(volume.name). Would you like to scan it now?")
         }
+        .alert(
+            "Reset SpaceLens?",
+            isPresented: Binding(
+                get: { model.isRequestingLocalStorageReset },
+                set: { isPresented in
+                    if !isPresented { model.cancelLocalStorageReset() }
+                }
+            )
+        ) {
+            Button("Reset and Relaunch", role: .destructive) {
+                model.confirmLocalStorageReset()
+            }
+            Button("Cancel", role: .cancel) {
+                model.cancelLocalStorageReset()
+            }
+        } message: {
+            Text(
+                "SpaceLens will stop any scans in progress, forget saved scan results, window layout, "
+                    + "and other preferences, then reopen as if launched for the first time. "
+                    + "Files on your disks are not changed, and Full Disk Access stays as set in System Settings."
+            )
+        }
         .animation(.easeOut(duration: 0.16), value: model.errorMessage)
         .onChange(of: model.activityCount) { previousCount, count in
             // The sidebar is the only place progress is shown.

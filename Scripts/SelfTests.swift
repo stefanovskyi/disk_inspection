@@ -255,7 +255,54 @@ struct SpaceLensSelfTests {
         try previousScanSummaryIsBoundedAndPersistent()
         try navigationHistoryRetracesVisitsAndPrunesRemovedLocations()
         try driveShortcutsFollowMountedVolumeOrder()
-        print("SpaceLens self-tests passed (43/43)")
+        try localStorageResetRemovesOnlyAppStorage()
+        print("SpaceLens self-tests passed (44/44)")
+    }
+
+    private static func localStorageResetRemovesOnlyAppStorage() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appendingPathComponent("SpaceLensReset-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: root) }
+        let support = root.appendingPathComponent("Support", isDirectory: true)
+        let outside = root.appendingPathComponent("Scanned", isDirectory: true)
+        let linkedSupport = root.appendingPathComponent("LinkedSupport", isDirectory: true)
+        let missing = root.appendingPathComponent("Missing", isDirectory: true)
+        try fileManager.createDirectory(at: support, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: outside, withIntermediateDirectories: true)
+        try Data("summary".utf8).write(to: support.appendingPathComponent("PreviousScans.json"))
+        let keptFile = outside.appendingPathComponent("keep.txt")
+        try Data("keep".utf8).write(to: keptFile)
+        try fileManager.createSymbolicLink(at: linkedSupport, withDestinationURL: outside)
+
+        let domain = "local.spacelens.selftest.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: domain) else {
+            throw SelfTestFailure.failed("Could not create isolated defaults for the reset test")
+        }
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(false, forKey: "layout.sidebarVisible")
+        defaults.set([3, 1], forKey: "scanFacts.diskStorage.remaining")
+
+        let failures = LocalStorageReset(
+            defaults: defaults,
+            defaultsDomain: domain,
+            directories: [support, linkedSupport, missing]
+        ).perform()
+
+        guard failures.isEmpty else {
+            throw SelfTestFailure.failed("Reset could not remove \(failures.map(\.path))")
+        }
+        guard defaults.object(forKey: "layout.sidebarVisible") == nil,
+              defaults.object(forKey: "scanFacts.diskStorage.remaining") == nil else {
+            throw SelfTestFailure.failed("Reset kept stored preferences")
+        }
+        guard !fileManager.fileExists(atPath: support.path),
+              (try? fileManager.attributesOfItem(atPath: linkedSupport.path)) == nil else {
+            throw SelfTestFailure.failed("Reset kept app support folders")
+        }
+        guard fileManager.fileExists(atPath: keptFile.path) else {
+            throw SelfTestFailure.failed("Reset followed a symbolic link outside app storage")
+        }
     }
 
     private static func driveShortcutsFollowMountedVolumeOrder() throws {

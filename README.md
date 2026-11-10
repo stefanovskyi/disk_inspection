@@ -104,4 +104,6 @@ SpaceLens checks for Full Disk Access before starting a scan or analysis so prot
 
 SpaceLens never deletes, moves, or modifies scanned files. Its analyses read filesystem metadata and only the bounded manifests, configuration fields, and model headers needed for classification. They do not launch detected tools or package managers, and do not inspect source code, conversations, credentials, or model weights.
 
+To start over as on first launch, choose **File > Reset SpaceLens…**. After confirmation, SpaceLens stops running scans, removes its own saved scan summaries (`~/Library/Application Support/SpaceLens`), preferences, caches, and saved window state, then quits and reopens. Scanned files are not touched, and the Full Disk Access setting stays under the control of System Settings.
+
 Build, test, packaging, signing, and benchmark instructions are in [DEVELOPMENT.md](DEVELOPMENT.md). Repository architecture and safety constraints are in [AGENTS.md](AGENTS.md).

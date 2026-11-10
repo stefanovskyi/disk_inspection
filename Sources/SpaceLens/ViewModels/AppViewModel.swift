@@ -91,6 +91,7 @@ final class AppViewModel {
     private(set) var lastScanEverythingOutcome: ScanEverythingOutcome?
     private(set) var pendingRescanVolume: VolumeInfo?
     private(set) var sessionFolders: [SessionFolder] = []
+    private(set) var isRequestingLocalStorageReset = false
     let aiCodingTools: AICodingToolsStore
     let aiModelsAndRuntimes: AIModelsAndRuntimesStore
     let developerStorage: DeveloperStorageStore
@@ -1164,6 +1165,28 @@ final class AppViewModel {
         case .batch(let id):
             if let run = scanEverythingRuns.first(where: { $0.id == id }) { cancelScanEverything(run) }
         }
+    }
+
+    func requestLocalStorageReset() {
+        isRequestingLocalStorageReset = true
+    }
+
+    func cancelLocalStorageReset() {
+        isRequestingLocalStorageReset = false
+    }
+
+    /// Clears SpaceLens' saved state and reopens it as on first launch.
+    /// Only the app's own preferences and support files are removed.
+    func confirmLocalStorageReset() {
+        isRequestingLocalStorageReset = false
+        // Stop work that could save scan summaries after the reset.
+        scanTasks.values.forEach { $0.cancel() }
+        volumeFinalizationTasks.values.forEach { $0.cancel() }
+        LocalStorageReset.forCurrentApplication().perform()
+        // The relaunched app clears storage again before reading it, in case
+        // this instance writes window state while quitting.
+        _ = ApplicationRelauncher.scheduleRelaunch(arguments: [LocalStorageReset.relaunchArgument])
+        NSApp.terminate(nil)
     }
 
     func openFullDiskAccessSettings() {

@@ -2,10 +2,18 @@ import SwiftUI
 
 @main
 struct SpaceLensApp: App {
-    @State private var model = AppViewModel()
+    @State private var model: AppViewModel
     @AppStorage("layout.sidebarVisible") private var isSidebarVisible = true
     @AppStorage("layout.inspectorVisible") private var isInspectorVisible = true
     @State private var isShowingKeyboardShortcuts = false
+
+    init() {
+        // Clear storage before the model or any view reads it.
+        if ProcessInfo.processInfo.arguments.contains(LocalStorageReset.relaunchArgument) {
+            LocalStorageReset.forCurrentApplication().perform()
+        }
+        _model = State(initialValue: AppViewModel())
+    }
 
     var body: some Scene {
         WindowGroup(ProcessInfo.processInfo.arguments.contains("--chart-style-prototype") ? "SpaceLens · Holo Pulse preview" : "SpaceLens") {
@@ -42,6 +50,12 @@ struct SpaceLensApp: App {
                 }
                     .keyboardShortcut(AppShortcut.refresh.shortcut)
                     .disabled(!model.canRefreshCurrentSection)
+            }
+
+            CommandGroup(after: .saveItem) {
+                Divider()
+                Button("Reset SpaceLens…") { model.requestLocalStorageReset() }
+                    .help("Clear saved scans and preferences, then reopen SpaceLens as on first launch")
             }
 
             CommandMenu("Navigate") {
