@@ -6,6 +6,14 @@ on run arguments
     set backgroundFile to POSIX file (mountPath & "/.background/SpaceLensDMGBackground.tiff") as alias
 
     tell application "Finder"
+        -- Finder can register a freshly attached image a few seconds after hdiutil returns.
+        set waitedSeconds to 0
+        repeat until (name of every disk) contains volumeName
+            if waitedSeconds is greater than or equal to 20 then error "Finder did not list the mounted disk image " & volumeName
+            delay 0.5
+            set waitedSeconds to waitedSeconds + 0.5
+        end repeat
+
         tell disk volumeName
             open
 
