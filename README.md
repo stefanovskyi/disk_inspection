@@ -65,7 +65,7 @@ This exception does not make the app signed or notarized. Do not disable Gatekee
   <a href="docs/images/spacelens-ai-models.png"><img src="docs/images/spacelens-ai-models.png" width="49%" alt="Completed AI Models analysis in SpaceLens"></a>
 </p>
 
-These are unedited captures of completed results from the earlier app build, before Holo Pulse was added. Totals naturally depend on the Mac being inspected.
+These are unedited captures of completed results. The storage map and AI Coding Tools captures are from SpaceLens 1.5.0; the AI Models capture is from an earlier build. Totals naturally depend on the Mac being inspected.
 
 ## Run locally
 
